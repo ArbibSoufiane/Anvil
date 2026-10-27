@@ -3,8 +3,12 @@
     <RootNamespace>ArbiPache.Core</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Scriban" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Apache\Templates\*.sbn" LogicalName="ArbiPache.Templates.%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ArbiPache.Core.Tests" />
