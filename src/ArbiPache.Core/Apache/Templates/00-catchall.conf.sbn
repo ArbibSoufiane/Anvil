@@ -16,5 +16,8 @@
 {{~ if php_handler ~}}
 {{ php_handler }}
 {{~ end ~}}
+{{~ if entries ~}}
+{{ entries }}
+{{~ end ~}}
 {{~ end ~}}
 </VirtualHost>

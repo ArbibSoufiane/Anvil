@@ -1,0 +1,23 @@
+{{~ if proxy ~}}
+ProxyPass "{{ path }}/" "{{ proxy }}"
+ProxyPassReverse "{{ path }}/" "{{ proxy }}"
+<Location "{{ path }}/">
+{{ rules }}
+</Location>
+{{~ else ~}}
+{{~ if alias ~}}
+Alias "{{ path }}" "{{ root }}"
+{{~ end ~}}
+<Directory "{{ root }}">
+    Options {{ options }}
+    AllowOverride All
+    DirectoryIndex {{ index }}
+{{ rules }}
+{{~ if php ~}}
+{{ php }}
+{{~ end ~}}
+{{~ if fallback ~}}
+    FallbackResource {{ path }}/index.php
+{{~ end ~}}
+</Directory>
+{{~ end ~}}

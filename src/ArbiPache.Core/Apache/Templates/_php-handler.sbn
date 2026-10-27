@@ -1,6 +1,12 @@
+{{~ if with_index ~}}
 DirectoryIndex index.php index.html
+{{~ end ~}}
 <FilesMatch "\.php$">
+{{~ if port ~}}
     <If "-f %{REQUEST_FILENAME}">
         SetHandler "proxy:fcgi://127.0.0.1:{{ port }}/"
     </If>
+{{~ else ~}}
+    Require all denied
+{{~ end ~}}
 </FilesMatch>

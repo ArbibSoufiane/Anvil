@@ -6,6 +6,7 @@ using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
 using ArbiPache.Integration.Tests.Support;
 
 namespace ArbiPache.Integration.Tests;
@@ -30,7 +31,8 @@ public sealed class ApacheControlTests : IAsyncDisposable
         try { Directory.Delete(_paths.Root, recursive: true); } catch (IOException) { }
     }
 
-    private async Task<(ApacheControl Apache, string Version)> PrepareAsync()
+    private async Task<(ApacheControl Apache, string Version)> PrepareAsync(
+        ServerMode mode = ServerMode.Development, IReadOnlyList<SiteDefinition>? sites = null)
     {
         var ct = TestContext.Current.CancellationToken;
         var version = await Runtimes.InstallAsync(_paths, ComponentKind.Apache, ct);
@@ -40,10 +42,11 @@ public sealed class ApacheControlTests : IAsyncDisposable
 
         var input = new RenderInput
         {
-            Settings = new AppSettings { HttpPort = Port, HttpsPort = Port, ActiveApache = version },
+            Settings = new AppSettings { Mode = mode, HttpPort = Port, HttpsPort = Port, ActiveApache = version },
             Stock = StockConfScanner.Scan(File.ReadAllText(_paths.HttpdConf)),
-            Profile = BuiltInProfiles.Development,
+            Profile = BuiltInProfiles.For(mode),
             ApacheVersion = version,
+            Sites = sites ?? [],
         };
         var tester = new ApacheConfigTester(_paths, () => version);
         var outcome = await new ConfigApplier(new ConfigRenderer(_paths), new ConfigWriter(_paths), tester).ApplyAsync(input, ct);
@@ -54,6 +57,41 @@ public sealed class ApacheControlTests : IAsyncDisposable
 
     private static async Task<string> GetAsync() =>
         await Http.GetStringAsync($"http://127.0.0.1:{Port}/", TestContext.Current.CancellationToken);
+
+    private SiteDefinition StaticSite(SiteKind kind, string name, string body)
+    {
+        var root = Path.Combine(_paths.Root, "sites", SiteSet.IdFor(kind, name));
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "index.html"), body);
+        return new SiteDefinition { Id = SiteSet.IdFor(kind, name), Kind = kind, Type = SiteType.Static, Name = name, Root = root, Index = ["index.html"] };
+    }
+
+    private static async Task<(HttpStatusCode Status, string Body)> GetAsHostAsync(string host)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{Port}/");
+        request.Headers.Host = $"{host}:{Port}";
+        using var response = await Http.SendAsync(request, TestContext.Current.CancellationToken);
+        return (response.StatusCode, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Host_header_picks_the_site_in_production()
+    {
+        var (apache, version) = await PrepareAsync(ServerMode.Production,
+        [
+            StaticSite(SiteKind.Domain, "shop.test", "hello from shop"),
+            StaticSite(SiteKind.Ip, "192.168.10.2", "hello from ipv4 site"),
+            StaticSite(SiteKind.Ip, "2001:db8::10", "hello from ipv6 site"),
+        ]);
+
+        await apache.StartAsync(version, Port, TestContext.Current.CancellationToken);
+
+        Assert.Equal((HttpStatusCode.OK, "hello from shop"), await GetAsHostAsync("shop.test"));
+        Assert.Equal((HttpStatusCode.OK, "hello from ipv4 site"), await GetAsHostAsync("192.168.10.2"));
+        Assert.Equal((HttpStatusCode.OK, "hello from ipv6 site"), await GetAsHostAsync("[2001:db8::10]"));
+        Assert.Equal((HttpStatusCode.OK, "hello from htdocs"), await GetAsHostAsync("[::1]"));
+        Assert.Equal(HttpStatusCode.Forbidden, (await GetAsHostAsync("unknown.example")).Status);
+    }
 
     [Fact]
     public async Task Start_serves_htdocs()

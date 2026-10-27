@@ -1,8 +1,13 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using ArbiPache.Core.Apache;
+using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
+using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
 using ArbiPache.Integration.Tests.Support;
 
 namespace ArbiPache.Integration.Tests;
@@ -17,7 +22,8 @@ public sealed class ApacheConfigTests : IDisposable
             if (Directory.Exists(root.Root)) Directory.Delete(root.Root, recursive: true);
     }
 
-    private async Task<(AppPaths Paths, ApplyOutcome Outcome)> ApplyAsync(string rootName, ServerMode mode, Action<AppPaths>? beforeApply = null)
+    private async Task<(AppPaths Paths, ApplyOutcome Outcome)> ApplyAsync(
+        string rootName, ServerMode mode, Action<AppPaths>? beforeApply = null, Func<AppPaths, RenderInput, RenderInput>? shape = null)
     {
         var paths = Runtimes.NewRoot(rootName);
         _roots.Add(paths);
@@ -33,6 +39,7 @@ public sealed class ApacheConfigTests : IDisposable
             Profile = BuiltInProfiles.For(mode),
             ApacheVersion = version,
         };
+        if (shape is not null) input = shape(paths, input);
         var applier = new ConfigApplier(new ConfigRenderer(paths), new ConfigWriter(paths), new ApacheConfigTester(paths, () => version));
         return (paths, await applier.ApplyAsync(input, ct));
     }
@@ -60,6 +67,83 @@ public sealed class ApacheConfigTests : IDisposable
         var (_, outcome) = await ApplyAsync("ap it Mes Sites café", ServerMode.Development);
 
         Assert.True(outcome.Ok, outcome.TestOutput);
+    }
+
+    [Theory]
+    [InlineData(ServerMode.Development)]
+    [InlineData(ServerMode.Production)]
+    public async Task Real_httpd_accepts_every_site_kind(ServerMode mode)
+    {
+        var (_, outcome) = await ApplyAsync($"ap-it-sites-{mode}", mode, shape: (paths, input) =>
+        {
+            string Folder(string name)
+            {
+                var dir = Path.Combine(paths.Root, "Mes Sites", name);
+                Directory.CreateDirectory(dir);
+                return dir;
+            }
+
+            SiteDefinition Site(SiteKind kind, string name, string root) =>
+                new() { Id = SiteSet.IdFor(kind, name), Kind = kind, Type = SiteType.Php, Name = name, Root = root };
+
+            using var key = RSA.Create(2048);
+            var request = new CertificateRequest("CN=shop.example.com", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            using var cert = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(90));
+            var certs = new CertificateStore(paths);
+            certs.Save("shop.example.com", cert.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem(), cert.ExportCertificatePem(), CertSource.Imported);
+
+            SiteDefinition[] sites =
+            [
+                Site(SiteKind.Domain, "shop.example.com", Folder("café shop")) with
+                {
+                    Cert = CertSource.Imported, Aliases = ["www.shop.example.com"], PasswordProtected = true,
+                },
+                Site(SiteKind.Ip, "192.168.10.2", Folder("kiosk")) with
+                {
+                    Access = AccessLevel.Network,
+                    Mounts =
+                    [
+                        new SiteMount("/demo", Folder("démo"), SiteType.Php, "8.4.27"),
+                        new SiteMount("/docs", Folder("docs"), SiteType.Static, null),
+                        new SiteMount("/api", "http://127.0.0.1:3000", SiteType.Proxy, null),
+                    ],
+                },
+                Site(SiteKind.Ip, "2001:db8::10", Folder("v6")),
+                Site(SiteKind.Ip, "*", Folder("all")) with { Access = AccessLevel.SpecificIps, AllowedIps = ["203.0.113.0/24"] },
+                Site(SiteKind.Domain, "app.test", "http://127.0.0.1:5173") with
+                {
+                    Type = SiteType.Proxy, Access = AccessLevel.ThisPc, Mounts = [new SiteMount("/files", Folder("files"), SiteType.Static, null)],
+                },
+                Site(SiteKind.Domain, "lb.example.com", Folder("lb")) with
+                {
+                    Cert = CertSource.LoadBalancer, TrustedProxies = ["10.0.0.5", "10.0.1.0/24"], AcceptOnlyFromProxies = true,
+                },
+                Site(SiteKind.Domain, "static.test", Folder("static")) with { Type = SiteType.Static, Index = ["index.html"] },
+                Site(SiteKind.Htdocs, "legacy", Path.Combine(paths.Htdocs, "legacy")) with
+                {
+                    PhpVersion = "8.4.27", Access = AccessLevel.SpecificIps, AllowedIps = ["192.168.1.50"],
+                },
+            ];
+            Directory.CreateDirectory(Path.Combine(paths.Htdocs, "legacy"));
+            HtdocsEntry[] htdocs =
+            [
+                new("legacy", Path.Combine(paths.Htdocs, "legacy"), false, "8.4.27", AccessLevel.SpecificIps),
+                new("pma", Folder("phpMyAdmin"), true, null, AccessLevel.ThisPc),
+            ];
+            PhpPool Pool(string version, int port) => new(version, PhpVersionKey.Of(version), port, 2, 100, "php-cgi.exe", paths.Data, paths.Data);
+
+            return input with
+            {
+                Settings = input.Settings with { DefaultPhp = "8.5.12" },
+                Pools = [Pool("8.5.12", 9100), Pool("8.4.27", 9101)],
+                Sites = sites,
+                Htdocs = htdocs,
+                Certificates = certs.All(),
+            };
+        });
+
+        Assert.True(outcome.Ok, outcome.TestOutput);
+        Assert.Contains("Syntax OK", outcome.TestOutput);
     }
 
     [Fact]

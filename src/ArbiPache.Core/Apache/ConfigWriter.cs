@@ -22,6 +22,7 @@ public sealed class ConfigWriter(AppPaths paths)
         // Folders the generated config writes into must exist before httpd -t checks them.
         Directory.CreateDirectory(Path.Combine(paths.Logs, "apache"));
         Directory.CreateDirectory(paths.Run);
+        foreach (var folder in c.Folders) Directory.CreateDirectory(folder);
 
         var current = ReadTree(Live);
         var changed = c.Files

@@ -2,6 +2,7 @@ using ArbiPache.Core.Apache;
 using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
 
 namespace ArbiPache.Core.Tests.Apache;
 
@@ -103,6 +104,20 @@ public sealed class ConfigApplierTests : IDisposable
 
         Assert.Equal([Path.Combine("vhosts", "50-old-site.conf")], outcome.ChangedFiles);
         Assert.False(File.Exists(Path.Combine(_paths.Vhosts, "50-old-site.conf")));
+    }
+
+    [Fact]
+    public async Task Site_log_folders_exist_before_the_test()
+    {
+        var site = new SiteDefinition
+        {
+            Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Static, Name = "shop.test", Root = _paths.Htdocs,
+        };
+
+        var outcome = await Applier().ApplyAsync(Input() with { Sites = [site] }, TestContext.Current.CancellationToken);
+
+        Assert.True(outcome.Ok);
+        Assert.True(Directory.Exists(Path.Combine(_paths.Logs, "sites", "shop.test")));
     }
 
     private sealed class FakeTester : IConfigTester

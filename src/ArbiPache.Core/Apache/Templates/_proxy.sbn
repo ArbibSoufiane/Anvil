@@ -1,0 +1,12 @@
+ProxyPreserveHost On
+RewriteEngine On
+RewriteCond %{HTTP:Upgrade} =websocket [NC]
+RewriteRule /(.*) {{ ws }}/$1 [P,L]
+{{~ for p in excluded ~}}
+ProxyPass "{{ p }}" !
+{{~ end ~}}
+ProxyPass / {{ target }}
+ProxyPassReverse / {{ target }}
+<Location "/">
+{{ rules }}
+</Location>
