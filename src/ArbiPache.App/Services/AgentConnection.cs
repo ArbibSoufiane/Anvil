@@ -5,6 +5,7 @@ using ArbiPache.Core.Components;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
 using Serilog;
 
 namespace ArbiPache.App.Services;
@@ -167,6 +168,26 @@ public sealed class AgentConnection : IAsyncDisposable
 
         public async Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default) =>
             await (await Remote()).SetExtensionAsync(version, name, enabled, ct);
+
+        public async Task<IReadOnlyList<SiteDefinition>> GetSitesAsync(CancellationToken ct = default) => await (await Remote()).GetSitesAsync(ct);
+
+        public async Task<IReadOnlyList<HtdocsEntry>> GetHtdocsAsync(CancellationToken ct = default) => await (await Remote()).GetHtdocsAsync(ct);
+
+        public async Task<IReadOnlyList<ValidationError>> ValidateSiteAsync(SiteDefinition s, CancellationToken ct = default) =>
+            await (await Remote()).ValidateSiteAsync(s, ct);
+
+        public async Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct = default) =>
+            await (await Remote()).SaveSiteAsync(s, secrets, ct);
+
+        public async Task<ApplyResult> RemoveSiteAsync(string id, CancellationToken ct = default) => await (await Remote()).RemoveSiteAsync(id, ct);
+
+        public async Task<ApplyResult> SetSiteEnabledAsync(string id, bool enabled, CancellationToken ct = default) =>
+            await (await Remote()).SetSiteEnabledAsync(id, enabled, ct);
+
+        public async Task<Detected> DetectAsync(string folder, CancellationToken ct = default) => await (await Remote()).DetectAsync(folder, ct);
+
+        public async Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct = default) =>
+            await (await Remote()).CopyIntoHtdocsAsync(sourceFolder, folderName, ct);
 
         public async Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => await (await Remote()).ShutdownAsync(stopServices, ct);
     }

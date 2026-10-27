@@ -2,6 +2,7 @@ using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
 using StreamJsonRpc;
 
 namespace ArbiPache.Core.Agent;
@@ -39,6 +40,26 @@ public partial interface IAgentApi
 
     /// <summary>Restarts that version's pool only.</summary>
     Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default);
+
+    Task<IReadOnlyList<SiteDefinition>> GetSitesAsync(CancellationToken ct = default);
+
+    /// <summary>What localhost/&lt;folder&gt; serves: htdocs folders and htdocs entries kept elsewhere.</summary>
+    Task<IReadOnlyList<HtdocsEntry>> GetHtdocsAsync(CancellationToken ct = default);
+
+    Task<IReadOnlyList<ValidationError>> ValidateSiteAsync(SiteDefinition s, CancellationToken ct = default);
+
+    /// <summary>
+    /// Kept only when Apache accepts the result. HostsDomains in the result, when set, is the list the GUI must hand to
+    /// the Elevator. Secrets are needed the first time a site is password protected.
+    /// </summary>
+    Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct = default);
+
+    Task<ApplyResult> RemoveSiteAsync(string id, CancellationToken ct = default);
+    Task<ApplyResult> SetSiteEnabledAsync(string id, bool enabled, CancellationToken ct = default);
+    Task<Detected> DetectAsync(string folder, CancellationToken ct = default);
+
+    /// <summary>Refuses a folder name htdocs already has.</summary>
+    Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct = default);
 
     /// <summary>Ends the Agent. With stopServices false, its processes still end with it (they live in its job).</summary>
     Task ShutdownAsync(bool stopServices, CancellationToken ct = default);

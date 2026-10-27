@@ -1,14 +1,19 @@
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
 using ArbiPache.Core;
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
+using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Hosts;
 using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
 using Serilog;
 
 namespace ArbiPache.Agent;
@@ -19,15 +24,17 @@ namespace ArbiPache.Agent;
 /// they start just before it and stop just after it.
 /// </summary>
 /// <param name="portFree">True when nothing listens on the port; picks ports for new PHP pools.</param>
+/// <param name="hostsText">Reads the Windows hosts file; the Agent never writes it (the Elevator does).</param>
 public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTester tester, IApacheControl apache,
     Func<AppSettings, IReadOnlyList<PreflightFinding>> preflight, ComponentCatalog catalog, ComponentInstaller installer,
-    IPhpPools php, Func<int, bool> portFree, bool runningAsService = false)
+    IPhpPools php, Func<int, bool> portFree, bool runningAsService = false, Func<string>? hostsText = null)
 {
     public const int MaxWorkers = 64;
     public const int MaxRecycleRequests = 1_000_000;
 
     private const string NotInstalled = "Install Apache first, on the Apache page.";
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Func<string> _hostsText = hostsText ?? ReadSystemHosts;
     private AppSettings _settings = new();
     private IReadOnlyList<PreflightFinding> _findings = [];
     private string? _apacheUnderTest;
@@ -217,16 +224,157 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
         var s = _settings;
         var running = php.Running;
         var today = DateOnly.FromDateTime(DateTime.Now);
+        var sites = new SiteStore(paths).All().Where(x => x.Enabled && x.Kind != SiteKind.Htdocs).ToList();
         return installer.Installed(ComponentKind.Php).Select(i =>
         {
             var pool = running.FirstOrDefault(p => SameVersion(p.Version, i.Version));
             var tuning = PhpPoolPlanner.TuningFor(s, i.Version);
             var isDefault = SameVersion(i.Version, s.DefaultPhp);
+            var usedBy = sites.Where(x => Uses(x, i.Version, s.DefaultPhp)).Select(x => x.Name);
             return new PhpVersionInfo(i.Version, i.Toolset ?? "", tuning.Workers, tuning.MaxRequests, pool?.Port ?? 0,
-                isDefault ? ["htdocs"] : [], pool is null ? ProcessState.Stopped : php.StateOf(pool.Key), isDefault,
+                (isDefault ? usedBy.Prepend("htdocs") : usedBy).ToList(), pool is null ? ProcessState.Stopped : php.StateOf(pool.Key), isDefault,
                 PhpSupport.IsEndOfLife(i.Version, today));
         }).ToList();
+
+        static bool Uses(SiteDefinition site, string version, string? defaultPhp) =>
+            (site.Type == SiteType.Php && SameVersion(version, site.PhpVersion ?? defaultPhp))
+            || site.Mounts.Any(m => m.Type == SiteType.Php && SameVersion(version, m.PhpVersion ?? site.PhpVersion ?? defaultPhp));
     }
+
+    public IReadOnlyList<SiteDefinition> GetSites() => new SiteStore(paths).All();
+
+    public IReadOnlyList<HtdocsEntry> GetHtdocs() => HtdocsOf(_settings, new SiteStore(paths).All());
+
+    /// <summary>The site rules, plus: every PHP version the site names is installed.</summary>
+    public IReadOnlyList<ValidationError> ValidateSite(SiteDefinition s)
+    {
+        var (site, _, others) = Prepare(s, new SiteStore(paths).All());
+        return ValidateAgainst(site, others);
+    }
+
+    /// <summary>
+    /// Validates, writes the password file and a local development certificate when needed, saves the site, then keeps
+    /// it only if Apache accepts the configuration; a rejected change puts every file back as it was.
+    /// </summary>
+    public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct) => Locked(async () =>
+    {
+        var sites = new SiteStore(paths);
+        var (site, renamedFrom, others) = Prepare(s, sites.All());
+        if (ValidateAgainst(site, others) is { Count: > 0 } errors) return ApplyResult.Failure(string.Join(" ", errors.Select(e => e.Message)));
+
+        var htpasswd = HtpasswdPath(site.Id);
+        var oldHtpasswd = renamedFrom is null ? null : HtpasswdPath(renamedFrom);
+        var newSecrets = secrets is { User.Length: > 0, Password.Length: > 0 };
+        if (site.PasswordProtected && !newSecrets && !File.Exists(htpasswd) && !File.Exists(oldHtpasswd))
+            return ApplyResult.Failure("Enter a user name and password for this site.");
+
+        var undo = new List<Action>();
+        var certs = new CertificateStore(paths);
+        try
+        {
+            if (newSecrets)
+            {
+                Remember(htpasswd, undo);
+                HtpasswdFile.Write(htpasswd, secrets!.User!, secrets.Password!);
+            }
+            else if (site.PasswordProtected && !File.Exists(htpasswd) && File.Exists(oldHtpasswd))
+            {
+                Remember(htpasswd, undo);
+                File.Copy(oldHtpasswd!, htpasswd);
+            }
+
+            if (renamedFrom is not null && site.Cert is CertSource.Imported or CertSource.LetsEncrypt
+                && certs.Get(site.Id) is null && certs.Get(renamedFrom) is not null)
+            {
+                RememberFolder(CertDir(site.Id), undo);
+                CopyTree(CertDir(renamedFrom), CertDir(site.Id));
+            }
+
+            if (site.Cert == CertSource.LocalDev && NeedsLocalCertificate(certs.Get(site.Id), CertNames(site)))
+            {
+                RememberFolder(CertDir(site.Id), undo);
+                new LocalCa(paths, certs, TimeProvider.System).Issue(site.Id, CertNames(site));
+            }
+
+            Remember(SiteFile(site.Id), undo);
+            sites.Save(site);
+            if (renamedFrom is not null)
+            {
+                Remember(SiteFile(renamedFrom), undo);
+                sites.Delete(renamedFrom);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or CryptographicException)
+        {
+            Undo(undo);
+            return ApplyResult.Failure($"The site was not saved: {e.Message}");
+        }
+
+        var (applied, result) = await ApplySitesAsync(undo, "The site was not saved.", ct);
+        if (!applied) return result;
+        if (!site.PasswordProtected) TryDelete(htpasswd);
+        if (renamedFrom is not null)
+        {
+            TryDelete(oldHtpasswd!);
+            certs.Delete(renamedFrom);
+        }
+
+        return result with { HostsDomains = HostsChange() };
+    }, ct);
+
+    /// <summary>Removes the site with its certificate and password file. Its logs stay.</summary>
+    public Task<ApplyResult> RemoveSiteAsync(string id, CancellationToken ct) => Locked(async () =>
+    {
+        var sites = new SiteStore(paths);
+        if (sites.All().All(x => x.Id != id)) return ApplyResult.Failure("That site no longer exists.");
+
+        var undo = new List<Action>();
+        Remember(SiteFile(id), undo);
+        sites.Delete(id);
+        var (applied, result) = await ApplySitesAsync(undo, "The site was not removed.", ct);
+        if (!applied) return result;
+        new CertificateStore(paths).Delete(id);
+        TryDelete(HtpasswdPath(id));
+        return result with { HostsDomains = HostsChange() };
+    }, ct);
+
+    public Task<ApplyResult> SetSiteEnabledAsync(string id, bool enabled, CancellationToken ct) => Locked(async () =>
+    {
+        var sites = new SiteStore(paths);
+        if (sites.All().FirstOrDefault(x => x.Id == id) is not { } site) return ApplyResult.Failure("That site no longer exists.");
+
+        var undo = new List<Action>();
+        Remember(SiteFile(id), undo);
+        sites.Save(site with { Enabled = enabled });
+        var (applied, result) = await ApplySitesAsync(undo, enabled ? "The site stays off." : "The site stays on.", ct);
+        return applied ? result with { HostsDomains = HostsChange() } : result;
+    }, ct);
+
+    /// <summary>Copies a project into htdocs\&lt;folderName&gt;. An existing folder or htdocs entry of that name is never overwritten.</summary>
+    public Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct) => Locked(async () =>
+    {
+        if (!SiteSet.IsFolderName(folderName)) return ApplyResult.Failure("Use letters, digits, dots, dashes and underscores for the folder name.");
+        if (!Directory.Exists(sourceFolder)) return ApplyResult.Failure($"{sourceFolder} does not exist.");
+        var htdocs = Path.GetFullPath(HtdocsDir(_settings));
+        var target = Path.Combine(htdocs, folderName);
+        if (Directory.Exists(target) || File.Exists(target)) return ApplyResult.Failure($"htdocs already has a folder named {folderName}.");
+        if (new SiteStore(paths).All().Any(x => x.Kind == SiteKind.Htdocs && string.Equals(x.Name, folderName, StringComparison.OrdinalIgnoreCase)))
+            return ApplyResult.Failure($"localhost/{folderName} is already set up.");
+        if ((htdocs + Path.DirectorySeparatorChar).StartsWith(Path.GetFullPath(sourceFolder).TrimEnd('\\') + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return ApplyResult.Failure("A folder cannot be copied into itself.");
+
+        try
+        {
+            await Task.Run(() => CopyTree(sourceFolder, target), ct);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or OperationCanceledException)
+        {
+            try { Directory.Delete(target, recursive: true); } catch (IOException) { }
+            return ApplyResult.Failure($"The copy did not finish: {e.Message}");
+        }
+
+        return ApplyResult.Success();
+    }, ct);
 
     /// <summary>Saves the pool's size and recycling; a running pool is resized at once.</summary>
     public Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings pool, CancellationToken ct) => Locked(async () =>
@@ -335,10 +483,168 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
         }, applied);
     }
 
-    // htdocs needs the default version; sites add theirs in Phase 3.
-    private IReadOnlyList<PhpPool> PlanPhp(AppSettings s) =>
-        new PhpPoolPlanner(paths).Plan(s, s.DefaultPhp is { } d ? [d] : [], installer.Installed(ComponentKind.Php),
-            port => php.Owns(port) || portFree(port));
+    // htdocs needs the default version; enabled sites, mounts and htdocs folders add theirs.
+    private IReadOnlyList<PhpPool> PlanPhp(AppSettings s)
+    {
+        var sites = new SiteStore(paths).All();
+        return new PhpPoolPlanner(paths).Plan(s, SiteSet.RequiredPhpVersions(sites, HtdocsOf(s, sites), s.DefaultPhp),
+            installer.Installed(ComponentKind.Php), port => php.Owns(port) || portFree(port));
+    }
+
+    /// <summary>
+    /// The site as it will be saved: its id follows its kind and name (a changed name is a rename of the saved site),
+    /// it keeps its creation time, and it is checked against every other site.
+    /// </summary>
+    private static (SiteDefinition Site, string? RenamedFrom, IReadOnlyList<SiteDefinition> Others) Prepare(
+        SiteDefinition s, IReadOnlyList<SiteDefinition> all)
+    {
+        var id = SiteSet.IdFor(s.Kind, s.Name);
+        var renamedFrom = s.Id != id && all.Any(x => x.Id == s.Id) ? s.Id : null;
+        var previous = all.FirstOrDefault(x => x.Id == (renamedFrom ?? id));
+        var site = s with { Id = id, Created = previous?.Created ?? (s.Created == default ? DateTimeOffset.UtcNow : s.Created) };
+        return (site, renamedFrom, all.Where(x => x.Id != renamedFrom).ToList());
+    }
+
+    private IReadOnlyList<ValidationError> ValidateAgainst(SiteDefinition site, IReadOnlyList<SiteDefinition> others)
+    {
+        var errors = SiteValidator.Validate(site, others).ToList();
+        if (site.Type == SiteType.Php && site.PhpVersion is { } version && InstalledPhp(version) is null && errors.All(e => e.Field != "PhpVersion"))
+            errors.Add(new ValidationError("PhpVersion", $"PHP {version} is not installed. Install it on the PHP page."));
+        if (site.Mounts.FirstOrDefault(m => m.Type == SiteType.Php && m.PhpVersion is { } v && InstalledPhp(v) is null) is { } mount
+            && errors.All(e => e.Field != "Mounts"))
+            errors.Add(new ValidationError("Mounts", $"{mount.UrlPath}: PHP {mount.PhpVersion} is not installed."));
+        return errors;
+    }
+
+    /// <summary>
+    /// Renders the configuration for the sites now on disk. Applied is false when Apache rejected it: then
+    /// <paramref name="undo"/> has put the site files back and the result explains why.
+    /// </summary>
+    private async Task<(bool Applied, ApplyResult Result)> ApplySitesAsync(List<Action> undo, string consequence, CancellationToken ct)
+    {
+        if (InstalledApache(_settings.ActiveApache) is not { } version) return (true, ApplyResult.Success());
+        var pools = PlanPhp(_settings);
+        var applied = await ApplyConfigAsync(_settings, version, pools, ct);
+        if (!applied.Ok)
+        {
+            Undo(undo);
+            return (false, Rejected(applied, consequence));
+        }
+
+        if (!ApacheRunning) return (true, ApplyResult.Success(applied.ChangedFiles, applied.TestOutput));
+        return (true, await Guard(async () =>
+        {
+            await StartPoolsAsync(pools, ct);
+            await apache.GracefulRestartAsync(ct);
+        }, applied));
+    }
+
+    /// <summary>The hosts entries the sites need, when they differ from ArbiPache's block in the hosts file now; else null.</summary>
+    private IReadOnlyList<string>? HostsChange()
+    {
+        var wanted = new SiteStore(paths).All()
+            .Where(s => s.Enabled && s.Kind == SiteKind.Domain)
+            .SelectMany(s => s.Aliases.Prepend(s.Name)
+                .Select(n => SiteSet.NormalizeHost(n) ?? n)
+                .Where(n => s.AddToHosts || n.EndsWith(".test", StringComparison.Ordinal)))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        string current;
+        try
+        {
+            current = _hostsText();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            current = "";
+        }
+
+        return HostsFile.ManagedDomains(current).ToHashSet(StringComparer.Ordinal).SetEquals(wanted) ? null : wanted;
+    }
+
+    private static string ReadSystemHosts()
+    {
+        var hosts = Path.Combine(Environment.SystemDirectory, "drivers", "etc", "hosts");
+        return File.Exists(hosts) ? File.ReadAllText(hosts, Encoding.Latin1) : "";
+    }
+
+    /// <summary>Domain sites: the domain and its aliases. IP sites: the address; all addresses: localhost.</summary>
+    private static IReadOnlyList<string> CertNames(SiteDefinition site) => site.Kind switch
+    {
+        SiteKind.Domain => site.Aliases.Prepend(site.Name).Select(n => SiteSet.NormalizeHost(n) ?? n).Distinct(StringComparer.Ordinal).ToList(),
+        _ when site.Name == "*" => ["localhost"],
+        _ => [site.Name],
+    };
+
+    private static bool NeedsLocalCertificate(SiteCertificate? current, IReadOnlyList<string> names) =>
+        current is null || current.Source != CertSource.LocalDev || current.NotAfter < DateTimeOffset.UtcNow.AddDays(30)
+        || !names.All(n => current.Names.Contains(n, StringComparer.OrdinalIgnoreCase));
+
+    private IReadOnlyList<HtdocsEntry> HtdocsOf(AppSettings s, IReadOnlyList<SiteDefinition> sites) =>
+        SiteSet.DiscoverHtdocs(HtdocsDir(s), sites.Where(x => x.Kind == SiteKind.Htdocs).ToList());
+
+    private string HtdocsDir(AppSettings s) => s.HtdocsPath ?? paths.Htdocs;
+
+    private string SiteFile(string id) => Path.Combine(paths.Sites, id + ".json");
+
+    private string HtpasswdPath(string id) => Path.Combine(paths.Auth, id + ".htpasswd");
+
+    private string CertDir(string id) => Path.Combine(paths.Certs, id);
+
+    /// <summary>Records how to put <paramref name="file"/> back as it is now (or remove it if it does not exist).</summary>
+    private static void Remember(string file, List<Action> undo)
+    {
+        var bytes = File.Exists(file) ? File.ReadAllBytes(file) : null;
+        undo.Add(() =>
+        {
+            if (bytes is null) TryDelete(file);
+            else File.WriteAllBytes(file, bytes);
+        });
+    }
+
+    private static void RememberFolder(string dir, List<Action> undo)
+    {
+        var files = Directory.Exists(dir) ? Directory.GetFiles(dir).ToDictionary(f => f, File.ReadAllBytes) : null;
+        undo.Add(() =>
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+            if (files is null) return;
+            Directory.CreateDirectory(dir);
+            foreach (var (file, bytes) in files) File.WriteAllBytes(file, bytes);
+        });
+    }
+
+    private static void Undo(List<Action> undo)
+    {
+        for (var i = undo.Count - 1; i >= 0; i--)
+        {
+            try
+            {
+                undo[i]();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                Log.Warning(e, "Could not restore a site file after a rejected change");
+            }
+        }
+    }
+
+    private static void TryDelete(string file)
+    {
+        try { File.Delete(file); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    /// <summary>Copies a folder tree. Linked folders inside it are skipped, so a junction loop cannot run forever.</summary>
+    private static void CopyTree(string source, string target)
+    {
+        Directory.CreateDirectory(target);
+        foreach (var file in Directory.GetFiles(source)) File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
+        foreach (var dir in Directory.GetDirectories(source))
+        {
+            if (new DirectoryInfo(dir).Attributes.HasFlag(FileAttributes.ReparsePoint)) continue;
+            CopyTree(dir, Path.Combine(target, Path.GetFileName(dir)));
+        }
+    }
 
     /// <summary>Re-points each php.ini, runs exactly <paramref name="pools"/>, and remembers their ports.</summary>
     private async Task StartPoolsAsync(IReadOnlyList<PhpPool> pools, CancellationToken ct)
@@ -388,6 +694,7 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
         _apacheUnderTest = version;
         try
         {
+            var sites = new SiteStore(paths).All();
             var input = new RenderInput
             {
                 Settings = s,
@@ -395,6 +702,9 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
                 Profile = BuiltInProfiles.For(s.Mode),
                 ApacheVersion = version,
                 Pools = pools,
+                Sites = sites,
+                Htdocs = HtdocsOf(s, sites),
+                Certificates = new CertificateStore(paths).All(),
             };
             var outcome = await new ConfigApplier(new ConfigRenderer(paths), new ConfigWriter(paths), tester).ApplyAsync(input, ct);
             if (!alwaysTest || outcome.ChangedFiles.Count > 0) return outcome;

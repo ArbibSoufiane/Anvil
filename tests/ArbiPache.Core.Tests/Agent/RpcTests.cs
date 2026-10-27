@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text.Json;
 using ArbiPache.Agent;
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
@@ -10,6 +11,7 @@ using ArbiPache.Core.Php;
 using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
 
 namespace ArbiPache.Core.Tests.Agent;
 
@@ -67,6 +69,29 @@ public sealed class RpcTests
         Assert.Equal(FakeApi.Intl, Assert.Single(extensions));
         Assert.True(pool.Ok);
         Assert.Equal(("8.5.12", new PhpPoolSettings(3, 50)), fake.Pool);
+    }
+
+    [Fact]
+    public async Task Site_calls_round_trip_over_pipe()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fake = new FakeApi();
+        var name = UniquePipe();
+        await using var server = new PipeServer(name, fake, []);
+        server.Start();
+        await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
+
+        var sites = await client.Api.GetSitesAsync(ct);
+        var htdocs = await client.Api.GetHtdocsAsync(ct);
+        var saved = await client.Api.SaveSiteAsync(FakeApi.Shop, new SiteSecrets("client", "pw"), ct);
+        var detected = await client.Api.DetectAsync("D:/Sites/vite", ct);
+
+        var site = Assert.Single(sites);
+        Assert.Equal(JsonSerializer.Serialize(FakeApi.Shop), JsonSerializer.Serialize(site));
+        Assert.Equal("blog", Assert.Single(htdocs).Folder);
+        Assert.Equal(["shop.test"], saved.HostsDomains);
+        Assert.Equal(new SiteSecrets("client", "pw"), fake.SavedSite!.Value.Secrets);
+        Assert.Equal(new Detected(SiteType.Proxy, "D:/Sites/vite", "Vite", "http://127.0.0.1:5173"), detected);
     }
 
     [Fact]
@@ -188,6 +213,31 @@ public sealed class RpcTests
         public Task<ApplyResult> SetDefaultPhpAsync(string version, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<PhpExtension>> GetExtensionsAsync(string version, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<PhpExtension>>([Intl]);
         public Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();
+        public static readonly SiteDefinition Shop = new()
+        {
+            Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "shop.test", Root = "D:/Sites/shop/public",
+            Aliases = ["www.shop.test"], Mounts = [new SiteMount("/demo", "D:/Sites/demo", SiteType.Static, null)], Cert = CertSource.LocalDev,
+            Created = new DateTimeOffset(2026, 10, 27, 9, 0, 0, TimeSpan.Zero),
+        };
+
+        public (SiteDefinition Site, SiteSecrets? Secrets)? SavedSite { get; private set; }
+
+        public Task<IReadOnlyList<SiteDefinition>> GetSitesAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<SiteDefinition>>([Shop]);
+        public Task<IReadOnlyList<HtdocsEntry>> GetHtdocsAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<HtdocsEntry>>([new HtdocsEntry("blog", "D:/htdocs/blog", false, null, AccessLevel.Network)]);
+        public Task<IReadOnlyList<ValidationError>> ValidateSiteAsync(SiteDefinition s, CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct = default)
+        {
+            SavedSite = (s, secrets);
+            return Task.FromResult(ApplyResult.Success() with { HostsDomains = ["shop.test"] });
+        }
+
+        public Task<ApplyResult> RemoveSiteAsync(string id, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<ApplyResult> SetSiteEnabledAsync(string id, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Detected> DetectAsync(string folder, CancellationToken ct = default) =>
+            Task.FromResult(new Detected(SiteType.Proxy, folder, "Vite", "http://127.0.0.1:5173"));
+        public Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct = default) => throw new NotSupportedException();
         public Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => Task.CompletedTask;
     }
 }

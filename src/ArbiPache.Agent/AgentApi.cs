@@ -2,6 +2,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Php;
+using ArbiPache.Core.Sites;
 using ArbiPache.Core.Settings;
 
 namespace ArbiPache.Agent;
@@ -52,6 +53,26 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
 
     public Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default) =>
         orchestrator.SetExtensionAsync(version, name, enabled, ct);
+
+    public Task<IReadOnlyList<SiteDefinition>> GetSitesAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.GetSites());
+
+    public Task<IReadOnlyList<HtdocsEntry>> GetHtdocsAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.GetHtdocs());
+
+    public Task<IReadOnlyList<ValidationError>> ValidateSiteAsync(SiteDefinition s, CancellationToken ct = default) =>
+        Task.FromResult(orchestrator.ValidateSite(s));
+
+    public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct = default) =>
+        orchestrator.SaveSiteAsync(s, secrets, ct);
+
+    public Task<ApplyResult> RemoveSiteAsync(string id, CancellationToken ct = default) => orchestrator.RemoveSiteAsync(id, ct);
+
+    public Task<ApplyResult> SetSiteEnabledAsync(string id, bool enabled, CancellationToken ct = default) =>
+        orchestrator.SetSiteEnabledAsync(id, enabled, ct);
+
+    public Task<Detected> DetectAsync(string folder, CancellationToken ct = default) => Task.FromResult(ProjectDetector.Detect(folder));
+
+    public Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct = default) =>
+        orchestrator.CopyIntoHtdocsAsync(sourceFolder, folderName, ct);
 
     /// <summary>Returns at once so the reply reaches the caller before the pipe closes.</summary>
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)

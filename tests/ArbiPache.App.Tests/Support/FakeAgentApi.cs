@@ -4,6 +4,7 @@ using ArbiPache.Core.Components;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
 
 namespace ArbiPache.App.Tests.Support;
 
@@ -23,6 +24,11 @@ public sealed class FakeAgentApi : IAgentApi
     public List<string> Calls { get; } = [];
     public List<PhpVersionInfo> Php { get; } = [];
     public Dictionary<string, List<PhpExtension>> Extensions { get; } = [];
+    public List<SiteDefinition> Sites { get; } = [];
+    public List<HtdocsEntry> Htdocs { get; } = [];
+    public List<ValidationError> ValidationErrors { get; } = [];
+    public List<(SiteDefinition Site, SiteSecrets? Secrets)> SavedSites { get; } = [];
+    public Detected? Detected { get; set; }
 
     public event EventHandler<AgentStatus>? StatusChanged;
 
@@ -90,6 +96,41 @@ public sealed class FakeAgentApi : IAgentApi
                 if (list[i].Name == name) list[i] = list[i] with { Enabled = enabled };
         return Record($"extension {version} {name} {(enabled ? "on" : "off")}");
     }
+
+    public Task<IReadOnlyList<SiteDefinition>> GetSitesAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<SiteDefinition>>(Sites.ToList());
+
+    public Task<IReadOnlyList<HtdocsEntry>> GetHtdocsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<HtdocsEntry>>(Htdocs.ToList());
+
+    public Task<IReadOnlyList<ValidationError>> ValidateSiteAsync(SiteDefinition s, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ValidationError>>(ValidationErrors.ToList());
+
+    public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct = default)
+    {
+        SavedSites.Add((s, secrets));
+        if (NextResult.Ok)
+        {
+            Sites.RemoveAll(x => x.Id == s.Id);
+            Sites.Add(s);
+        }
+        return Record($"save site {s.Id}");
+    }
+
+    public Task<ApplyResult> RemoveSiteAsync(string id, CancellationToken ct = default)
+    {
+        if (NextResult.Ok) Sites.RemoveAll(x => x.Id == id);
+        return Record($"remove site {id}");
+    }
+
+    public Task<ApplyResult> SetSiteEnabledAsync(string id, bool enabled, CancellationToken ct = default) =>
+        Record($"site {id} {(enabled ? "on" : "off")}");
+
+    public Task<Detected> DetectAsync(string folder, CancellationToken ct = default) =>
+        Task.FromResult(Detected ?? new Detected(SiteType.Php, folder, "PHP", null));
+
+    public Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct = default) =>
+        Record($"copy {sourceFolder} {folderName}");
 
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)
     {

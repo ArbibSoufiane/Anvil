@@ -1,0 +1,302 @@
+using ArbiPache.Agent;
+using ArbiPache.Core.Agent;
+using ArbiPache.Core.Apache;
+using ArbiPache.Core.Certificates;
+using ArbiPache.Core.Components;
+using ArbiPache.Core.Hosts;
+using ArbiPache.Core.Paths;
+using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
+
+namespace ArbiPache.Core.Tests.Agent;
+
+public sealed class SiteOperationsTests : IDisposable
+{
+    private const string Version = "2.4.69";
+
+    private readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "ap-siteops-" + Guid.NewGuid().ToString("N")));
+    private readonly FakeTester _tester = new();
+    private readonly List<string> _events = [];
+    private readonly FakeApache _apache;
+    private readonly FakePools _pools;
+    private string _hosts = "127.0.0.1 router\r\n";
+
+    public SiteOperationsTests()
+    {
+        _apache = new FakeApache(_events);
+        _pools = new FakePools(_events);
+        var runtime = _paths.ApacheRuntime(Version);
+        Directory.CreateDirectory(Path.Combine(runtime, "conf"));
+        Directory.CreateDirectory(Path.Combine(runtime, "bin"));
+        File.WriteAllText(Path.Combine(runtime, "conf", "httpd.conf"), "ServerRoot \"c:/Apache24\"\r\nListen 80\r\n");
+        File.WriteAllText(Path.Combine(runtime, "bin", "httpd.exe"), "");
+        Directory.CreateDirectory(_paths.Data);
+        new SettingsStore(_paths).Save(new AppSettings { ActiveApache = Version, StartServicesOnLaunch = false });
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_paths.Root, recursive: true); } catch (IOException) { }
+    }
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private async Task<Orchestrator> StartedAsync()
+    {
+        var orchestrator = new Orchestrator(_paths, new SettingsStore(_paths), _tester, _apache, _ => [],
+            new ComponentCatalog([], new ShippedCatalogProvider(_paths)),
+            new ComponentInstaller(_paths, new Downloader(new HttpClient()), _ => null), _pools, _ => true, hostsText: () => _hosts);
+        await orchestrator.InitializeAsync(Ct);
+        return orchestrator;
+    }
+
+    private SiteDefinition Site(string name, SiteKind kind = SiteKind.Domain)
+    {
+        var root = Path.Combine(_paths.Root, "projects", name);
+        Directory.CreateDirectory(root);
+        return new SiteDefinition { Id = SiteSet.IdFor(kind, name), Kind = kind, Type = SiteType.Php, Name = name, Root = root };
+    }
+
+    private string SiteJson(string id) => Path.Combine(_paths.Sites, id + ".json");
+
+    private string SiteVhost(string id) => Path.Combine(_paths.Vhosts, $"site-{id}.conf");
+
+    private Dictionary<string, byte[]> SitesDir() =>
+        Directory.GetFiles(_paths.Sites).ToDictionary(f => Path.GetFileName(f), File.ReadAllBytes);
+
+    [Fact]
+    public async Task Saved_site_gets_json_and_vhost_and_reloads_apache()
+    {
+        var orchestrator = await StartedAsync();
+        await orchestrator.StartAsync(null, Ct);
+
+        var result = await orchestrator.SaveSiteAsync(Site("shop.example.com"), null, Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.True(File.Exists(SiteJson("shop.example.com")));
+        Assert.Contains("ServerName shop.example.com", File.ReadAllText(SiteVhost("shop.example.com")));
+        Assert.Equal(1, _apache.Restarts);
+        Assert.Equal("shop.example.com", Assert.Single(orchestrator.GetSites()).Id);
+    }
+
+    [Fact]
+    public async Task Failing_config_test_leaves_sites_dir_unchanged()
+    {
+        var orchestrator = await StartedAsync();
+        await orchestrator.SaveSiteAsync(Site("shop.example.com"), null, Ct);
+        var before = SitesDir();
+        var vhostBefore = File.ReadAllText(SiteVhost("shop.example.com"));
+        _tester.Next = new ConfigTestResult(false, "AH00526: Syntax error");
+
+        var added = await orchestrator.SaveSiteAsync(Site("blog.test"), null, Ct);
+        var edited = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Aliases = ["www.shop.example.com"] }, null, Ct);
+
+        Assert.False(added.Ok);
+        Assert.False(edited.Ok);
+        Assert.Contains("AH00526", added.ConfigTestOutput);
+        Assert.Equal(before, SitesDir());
+        Assert.False(File.Exists(SiteVhost("blog.test")));
+        Assert.Equal(vhostBefore, File.ReadAllText(SiteVhost("shop.example.com")));
+    }
+
+    [Fact]
+    public async Task Invalid_site_is_refused_with_its_errors()
+    {
+        var orchestrator = await StartedAsync();
+
+        var result = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Access = AccessLevel.SpecificIps }, null, Ct);
+
+        Assert.False(result.Ok);
+        Assert.Contains("allowed IP", result.Error);
+        Assert.False(Directory.Exists(_paths.Sites) && Directory.GetFiles(_paths.Sites).Length > 0);
+    }
+
+    [Fact]
+    public async Task Validate_reports_uninstalled_php()
+    {
+        var orchestrator = await StartedAsync();
+        TestPhp.Install(_paths, "8.5.12");
+
+        var errors = orchestrator.ValidateSite(Site("shop.example.com") with
+        {
+            PhpVersion = "7.4.33",
+            Mounts = [new SiteMount("/demo", _paths.Htdocs, SiteType.Php, "8.1.34")],
+        });
+
+        Assert.Equal(["PhpVersion", "Mounts"], errors.Select(e => e.Field));
+        Assert.Empty(orchestrator.ValidateSite(Site("shop.example.com") with { PhpVersion = "8.5.12" }));
+    }
+
+    [Fact]
+    public async Task New_test_domain_requests_hosts_update()
+    {
+        var orchestrator = await StartedAsync();
+
+        var result = await orchestrator.SaveSiteAsync(Site("blog.test") with { Aliases = ["www.blog.test"] }, null, Ct);
+        var second = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { AddToHosts = true }, null, Ct);
+
+        Assert.Equal(["blog.test", "www.blog.test"], result.HostsDomains);
+        Assert.Equal(["blog.test", "www.blog.test", "shop.example.com"], second.HostsDomains);
+    }
+
+    [Fact]
+    public async Task Unchanged_hosts_list_returns_null_hosts()
+    {
+        _hosts = HostsFile.ApplyBlock(_hosts, ["blog.test"]);
+        var orchestrator = await StartedAsync();
+
+        var test = await orchestrator.SaveSiteAsync(Site("blog.test"), null, Ct);
+        var publicSite = await orchestrator.SaveSiteAsync(Site("shop.example.com"), null, Ct);
+
+        Assert.True(test.Ok, test.Error);
+        Assert.Null(test.HostsDomains);
+        Assert.Null(publicSite.HostsDomains);
+    }
+
+    [Fact]
+    public async Task LocalDev_site_gets_certificate()
+    {
+        var orchestrator = await StartedAsync();
+
+        var result = await orchestrator.SaveSiteAsync(Site("dev.test") with { Cert = CertSource.LocalDev, Aliases = ["www.dev.test"] }, null, Ct);
+
+        Assert.True(result.Ok, result.Error);
+        var cert = new CertificateStore(_paths).Get("dev.test");
+        Assert.NotNull(cert);
+        Assert.Equal(CertSource.LocalDev, cert.Source);
+        Assert.Equal(["dev.test", "www.dev.test"], cert.Names);
+        Assert.Contains("SSLEngine on", File.ReadAllText(SiteVhost("dev.test")));
+    }
+
+    [Fact]
+    public async Task Password_needs_secrets_once_and_writes_htpasswd()
+    {
+        var orchestrator = await StartedAsync();
+        var site = Site("shop.example.com") with { PasswordProtected = true };
+
+        var missing = await orchestrator.SaveSiteAsync(site, null, Ct);
+        var saved = await orchestrator.SaveSiteAsync(site, new SiteSecrets("client", "s3cret"), Ct);
+        var resaved = await orchestrator.SaveSiteAsync(site with { Aliases = ["www.shop.example.com"] }, null, Ct);
+
+        Assert.False(missing.Ok);
+        Assert.True(saved.Ok, saved.Error);
+        Assert.True(resaved.Ok, resaved.Error);
+        Assert.True(HtpasswdFile.Verify(Path.Combine(_paths.Auth, "shop.example.com.htpasswd"), "client", "s3cret"));
+        Assert.Contains("Require valid-user", File.ReadAllText(SiteVhost("shop.example.com")));
+    }
+
+    [Fact]
+    public async Task Remove_deletes_json_cert_and_vhost()
+    {
+        var orchestrator = await StartedAsync();
+        await orchestrator.SaveSiteAsync(Site("dev.test") with { Cert = CertSource.LocalDev, PasswordProtected = true }, new SiteSecrets("me", "pw"), Ct);
+
+        var result = await orchestrator.RemoveSiteAsync("dev.test", Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.False(File.Exists(SiteJson("dev.test")));
+        Assert.False(File.Exists(SiteVhost("dev.test")));
+        Assert.Null(new CertificateStore(_paths).Get("dev.test"));
+        Assert.False(File.Exists(Path.Combine(_paths.Auth, "dev.test.htpasswd")));
+        Assert.False((await orchestrator.RemoveSiteAsync("dev.test", Ct)).Ok);
+    }
+
+    [Fact]
+    public async Task Rejected_remove_keeps_the_site()
+    {
+        var orchestrator = await StartedAsync();
+        await orchestrator.SaveSiteAsync(Site("shop.example.com"), null, Ct);
+        _tester.Next = new ConfigTestResult(false, "AH00526");
+
+        var result = await orchestrator.RemoveSiteAsync("shop.example.com", Ct);
+
+        Assert.False(result.Ok);
+        Assert.True(File.Exists(SiteJson("shop.example.com")));
+        Assert.True(File.Exists(SiteVhost("shop.example.com")));
+    }
+
+    [Fact]
+    public async Task Disabled_site_keeps_json_and_loses_vhost()
+    {
+        var orchestrator = await StartedAsync();
+        await orchestrator.SaveSiteAsync(Site("shop.example.com"), null, Ct);
+
+        var result = await orchestrator.SetSiteEnabledAsync("shop.example.com", false, Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.False(Assert.Single(orchestrator.GetSites()).Enabled);
+        Assert.False(File.Exists(SiteVhost("shop.example.com")));
+    }
+
+    [Fact]
+    public async Task Renaming_a_site_moves_its_files()
+    {
+        var orchestrator = await StartedAsync();
+        var old = Site("old.test");
+        await orchestrator.SaveSiteAsync(old, null, Ct);
+
+        var result = await orchestrator.SaveSiteAsync(old with { Name = "new.test" }, null, Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(["new.test"], orchestrator.GetSites().Select(s => s.Id));
+        Assert.False(File.Exists(SiteVhost("old.test")));
+        Assert.True(File.Exists(SiteVhost("new.test")));
+    }
+
+    [Fact]
+    public async Task Site_php_version_gets_its_own_pool()
+    {
+        TestPhp.Install(_paths, "8.5.12");
+        TestPhp.Install(_paths, "8.4.27");
+        var store = new SettingsStore(_paths);
+        store.Save(store.Load() with { DefaultPhp = "8.5.12" });
+        var orchestrator = await StartedAsync();
+        await orchestrator.StartAsync(null, Ct);
+
+        var result = await orchestrator.SaveSiteAsync(Site("legacy.test") with { PhpVersion = "8.4.27" }, null, Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(["php85", "php84"], _pools.Running.Select(p => p.Key).Order().Reverse());
+        Assert.Contains($"proxy:fcgi://127.0.0.1:{_pools.Running.Single(p => p.Key == "php84").Port}/", File.ReadAllText(SiteVhost("legacy.test")));
+    }
+
+    [Fact]
+    public async Task Php_versions_list_the_sites_using_them()
+    {
+        TestPhp.Install(_paths, "8.5.12");
+        TestPhp.Install(_paths, "8.4.27");
+        var store = new SettingsStore(_paths);
+        store.Save(store.Load() with { DefaultPhp = "8.5.12" });
+        var orchestrator = await StartedAsync();
+        await orchestrator.SaveSiteAsync(Site("shop.test"), null, Ct);
+        await orchestrator.SaveSiteAsync(Site("192.168.10.2", SiteKind.Ip) with
+        {
+            PhpVersion = "8.4.27", Mounts = [new SiteMount("/demo", _paths.Htdocs, SiteType.Php, "8.5.12")],
+        }, null, Ct);
+
+        var php = orchestrator.GetPhp();
+
+        Assert.Equal(["htdocs", "192.168.10.2", "shop.test"], php.Single(p => p.Version == "8.5.12").UsedBy);
+        Assert.Equal(["192.168.10.2"], php.Single(p => p.Version == "8.4.27").UsedBy);
+    }
+
+    [Fact]
+    public async Task Copy_into_htdocs_copies_and_refuses_existing_names()
+    {
+        var orchestrator = await StartedAsync();
+        var source = Path.Combine(_paths.Root, "projects", "blog");
+        Directory.CreateDirectory(Path.Combine(source, "css"));
+        File.WriteAllText(Path.Combine(source, "index.php"), "<?php echo 1;");
+        File.WriteAllText(Path.Combine(source, "css", "site.css"), "body{}");
+
+        var copied = await orchestrator.CopyIntoHtdocsAsync(source, "blog", Ct);
+        var again = await orchestrator.CopyIntoHtdocsAsync(source, "blog", Ct);
+        var badName = await orchestrator.CopyIntoHtdocsAsync(source, "..\\outside", Ct);
+
+        Assert.True(copied.Ok, copied.Error);
+        Assert.Equal("body{}", File.ReadAllText(Path.Combine(_paths.Htdocs, "blog", "css", "site.css")));
+        Assert.False(again.Ok);
+        Assert.False(badName.Ok);
+        Assert.Contains(orchestrator.GetHtdocs(), e => e.Folder == "blog");
+    }
+}

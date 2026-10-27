@@ -14,6 +14,9 @@ public static partial class SiteSet
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]*$")]
     internal static partial Regex FolderName();
 
+    /// <summary>True for a name that can be an htdocs folder and a URL path segment.</summary>
+    public static bool IsFolderName(string name) => FolderName().IsMatch(name);
+
     /// <summary>A domain in the form Apache and certificates use: punycode, lower case. Null when it cannot be converted.</summary>
     public static string? NormalizeHost(string name)
     {
