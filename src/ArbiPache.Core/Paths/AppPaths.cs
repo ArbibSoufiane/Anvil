@@ -1,0 +1,70 @@
+using ArbiPache.Core.Database;
+
+namespace ArbiPache.Core.Paths;
+
+/// <summary>Every folder of the portable layout, resolved against one root.</summary>
+public sealed class AppPaths(string root)
+{
+    public static AppPaths FromBaseDirectory() =>
+        new(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory));
+
+    public string Root { get; } = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+
+    public string Runtime => Path.Combine(Root, "runtime");
+    public string Catalog => Path.Combine(Root, "catalog");
+    public string Htdocs => Path.Combine(Root, "htdocs");
+    public string Data => Path.Combine(Root, "data");
+    public string Conf => Path.Combine(Data, "conf");
+    public string Vhosts => Path.Combine(Conf, "vhosts");
+    public string Sites => Path.Combine(Data, "sites");
+    public string ApacheConfDir => Path.Combine(Data, "apache");
+    public string HttpdConf => Path.Combine(ApacheConfDir, "httpd.conf");
+    public string PhpConfRoot => Path.Combine(Data, "php");
+    public string Certs => Path.Combine(Data, "certs");
+    public string Acme => Path.Combine(Data, "acme");
+    public string Auth => Path.Combine(Data, "auth");
+    public string Logs => Path.Combine(Data, "logs");
+    public string Backups => Path.Combine(Data, "backups");
+    public string Run => Path.Combine(Data, "run");
+    public string Tmp => Path.Combine(Data, "tmp");
+    public string Secrets => Path.Combine(Data, "secrets");
+    public string Profiles => Path.Combine(Data, "profiles");
+
+    private string RootMarker => Path.Combine(Data, ".root");
+
+    public string ApacheRuntime(string version) => Path.Combine(Runtime, "apache", version);
+    public string PhpRuntime(string version) => Path.Combine(Runtime, "php", version);
+    public string PhpConfigDir(string version) => Path.Combine(PhpConfRoot, version);
+    public string DbRuntime(DbEngine engine, string version) => Path.Combine(Runtime, DbFolder(engine), version);
+    public string DbData(DbEngine engine) => Path.Combine(Data, DbFolder(engine));
+
+    public static string ForApache(string path) => path.Replace('\\', '/');
+
+    /// <summary>True when data\.root is missing or names another folder (the root was moved or copied).</summary>
+    public bool RootChanged()
+    {
+        if (!File.Exists(RootMarker)) return true;
+        var recorded = File.ReadAllText(RootMarker).Trim();
+        return !string.Equals(recorded, Root, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void MarkRoot()
+    {
+        Directory.CreateDirectory(Data);
+        File.WriteAllText(RootMarker, Root);
+    }
+
+    public void EnsureCreated()
+    {
+        foreach (var dir in new[] { Runtime, Catalog, Htdocs, Data, Conf, Vhosts, Sites, ApacheConfDir,
+                     PhpConfRoot, Certs, Acme, Auth, Logs, Backups, Run, Tmp, Secrets, Profiles })
+            Directory.CreateDirectory(dir);
+    }
+
+    private static string DbFolder(DbEngine engine) => engine switch
+    {
+        DbEngine.MariaDb => "mariadb",
+        DbEngine.MySql => "mysql",
+        _ => throw new ArgumentOutOfRangeException(nameof(engine), engine, null),
+    };
+}
