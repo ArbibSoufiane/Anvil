@@ -7,10 +7,14 @@ namespace ArbiPache.Core.Elevation;
 /// <summary>One administrator action, handed to ArbiPache.Elevator.exe as JSON. The verb set is fixed.</summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "verb")]
 [JsonDerivedType(typeof(HostsSetRequest), "hosts-set")]
+[JsonDerivedType(typeof(FirewallSetRequest), "firewall-set")]
 public abstract record ElevatedRequest;
 
 /// <summary>Makes ArbiPache's hosts block map exactly these domains to this PC.</summary>
 public sealed record HostsSetRequest(IReadOnlyList<string> Domains) : ElevatedRequest;
+
+/// <summary>Makes ArbiPache's firewall rules open exactly these ports to <paramref name="Scope"/>. No ports closes them all.</summary>
+public sealed record FirewallSetRequest(IReadOnlyList<int> Ports, FirewallScope Scope) : ElevatedRequest;
 
 public sealed record ElevatedResult(bool Ok, string? Error);
 

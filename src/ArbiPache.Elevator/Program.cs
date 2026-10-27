@@ -25,10 +25,11 @@ internal static class Program
             {
                 null => new ElevatedResult(false, error),
                 HostsSetRequest hosts => HostsHandler.Run(hosts, paths),
+                FirewallSetRequest firewall => FirewallHandler.Run(firewall),
                 _ => new ElevatedResult(false, "Unknown request."),
             };
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
         {
             result = new ElevatedResult(false, ex.Message);
         }

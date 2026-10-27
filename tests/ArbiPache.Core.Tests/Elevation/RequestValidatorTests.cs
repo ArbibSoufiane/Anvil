@@ -1,5 +1,6 @@
 using ArbiPache.Core.Elevation;
 using ArbiPache.Core.Paths;
+using ArbiPache.Core.Settings;
 
 namespace ArbiPache.Core.Tests.Elevation;
 
@@ -68,6 +69,32 @@ public sealed class RequestValidatorTests : IDisposable
         var file = RequestFile("{}");
 
         Assert.NotNull(RequestValidator.Validate(new HostsSetRequest(["shop.test", domain]), file, _paths));
+    }
+
+    [Fact]
+    public void Firewall_ports_limited_to_configured_ports()
+    {
+        new SettingsStore(_paths).Save(new AppSettings { HttpPort = 8080, HttpsPort = 8443 });
+        var file = RequestFile("{}");
+
+        Assert.Null(RequestValidator.Validate(new FirewallSetRequest([8080, 8443], FirewallScope.Internet), file, _paths));
+        Assert.Null(RequestValidator.Validate(new FirewallSetRequest([], FirewallScope.LocalNetwork), file, _paths));
+        Assert.NotNull(RequestValidator.Validate(new FirewallSetRequest([8080, 3389], FirewallScope.Internet), file, _paths));
+        Assert.NotNull(RequestValidator.Validate(new FirewallSetRequest([70000], FirewallScope.Internet), file, _paths));
+        Assert.NotNull(RequestValidator.Validate(new FirewallSetRequest(null!, FirewallScope.Internet), file, _paths));
+        Assert.NotNull(RequestValidator.Validate(new FirewallSetRequest([8080], (FirewallScope)7), file, _paths));
+    }
+
+    [Fact]
+    public void Firewall_request_round_trips_with_its_verb()
+    {
+        var file = RequestFile(ElevatedJson.Serialize(new FirewallSetRequest([80, 443], FirewallScope.LocalNetwork)));
+
+        var (request, error) = RequestValidator.Read(file, _paths);
+
+        Assert.Null(error);
+        Assert.Equal([80, 443], Assert.IsType<FirewallSetRequest>(request).Ports);
+        Assert.Contains("\"verb\": \"firewall-set\"", File.ReadAllText(file));
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ArbiPache.Core.Paths;
+using ArbiPache.Core.Settings;
 using ArbiPache.Core.Sites;
 
 namespace ArbiPache.Core.Elevation;
@@ -37,6 +38,7 @@ public static partial class RequestValidator
         PathError(requestPath, paths) ?? r switch
         {
             HostsSetRequest h => HostsError(h),
+            FirewallSetRequest f => FirewallError(f, paths),
             _ => "Unknown request.",
         };
 
@@ -56,6 +58,22 @@ public static partial class RequestValidator
 
         if (request is null) return (null, "The request is empty.");
         return Validate(request, requestPath, paths) is { } error ? (null, error) : (request, null);
+    }
+
+    /// <summary>Only ArbiPache's own HTTP and HTTPS ports, as configured in data\arbipache.json, can be opened.</summary>
+    private static string? FirewallError(FirewallSetRequest f, AppPaths paths)
+    {
+        if (f.Ports is null) return "The request lists no ports.";
+        if (!Enum.IsDefined(f.Scope)) return "Unknown firewall scope.";
+        var settings = new SettingsStore(paths).Load();
+        int[] allowed = [settings.HttpPort, settings.HttpsPort];
+        foreach (var port in f.Ports)
+        {
+            if (port is < 1 or > 65535 || !allowed.Contains(port))
+                return $"Port {port} is not one of ArbiPache's web ports ({settings.HttpPort}, {settings.HttpsPort}).";
+        }
+
+        return null;
     }
 
     private static string? HostsError(HostsSetRequest h)
