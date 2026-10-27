@@ -40,6 +40,44 @@ public sealed class MyIniTests : IDisposable
     }
 
     [Fact]
+    public void Rebase_repoints_paths_inside_the_old_root()
+    {
+        _ini.EnsureCreated(DbEngine.MariaDb, 3306);
+        var fwd = AppPaths.ForApache(_paths.Root);
+        string Old(string path) => "E:/Old" + AppPaths.ForApache(path)[fwd.Length..];
+        // A folder copied here from E:\Old: my.ini still names the old place, in the user's spelling.
+        File.WriteAllText(_ini.PathFor(DbEngine.MariaDb), $"""
+            [mysqld]
+            datadir="{Old(_ini.DataDir(DbEngine.MariaDb))}"
+            log-error="{Old(_ini.ErrorLog).ToLowerInvariant()}"
+            tmpdir="F:/db-tmp"
+            innodb_data_home_dir="E:/Older/x"
+            !include {Old(_ini.ModeFile(DbEngine.MariaDb))}
+
+            """);
+
+        _ini.Rebase(DbEngine.MariaDb, @"E:\Old");
+
+        var values = _ini.Read(DbEngine.MariaDb);
+        Assert.Equal(AppPaths.ForApache(_ini.DataDir(DbEngine.MariaDb)), values["datadir"]);
+        Assert.Equal(AppPaths.ForApache(_ini.ErrorLog), values["log-error"], ignoreCase: true);
+        Assert.Equal("F:/db-tmp", values["tmpdir"]);
+        Assert.Equal("E:/Older/x", values["innodb_data_home_dir"]);
+        Assert.Equal($"!include {AppPaths.ForApache(_ini.ModeFile(DbEngine.MariaDb))}", Text(DbEngine.MariaDb).TrimEnd().Split('\n')[^1].TrimEnd('\r'));
+
+        _ini.Set(DbEngine.MariaDb, new Dictionary<string, string?> { ["max_connections"] = "300" });
+        Assert.Single(Text(DbEngine.MariaDb).Split('\n'), l => l.StartsWith("!include", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Rebase_without_a_file_does_nothing()
+    {
+        _ini.Rebase(DbEngine.MySql, @"E:\Old");
+
+        Assert.False(File.Exists(_ini.PathFor(DbEngine.MySql)));
+    }
+
+    [Fact]
     public void EnsureCreated_keeps_an_existing_file_and_mode_file()
     {
         _ini.EnsureCreated(DbEngine.MySql, 3306);

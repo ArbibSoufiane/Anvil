@@ -72,6 +72,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             paths.EnsureCreated();
             var moved = paths.RootChanged();
             _settings = store.Load();
+            if (moved && paths.RecordedRoot() is { } oldRoot) RebaseSavedPaths(oldRoot);
             var findings = new List<PreflightFinding>();
             if (store.LastLoadWarning is { } warning)
                 findings.Add(new PreflightFinding("settings-reset", Severity.Warning, warning, null));
@@ -108,6 +109,33 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             }
             return ApplyResult.Success();
         }, ct);
+    }
+
+    /// <summary>
+    /// After the folder was moved or copied: saved paths inside the old folder (site and mount roots, the htdocs folder,
+    /// my.ini) name the same place inside this one, so a copy never serves or writes into the original.
+    /// </summary>
+    private void RebaseSavedPaths(string oldRoot)
+    {
+        Log.Information("Re-pointing saved paths from {OldRoot} to {Root}", oldRoot, paths.Root);
+        if (_settings.HtdocsPath is { } htdocs && paths.Rebase(htdocs, oldRoot) is { } rebasedHtdocs)
+        {
+            _settings = _settings with { HtdocsPath = rebasedHtdocs };
+            store.Save(_settings);
+        }
+
+        var sites = new SiteStore(paths);
+        foreach (var site in sites.All())
+        {
+            var rebased = site with
+            {
+                Root = paths.Rebase(site.Root, oldRoot) ?? site.Root,
+                Mounts = [.. site.Mounts.Select(m => m with { Root = paths.Rebase(m.Root, oldRoot) ?? m.Root })],
+            };
+            if (rebased.Root != site.Root || !rebased.Mounts.SequenceEqual(site.Mounts)) sites.Save(rebased);
+        }
+
+        foreach (var engine in Enum.GetValues<DbEngine>()) MyIni.Rebase(engine, oldRoot);
     }
 
     public AgentStatus Status()

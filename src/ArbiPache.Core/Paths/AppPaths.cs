@@ -48,6 +48,25 @@ public sealed class AppPaths(string root)
         return !string.Equals(recorded, Root, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>The root the last successful start recorded, or null before the first one.</summary>
+    public string? RecordedRoot() =>
+        File.Exists(RootMarker) && File.ReadAllText(RootMarker).Trim() is { Length: > 0 } recorded ? recorded : null;
+
+    /// <summary>
+    /// The same place inside this root for a path inside <paramref name="oldRoot"/>, keeping the path's slashes; null for a
+    /// path outside it.
+    /// </summary>
+    public string? Rebase(string path, string oldRoot)
+    {
+        var old = Path.TrimEndingDirectorySeparator(oldRoot.Replace('/', '\\'));
+        var normalized = path.Replace('/', '\\');
+        if (!normalized.StartsWith(old, StringComparison.OrdinalIgnoreCase)) return null;
+        if (normalized.Length == old.Length) return Root;
+        if (normalized[old.Length] != '\\') return null;
+        var root = path.Contains('/', StringComparison.Ordinal) ? ForApache(Root) : Root;
+        return root + path[old.Length..];
+    }
+
     public void MarkRoot()
     {
         Directory.CreateDirectory(Data);

@@ -61,6 +61,21 @@ public sealed class DatabaseOperationsTests : IDisposable
     }
 
     [Fact]
+    public async Task Moved_root_repoints_the_database()
+    {
+        await InstalledAsync();
+        var fwd = AppPaths.ForApache(_paths.Root);
+        File.WriteAllText(_ini.PathFor(DbEngine.MariaDb), File.ReadAllText(_ini.PathFor(DbEngine.MariaDb)).Replace(fwd, "E:/Old"));
+        File.WriteAllText(Path.Combine(_paths.Data, ".root"), @"E:\Old");
+
+        await MakeAsync();
+
+        var text = File.ReadAllText(_ini.PathFor(DbEngine.MariaDb));
+        Assert.DoesNotContain("E:/Old", text);
+        Assert.Equal(AppPaths.ForApache(_ini.DataDir(DbEngine.MariaDb)), _ini.Read(DbEngine.MariaDb)["datadir"]);
+    }
+
+    [Fact]
     public async Task Install_initializes_saves_and_starts()
     {
         var orchestrator = await MakeAsync();

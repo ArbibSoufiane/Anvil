@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using ArbiPache.Core.IO;
 using ArbiPache.Core.Paths;
 
@@ -47,6 +48,22 @@ public sealed class MyIni(AppPaths paths)
             {Include(e)}
 
             """);
+    }
+
+    /// <summary>
+    /// After the folder moved: every path in my.ini inside <paramref name="oldRoot"/> (datadir, log-error, the mode include,
+    /// anything the user pointed into the folder) now names the same place inside this root. Paths elsewhere stay.
+    /// </summary>
+    public void Rebase(DbEngine e, string oldRoot)
+    {
+        var file = PathFor(e);
+        if (!File.Exists(file)) return;
+        var old = AppPaths.ForApache(Path.TrimEndingDirectorySeparator(oldRoot.Replace('/', '\\')));
+        var text = File.ReadAllText(file);
+        // Only where a path starts: after a quote, '=', whitespace or the line start, and followed by a slash.
+        var rebased = Regex.Replace(text, $@"(?<=^|[""'=\s]){Regex.Escape(old)}(?=/)", _ => AppPaths.ForApache(paths.Root),
+            RegexOptions.IgnoreCase | RegexOptions.Multiline);
+        if (rebased != text) AtomicFile.WriteAllText(file, rebased);
     }
 
     /// <summary>The [mysqld] values; "max-connections" and "max_connections" find the same key.</summary>

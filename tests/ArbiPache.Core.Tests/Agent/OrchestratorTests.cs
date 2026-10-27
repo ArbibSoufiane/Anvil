@@ -88,6 +88,29 @@ public sealed class OrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Moved_root_repoints_sites_and_folders_inside_it()
+    {
+        File.WriteAllText(Path.Combine(_paths.Data, ".root"), @"E:\Old");
+        var sites = new SiteStore(_paths);
+        sites.Save(new SiteDefinition
+        {
+            Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Static, Name = "shop.test", Root = @"E:\Old\htdocs\shop",
+            Mounts = [new SiteMount("/demo", @"e:\old\demo", SiteType.Static, null)],
+        });
+        sites.Save(new SiteDefinition { Id = "other.test", Kind = SiteKind.Domain, Type = SiteType.Static, Name = "other.test", Root = @"E:\Older\other" });
+        var store = new SettingsStore(_paths);
+        store.Save(store.Load() with { HtdocsPath = @"E:\Old\www" });
+
+        await Make().InitializeAsync(TestContext.Current.CancellationToken);
+
+        var shop = sites.All().Single(s => s.Id == "shop.test");
+        Assert.Equal(Path.Combine(_paths.Root, "htdocs", "shop"), shop.Root);
+        Assert.Equal(Path.Combine(_paths.Root, "demo"), shop.Mounts.Single().Root);
+        Assert.Equal(@"E:\Older\other", sites.All().Single(s => s.Id == "other.test").Root);
+        Assert.Equal(Path.Combine(_paths.Root, "www"), store.Load().HtdocsPath);
+    }
+
+    [Fact]
     public async Task Apply_failure_keeps_apache_running()
     {
         var ct = TestContext.Current.CancellationToken;
