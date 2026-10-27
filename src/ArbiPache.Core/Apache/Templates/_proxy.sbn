@@ -2,6 +2,7 @@ ProxyPreserveHost On
 RewriteEngine On
 RewriteCond %{HTTP:Upgrade} =websocket [NC]
 RewriteRule /(.*) {{ ws }}/$1 [P,L]
+ProxyPass "/.well-known/acme-challenge/" !
 {{~ for p in excluded ~}}
 ProxyPass "{{ p }}" !
 {{~ end ~}}
@@ -9,4 +10,7 @@ ProxyPass / {{ target }}
 ProxyPassReverse / {{ target }}
 <Location "/">
 {{ rules }}
+</Location>
+<Location "/.well-known/acme-challenge/">
+    Require all granted
 </Location>

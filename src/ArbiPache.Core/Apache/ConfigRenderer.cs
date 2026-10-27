@@ -50,6 +50,7 @@ public sealed class ConfigRenderer(AppPaths paths)
                 http2 = s.OptionalModules.Contains("http2", StringComparer.OrdinalIgnoreCase),
                 mode_conf = AppPaths.ForApache(Path.Combine(paths.Conf, "mode.conf")),
                 php_pools_conf = AppPaths.ForApache(Path.Combine(paths.Conf, "php-pools.conf")),
+                acme_challenges = AppPaths.ForApache(Certificates.AcmeService.ChallengeDir(paths)),
                 vhosts = AppPaths.ForApache(paths.Vhosts),
             }),
             ["mode.conf"] = Templates.Render("mode.conf.sbn", new

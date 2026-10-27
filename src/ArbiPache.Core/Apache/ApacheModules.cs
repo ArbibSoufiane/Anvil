@@ -7,7 +7,7 @@ public static class ApacheModules
     [
         "ssl", "socache_shmcb", "rewrite", "headers", "remoteip", "reqtimeout", "proxy", "proxy_http", "proxy_wstunnel",
         "proxy_fcgi", "proxy_balancer", "lbmethod_bybusyness", "slotmem_shm", "autoindex", "auth_basic", "authn_file",
-        "authn_core", "authz_user",
+        "authn_core", "authz_user", "alias",
     ];
 
     /// <summary>Modules the user may switch on or off on the Apache page.</summary>
