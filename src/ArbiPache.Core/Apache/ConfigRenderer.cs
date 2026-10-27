@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
@@ -26,13 +27,16 @@ public sealed class ConfigRenderer(AppPaths paths)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(m => !input.Stock.LoadedModules.Contains(m))
             .ToList();
-        var listen = new[] { s.HttpPort, s.HttpsPort }.Distinct().Where(p => !input.Stock.ListenPorts.Contains(p)).ToList();
+        var sites = input.Sites.Where(x => x.Enabled && x.Kind != SiteKind.Htdocs).ToList();
+        var catchAllSite = sites.FirstOrDefault(x => x.Kind == SiteKind.Ip && x.Name == "*");
+        var httpsCert = sites.Select(x => CertificateOf(x, input)).FirstOrDefault(c => c is not null);
+        // Nothing listens on the HTTPS port without an HTTPS site: Apache's main server would answer there.
+        var listen = (httpsCert is null ? new[] { s.HttpPort } : [s.HttpPort, s.HttpsPort])
+            .Distinct().Where(p => !input.Stock.ListenPorts.Contains(p)).ToList();
         // htdocs runs on DefaultPhp; when that version has no pool, on the newest one that does.
         var htdocsPool = input.Pools.FirstOrDefault(p => string.Equals(p.Version, s.DefaultPhp, StringComparison.OrdinalIgnoreCase))
             ?? input.Pools.FirstOrDefault();
         var htdocsPhp = htdocsPool is null ? null : PhpHandler(htdocsPool, "    ");
-        var sites = input.Sites.Where(x => x.Enabled && x.Kind != SiteKind.Htdocs).ToList();
-        var catchAllSite = sites.FirstOrDefault(x => x.Kind == SiteKind.Ip && x.Name == "*");
 
         var files = new Dictionary<string, string>
         {
@@ -92,6 +96,15 @@ public sealed class ConfigRenderer(AppPaths paths)
                 entries = HtdocsEntries(input, options, htdocsPool, local: true),
             }),
         };
+        // The first HTTPS virtual host answers every name no site claims, so it refuses them, as the HTTP catch-all does in
+        // Production. It borrows a site's certificate only to finish the handshake; that name is public in the site's
+        // certificate anyway. An IP site for all addresses with its own certificate is that first host already.
+        if (httpsCert is not null && (catchAllSite is null || CertificateOf(catchAllSite, input) is null))
+            files[Path.Combine("vhosts", "00-catchall-https.conf")] = Templates.Render("00-catchall-https.conf.sbn", new
+            {
+                port = s.HttpsPort,
+                cert = CertFields(httpsCert),
+            });
         // "site-" keeps every site file after 00-catchall, so the catch-all stays the default server whatever the domain.
         foreach (var site in sites.Where(x => x != catchAllSite))
             files[Path.Combine("vhosts", $"site-{site.Id}.conf")] = RenderSite(site, input, options, htdocsPool, catchAll: false);
@@ -116,8 +129,7 @@ public sealed class ConfigRenderer(AppPaths paths)
             : v6 is not null ? $"{site.Id}.invalid"
             : site.Kind == SiteKind.Domain ? SiteSet.NormalizeHost(site.Name) ?? site.Name
             : site.Name;
-        var cert = site.Cert is CertSource.LetsEncrypt or CertSource.Imported or CertSource.LocalDev
-            && input.Certificates.TryGetValue(site.Id, out var found) ? found : null;
+        var cert = CertificateOf(site, input);
         // The catch-all answers unknown names, so it has no name to redirect to.
         var redirect = cert is not null && site.HttpRedirect && !catchAll
             ? $"https://{(v6 is not null ? $"[{v6}]" : serverName)}{(s.HttpsPort == 443 ? "" : $":{s.HttpsPort}")}/"
@@ -138,14 +150,7 @@ public sealed class ConfigRenderer(AppPaths paths)
             error_log = Rotated(SiteLogDir(site.Id), "error"),
             access_log = Rotated(SiteLogDir(site.Id), "access"),
             ssl_access_log = Rotated(SiteLogDir(site.Id), "ssl-access"),
-            cert = cert is null
-                ? null
-                : new
-                {
-                    cert = AppPaths.ForApache(cert.CertFile),
-                    key = AppPaths.ForApache(cert.KeyFile),
-                    chain = cert.ChainFile is null ? null : AppPaths.ForApache(cert.ChainFile),
-                },
+            cert = cert is null ? null : CertFields(cert),
             redirect,
             lb = site.Cert == CertSource.LoadBalancer && site.TrustedProxies.Count > 0
                 ? Indent(Templates.Render("_lb.sbn", new { proxies = site.TrustedProxies, match = ProxyMatch(site.TrustedProxies) }), "    ")
@@ -170,6 +175,18 @@ public sealed class ConfigRenderer(AppPaths paths)
             }), "    ")).ToList(),
         });
     }
+
+    /// <summary>The certificate a site serves HTTPS with, or null while it serves HTTP only.</summary>
+    private static SiteCertificate? CertificateOf(SiteDefinition site, RenderInput input) =>
+        site.Cert is CertSource.LetsEncrypt or CertSource.Imported or CertSource.LocalDev
+        && input.Certificates.TryGetValue(site.Id, out var found) ? found : null;
+
+    private static object CertFields(SiteCertificate cert) => new
+    {
+        cert = AppPaths.ForApache(cert.CertFile),
+        key = AppPaths.ForApache(cert.KeyFile),
+        chain = cert.ChainFile is null ? null : AppPaths.ForApache(cert.ChainFile),
+    };
 
     private static string ProxyBlock(SiteDefinition site, string rules)
     {

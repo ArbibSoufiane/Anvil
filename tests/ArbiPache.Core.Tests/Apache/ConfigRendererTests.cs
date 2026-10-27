@@ -1,9 +1,11 @@
 using System.Text;
 using ArbiPache.Core.Apache;
+using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
 using ArbiPache.Core.Tests.Support;
 
 namespace ArbiPache.Core.Tests.Apache;
@@ -28,6 +30,16 @@ public sealed class ConfigRendererTests
         Stock = Stock,
         Profile = BuiltInProfiles.For(mode),
         ApacheVersion = "2.4.69",
+    };
+
+    private static RenderInput WithHttpsSite(RenderInput input, string name = "shop.example.com", SiteKind kind = SiteKind.Domain) => input with
+    {
+        Sites = [new SiteDefinition { Id = "shop", Kind = kind, Type = SiteType.Static, Name = name, Root = @"D:\www\shop", Cert = CertSource.Imported }],
+        Certificates = new Dictionary<string, SiteCertificate>
+        {
+            ["shop"] = new(CertSource.Imported, [name], DateTimeOffset.UtcNow.AddDays(60), @"D:\ArbiPache\data\certs\shop\cert.pem",
+                @"D:\ArbiPache\data\certs\shop\key.pem", null),
+        },
     };
 
     private static string Flatten(RenderedConfig config)
@@ -83,7 +95,7 @@ public sealed class ConfigRendererTests
     [Fact]
     public void Skips_listen_already_in_stock_conf()
     {
-        var conf = new ConfigRenderer(Paths).Render(Input()).Files["arbipache.conf"];
+        var conf = new ConfigRenderer(Paths).Render(WithHttpsSite(Input())).Files["arbipache.conf"];
 
         Assert.DoesNotContain("Listen 80\n", conf.ReplaceLineEndings("\n"));
         Assert.Contains("Listen 443\n", conf.ReplaceLineEndings("\n"));
@@ -92,13 +104,44 @@ public sealed class ConfigRendererTests
     [Fact]
     public void Custom_ports_are_listened()
     {
-        var input = Input() with { Settings = Settings() with { HttpPort = 8080, HttpsPort = 8443 } };
+        var input = WithHttpsSite(Input()) with { Settings = Settings() with { HttpPort = 8080, HttpsPort = 8443 } };
 
         var files = new ConfigRenderer(Paths).Render(input).Files;
 
         Assert.Contains("Listen 8080\n", files["arbipache.conf"].ReplaceLineEndings("\n"));
         Assert.Contains("Listen 8443\n", files["arbipache.conf"].ReplaceLineEndings("\n"));
         Assert.Contains("<VirtualHost *:8080>", files[@"vhosts\00-catchall.conf"]);
+    }
+
+    // The first HTTPS virtual host answers every name no site claims; without one, that was whichever site sorted first.
+    [Fact]
+    public void Https_refuses_names_no_site_claims()
+    {
+        var files = new ConfigRenderer(Paths).Render(WithHttpsSite(Input(ServerMode.Production))).Files;
+
+        var conf = files[@"vhosts\00-catchall-https.conf"].ReplaceLineEndings("\n");
+        Assert.Contains("<VirtualHost *:443>", conf);
+        Assert.Contains("    SSLCertificateFile \"D:/ArbiPache/data/certs/shop/cert.pem\"\n", conf);
+        Assert.Contains("    <Location \"/\">\n        Require all denied\n    </Location>\n", conf);
+        Assert.Contains("Listen 443\n", files["arbipache.conf"].ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
+    public void Without_https_sites_nothing_listens_on_the_https_port()
+    {
+        var files = new ConfigRenderer(Paths).Render(Input(ServerMode.Production)).Files;
+
+        Assert.DoesNotContain("Listen 443", files["arbipache.conf"]);
+        Assert.DoesNotContain(@"vhosts\00-catchall-https.conf", files.Keys);
+    }
+
+    [Fact]
+    public void An_https_ip_site_for_all_addresses_answers_unknown_names_itself()
+    {
+        var files = new ConfigRenderer(Paths).Render(WithHttpsSite(Input(ServerMode.Production), "*", SiteKind.Ip)).Files;
+
+        Assert.DoesNotContain(@"vhosts\00-catchall-https.conf", files.Keys);
+        Assert.Contains("<VirtualHost *:443>", files[@"vhosts\00-catchall.conf"]);
     }
 
     [Fact]

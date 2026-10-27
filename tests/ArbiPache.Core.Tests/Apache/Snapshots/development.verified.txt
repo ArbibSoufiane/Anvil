@@ -15,7 +15,6 @@ LoadModule slotmem_shm_module modules/mod_slotmem_shm.so
 LoadModule deflate_module modules/mod_deflate.so
 LoadModule expires_module modules/mod_expires.so
 LoadModule http2_module modules/mod_http2.so
-Listen 443
 
 ServerName localhost
 PidFile "D:/ArbiPache/data/run/httpd.pid"
