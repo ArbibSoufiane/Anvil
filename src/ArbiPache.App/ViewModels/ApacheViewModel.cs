@@ -66,6 +66,7 @@ public sealed partial class ApacheViewModel : ObservableObject
         _api = api;
         _editor = editor;
         _ui = ui ?? (a => Dispatcher.UIThread.Post(a));
+        Updates = new UpdatesPanel(api, k => k == ComponentKind.Apache, LoadAsync);
         var cores = Environment.ProcessorCount;
         ThreadsHint = $"{cores} cores detected · suggested {Suggest.Threads(cores)}";
         ConfigFiles =
@@ -114,6 +115,8 @@ public sealed partial class ApacheViewModel : ObservableObject
     [ObservableProperty]
     public partial bool TestOk { get; set; }
 
+    public UpdatesPanel Updates { get; }
+
     public async Task LoadAsync(CancellationToken ct = default)
     {
         _settings = await _api.GetSettingsAsync(ct);
@@ -121,6 +124,7 @@ public sealed partial class ApacheViewModel : ObservableObject
         _profiles = await _api.GetModeProfilesAsync(ct);
         ApplySettings();
         await RefreshVersionsAsync(ct);
+        await Updates.RefreshAsync(ct);
     }
 
     [RelayCommand]

@@ -183,6 +183,24 @@ public sealed class PageViewTests
     }
 
     [AvaloniaFact]
+    public void Pages_show_their_update_and_hide_the_banner_without_one()
+    {
+        _api.Offers.Add(new UpdateOffer(ComponentKind.Php, "8.5.5", "8.5.12", null));
+        var (window, shell) = Show();
+
+        shell.NavigateCommand.Execute(AppPage.Php);
+        window.UpdateLayout();
+        var banner = window.GetVisualDescendants().OfType<UpdatesBanner>().Single();
+        Assert.True(banner.IsVisible);
+        Assert.Contains(banner.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "PHP 8.5.12 is available");
+        Assert.Contains(banner.GetVisualDescendants().OfType<Button>(), b => (string?)b.Content == "Update");
+
+        shell.NavigateCommand.Execute(AppPage.Apache);
+        window.UpdateLayout();
+        Assert.False(window.GetVisualDescendants().OfType<UpdatesBanner>().Single().IsVisible);
+    }
+
+    [AvaloniaFact]
     public void Logs_view_lists_sources_and_colours_errors()
     {
         var root = Path.Combine(Path.GetTempPath(), "ap-logsview-" + Guid.NewGuid().ToString("N"));

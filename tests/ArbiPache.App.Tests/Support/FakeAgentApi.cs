@@ -24,6 +24,9 @@ public sealed class FakeAgentApi : IAgentApi
     public ConfigTestResult TestResult { get; set; } = new(true, "Syntax OK");
     public List<ComponentRelease> Available { get; } = [];
     public List<InstalledComponent> Installed { get; } = [];
+    public List<UpdateOffer> Offers { get; } = [];
+    public Exception? InstallError { get; set; }
+    public Exception? UpdatesError { get; set; }
     public List<string> Calls { get; } = [];
     public List<PhpVersionInfo> Php { get; } = [];
     public Dictionary<string, List<PhpExtension>> Extensions { get; } = [];
@@ -77,12 +80,16 @@ public sealed class FakeAgentApi : IAgentApi
 
     public Task<InstalledComponent> InstallAsync(ComponentRelease r, CancellationToken ct = default)
     {
+        if (InstallError is { } error) return Task.FromException<InstalledComponent>(error);
         Calls.Add($"install {r.Version}");
         var installed = new InstalledComponent(r.Kind, r.Version, $@"D:\ArbiPache\runtime\{r.Kind.ToString().ToLowerInvariant()}\{r.Version}", r.Sha256,
             DateTimeOffset.Now, r.Toolset, r.AppliesTo);
         Installed.Add(installed);
         return Task.FromResult(installed);
     }
+
+    public Task<IReadOnlyList<UpdateOffer>> CheckUpdatesAsync(CancellationToken ct = default) =>
+        UpdatesError is { } error ? Task.FromException<IReadOnlyList<UpdateOffer>>(error) : Task.FromResult<IReadOnlyList<UpdateOffer>>(Offers.ToList());
 
     public Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct = default)
     {

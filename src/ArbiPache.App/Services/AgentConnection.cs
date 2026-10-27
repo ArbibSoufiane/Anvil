@@ -228,6 +228,9 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
         public async Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct = default) =>
             await (await Remote()).ActivateAsync(k, version, ct);
 
+        public async Task<IReadOnlyList<UpdateOffer>> CheckUpdatesAsync(CancellationToken ct = default) =>
+            await (await Remote()).CheckUpdatesAsync(ct);
+
         public async Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default) => await (await Remote()).GetPhpAsync(ct);
 
         public async Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default) =>

@@ -80,8 +80,11 @@ public sealed partial class DatabaseViewModel : ObservableObject
         _paths = paths;
         _editor = editor;
         _ui = ui ?? (a => Dispatcher.UIThread.Post(a));
+        Updates = new UpdatesPanel(api, k => k is ComponentKind.MariaDb or ComponentKind.MySql, LoadAsync);
         api.StatusChanged += (_, s) => _ui(() => ApplyStatus(s));
     }
+
+    public UpdatesPanel Updates { get; }
 
     public ObservableCollection<DbSettingItem> Rows { get; } = [];
     public ObservableCollection<DbSettingItem> VisibleRows { get; } = [];
@@ -163,6 +166,7 @@ public sealed partial class DatabaseViewModel : ObservableObject
             ApplyStatus(await _api.GetStatusAsync(ct));
             await RefreshRowsAsync(ct);
             await RefreshInstallChoicesAsync(ct);
+            await Updates.RefreshAsync(ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

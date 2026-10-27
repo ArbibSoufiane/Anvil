@@ -13,6 +13,9 @@ internal sealed class FakePools(List<string> events) : IPhpPools
     public IReadOnlyList<PhpPool> Running { get; private set; } = [];
     public List<string> Restarted { get; } = [];
 
+    /// <summary>PHP versions whose workers exit at once.</summary>
+    public HashSet<string> Broken { get; } = [];
+
     public bool Owns(int port) => Running.Any(p => p.Port == port);
 
     public ProcessState StateOf(string key) => Running.Any(p => p.Key == key) ? ProcessState.Running : ProcessState.Stopped;
@@ -20,6 +23,8 @@ internal sealed class FakePools(List<string> events) : IPhpPools
     public Task ApplyAsync(IReadOnlyList<PhpPool> pools, CancellationToken ct)
     {
         events.Add(string.Join(" ", pools.Select(p => p.Key).Prepend("pools")));
+        if (pools.FirstOrDefault(p => Broken.Contains(p.Version)) is { } broken)
+            throw new InvalidOperationException($"php-cgi {broken.Version} exited with code -1073741515.");
         Running = pools;
         return Task.CompletedTask;
     }
@@ -44,12 +49,20 @@ internal sealed class FakeApache(List<string> events) : IApacheControl
     public int Restarts { get; private set; }
     public int Stops { get; private set; }
 
+    /// <summary>Versions that start but never answer, as ApacheControl reports them.</summary>
+    public HashSet<string> Unhealthy { get; } = [];
+
     public event EventHandler<ProcessStatus>? StatusChanged;
 
     public Task StartAsync(string version, int httpPort, CancellationToken ct)
     {
-        StartedWith = (version, httpPort);
         events.Add("apache start");
+        if (Unhealthy.Contains(version))
+        {
+            Set(ProcessState.Failed);
+            throw new InvalidOperationException($"Apache did not answer on port {httpPort} within 10 s.");
+        }
+        StartedWith = (version, httpPort);
         Set(ProcessState.Running);
         return Task.CompletedTask;
     }

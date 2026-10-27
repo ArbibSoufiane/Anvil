@@ -13,6 +13,7 @@ using ArbiPache.Core.Php;
 using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
 
 namespace ArbiPache.Core.Tests.Agent;
 
@@ -407,5 +408,176 @@ public sealed class OrchestratorTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("php_imagick.dll", result.Error);
+    }
+
+    private void InstallApache(string version)
+    {
+        var runtime = _paths.ApacheRuntime(version);
+        Directory.CreateDirectory(Path.Combine(runtime, "conf"));
+        Directory.CreateDirectory(Path.Combine(runtime, "bin"));
+        File.WriteAllText(Path.Combine(runtime, "conf", "httpd.conf"), StockConf);
+        File.WriteAllText(Path.Combine(runtime, "bin", "httpd.exe"), "");
+    }
+
+    [Fact]
+    public async Task Unhealthy_apache_switches_back()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        InstallApache("2.4.70");
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+        Assert.True((await orchestrator.StartAsync(ServiceId.Apache, ct)).Ok);
+        _apache.Unhealthy.Add("2.4.70");
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.Apache, "2.4.70", ct);
+
+        Assert.False(result.Ok);
+        Assert.Equal("Apache 2.4.70 did not start: Apache did not answer on port 80 within 10 s. Apache 2.4.69 is running again.", result.Error);
+        Assert.Equal(Version, orchestrator.Settings.ActiveApache);
+        Assert.Equal(Version, new SettingsStore(_paths).Load().ActiveApache);
+        Assert.Equal((Version, 80), _apache.StartedWith);
+        Assert.Equal(ProcessState.Running, _apache.Status?.State);
+        Assert.Contains($"runtime/apache/{Version}", File.ReadAllText(_paths.HttpdConf));
+    }
+
+    [Fact]
+    public async Task Healthy_apache_update_stays()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        InstallApache("2.4.70");
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+        Assert.True((await orchestrator.StartAsync(ServiceId.Apache, ct)).Ok);
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.Apache, "2.4.70", ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("2.4.70", new SettingsStore(_paths).Load().ActiveApache);
+        Assert.Equal(("2.4.70", 80), _apache.StartedWith);
+    }
+
+    private SiteStore PhpSites()
+    {
+        foreach (var version in new[] { "8.4.10", "8.5.5", "8.5.12" }) InstallPhp(version);
+        var store = new SettingsStore(_paths);
+        store.Save(store.Load() with
+        {
+            DefaultPhp = "8.5.5",
+            PhpPools = new Dictionary<string, PhpPoolSettings> { ["8.5.5"] = new(6, 500), ["8.4.10"] = new(2, 100) },
+        });
+        var root = Directory.CreateDirectory(Path.Combine(_paths.Root, "www")).FullName;
+        var sites = new SiteStore(_paths);
+        sites.Save(new SiteDefinition
+        {
+            Id = "shop.example.com", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "shop.example.com", Root = root, PhpVersion = "8.5.5",
+            Mounts = [new SiteMount("/demo", root, SiteType.Php, "8.5.5")],
+        });
+        sites.Save(new SiteDefinition { Id = "old.example.com", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "old.example.com", Root = root, PhpVersion = "8.4.10" });
+        return sites;
+    }
+
+    [Fact]
+    public async Task Php_update_moves_the_branch_to_the_new_patch()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sites = PhpSites();
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.Php, "8.5.12", ct);
+
+        Assert.True(result.Ok, result.Error);
+        var settings = new SettingsStore(_paths).Load();
+        Assert.Equal("8.5.12", settings.DefaultPhp);
+        Assert.Equal(new PhpPoolSettings(6, 500), settings.PhpPools["8.5.12"]);
+        Assert.False(settings.PhpPools.ContainsKey("8.5.5"));
+        Assert.Equal(new PhpPoolSettings(2, 100), settings.PhpPools["8.4.10"]);
+        var shop = sites.All().Single(s => s.Id == "shop.example.com");
+        Assert.Equal("8.5.12", shop.PhpVersion);
+        Assert.Equal("8.5.12", Assert.Single(shop.Mounts).PhpVersion);
+        Assert.Equal("8.4.10", sites.All().Single(s => s.Id == "old.example.com").PhpVersion);
+        Assert.DoesNotContain("8.5.5", Vhost("01-localhost.conf"));
+    }
+
+    [Fact]
+    public async Task Php_update_whose_workers_do_not_start_switches_back()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sites = PhpSites();
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+        Assert.True((await orchestrator.StartAsync(ServiceId.Apache, ct)).Ok);
+        var before = sites.All();
+        _pools.Broken.Add("8.5.12");
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.Php, "8.5.12", ct);
+
+        Assert.False(result.Ok);
+        Assert.Equal("PHP 8.5.12 did not start: php-cgi 8.5.12 exited with code -1073741515. PHP 8.5.5 is running again.", result.Error);
+        Assert.Equal("8.5.5", new SettingsStore(_paths).Load().DefaultPhp);
+        Assert.Equal(before, sites.All(), SiteJson.Instance);
+        Assert.Equal(["8.4.10", "8.5.5"], _pools.Running.Select(p => p.Version).Order());
+    }
+
+    [Fact]
+    public async Task Installing_a_patch_release_keeps_the_branch_php_ini()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        InstallPhp("8.5.5");
+        new PhpIniBootstrap(_paths).EnsureIni("8.5.5");
+        File.AppendAllText(Path.Combine(_paths.PhpConfigDir("8.5.5"), "php.ini"), "memory_limit = 2G\r\n");
+        var ca = Encoding.ASCII.GetBytes("-----BEGIN CERTIFICATE-----");
+        var zip = Zip("php-cgi.exe", "php.ini-development", "ext/php_intl.dll");
+        Directory.CreateDirectory(_paths.Catalog);
+        File.WriteAllText(Path.Combine(_paths.Catalog, "components.json"),
+            $$"""{"schemaVersion":1,"releases":[{"kind":"CaBundle","version":"2026-10-20","url":"https://example.com/cacert.pem","sha256":"{{Sha(ca)}}"}]}""");
+        var orchestrator = Make(new MapHandler(new() { ["/cacert.pem"] = ca, ["/php.zip"] = zip }));
+        await orchestrator.InitializeAsync(ct);
+
+        await orchestrator.InstallAsync(new ComponentRelease(ComponentKind.Php, "8.5.12", new Uri("https://example.com/php.zip"), Sha(zip), "vs17"), ct);
+
+        var ini = File.ReadAllText(Path.Combine(_paths.PhpConfigDir("8.5.12"), "php.ini"));
+        Assert.Contains("memory_limit = 2G", ini);
+        Assert.Contains(AppPaths.ForApache(Path.Combine(_paths.PhpRuntime("8.5.12"), "ext")), ini);
+    }
+
+    [Fact]
+    public async Task Php_update_apache_rejects_changes_nothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sites = PhpSites();
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+        var before = sites.All();
+        _tester.Next = new ConfigTestResult(false, "AH00526: Syntax error");
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.Php, "8.5.12", ct);
+
+        Assert.False(result.Ok);
+        Assert.Contains("PHP 8.5.5 stays in use", result.Error);
+        Assert.Equal("8.5.5", new SettingsStore(_paths).Load().DefaultPhp);
+        Assert.Equal(before, sites.All(), SiteJson.Instance);
+    }
+
+    [Fact]
+    public async Task Php_update_needs_a_newer_patch_of_a_branch_in_use()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        PhpSites();
+        InstallPhp("8.6.0");
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+
+        Assert.Equal("PHP 8.6.0 is not a newer patch of a PHP version in use. Pick it for a site or as the default instead.",
+            (await orchestrator.ActivateAsync(ComponentKind.Php, "8.6.0", ct)).Error);
+        Assert.Equal("PHP 9.9.9 is not installed.", (await orchestrator.ActivateAsync(ComponentKind.Php, "9.9.9", ct)).Error);
+    }
+
+    // SiteDefinition holds lists, so records compare them by reference.
+    private sealed class SiteJson : IEqualityComparer<SiteDefinition>
+    {
+        public static readonly SiteJson Instance = new();
+        public bool Equals(SiteDefinition? x, SiteDefinition? y) => System.Text.Json.JsonSerializer.Serialize(x) == System.Text.Json.JsonSerializer.Serialize(y);
+        public int GetHashCode(SiteDefinition obj) => 0;
     }
 }

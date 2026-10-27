@@ -1,11 +1,14 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:ArbiPache.App.ViewModels"
+             xmlns:v="using:ArbiPache.App.Views"
              xmlns:db="using:ArbiPache.Core.Database"
              x:Class="ArbiPache.App.Views.DatabaseView"
              x:DataType="vm:DatabaseViewModel">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="16">
+
+      <v:UpdatesBanner DataContext="{Binding Updates}" IsVisible="{Binding IsShown}" />
 
       <!-- Engine switch, status and the server's buttons -->
       <Border Classes="card" Padding="20,16">

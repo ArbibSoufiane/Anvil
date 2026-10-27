@@ -44,6 +44,8 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
     public Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct = default) =>
         orchestrator.ActivateAsync(k, version, ct);
 
+    public Task<IReadOnlyList<UpdateOffer>> CheckUpdatesAsync(CancellationToken ct = default) => orchestrator.CheckUpdatesAsync(ct);
+
     public Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.GetPhp());
 
     public Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default) =>

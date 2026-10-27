@@ -291,6 +291,7 @@ public sealed class RpcTests
         public Task<IReadOnlyList<InstalledComponent>> GetInstalledAsync(ComponentKind k, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<InstalledComponent> InstallAsync(ComponentRelease r, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<UpdateOffer>> CheckUpdatesAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<PhpVersionInfo>>([Php]);
 
         public Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default)

@@ -234,7 +234,8 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     public IReadOnlyList<InstalledComponent> GetInstalled(ComponentKind k) => installer.Installed(k);
 
     /// <summary>
-    /// PHP brings the CA bundle along the first time, gets its php.ini at once, and becomes the default when there is none.
+    /// PHP brings the CA bundle along the first time, gets its php.ini at once (a patch release copies the one of the
+    /// branch's older patch), and becomes the default when there is none.
     /// </summary>
     public async Task<InstalledComponent> InstallAsync(ComponentRelease r, CancellationToken ct)
     {
@@ -247,6 +248,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         var installed = await installer.InstallAsync(r, null, ct);
         if (r.Kind != ComponentKind.Php) return installed;
 
+        ComponentUpdater.CarryPhpConfig(paths, r.Version, installer.Installed(ComponentKind.Php).Select(i => i.Version));
         new PhpIniBootstrap(paths).EnsureIni(r.Version);
         if (_settings.DefaultPhp is null)
         {
@@ -663,32 +665,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         }
         if (php.Running.FirstOrDefault(p => SameVersion(p.Version, version)) is { } pool) await php.RestartAsync(pool.Key, ct);
         return ApplyResult.Success([Path.Combine(paths.PhpConfigDir(version), "php.ini")]);
-    }, ct);
-
-    /// <summary>Switches the active Apache version. The new one must pass the config test; a running Apache restarts on it.</summary>
-    public Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct) => Locked(async () =>
-    {
-        if (k != ComponentKind.Apache) return ApplyResult.Failure($"Switching {k} is not available yet.");
-        if (InstalledApache(version) is null) return ApplyResult.Failure($"Apache {version} is not installed.");
-
-        var previous = _settings;
-        var next = previous with { ActiveApache = version };
-        var bootstrap = new HttpdConfBootstrap(paths);
-        bootstrap.EnsureUserConf(version);
-        var applied = await ApplyConfigAsync(next, version, PlanPhp(next), ct, alwaysTest: true);
-        if (!applied.Ok)
-        {
-            if (InstalledApache(previous.ActiveApache) is { } old) bootstrap.EnsureUserConf(old);
-            return Rejected(applied, $"Apache {previous.ActiveApache ?? "(none)"} stays active.");
-        }
-
-        Save(next);
-        if (!ApacheRunning) return ApplyResult.Success(applied.ChangedFiles, applied.TestOutput);
-        return await Guard(async () =>
-        {
-            await apache.StopAsync(ct);
-            await apache.StartAsync(version, next.HttpPort, ct);
-        }, applied);
     }, ct);
 
     /// <summary>Stops every service gracefully; used when the Agent shuts down.</summary>

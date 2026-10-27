@@ -267,6 +267,48 @@ public sealed class DatabaseOperationsTests : IDisposable
     }
 
     [Fact]
+    public async Task Database_minor_update_restarts_on_the_new_version()
+    {
+        var orchestrator = await InstalledAsync();
+        InstallComponent(ComponentKind.MariaDb, "11.8.10");
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.MariaDb, "11.8.10", Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(["db stop MariaDb 11.8.9", "db start MariaDb 11.8.10"], _events);
+        Assert.Equal("11.8.10", new SettingsStore(_paths).Load().DbVersion);
+    }
+
+    [Fact]
+    public async Task Database_update_that_does_not_start_switches_back()
+    {
+        var orchestrator = await InstalledAsync();
+        InstallComponent(ComponentKind.MariaDb, "11.8.10");
+        _db.FailNextStart = "InnoDB: unsupported redo log format.";
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.MariaDb, "11.8.10", Ct);
+
+        Assert.False(result.Ok);
+        Assert.Equal("MariaDB 11.8.10 did not start: InnoDB: unsupported redo log format. MariaDB 11.8.9 is running again.", result.Error);
+        Assert.Equal(["db stop MariaDb 11.8.9", "db start MariaDb 11.8.10", "db start MariaDb 11.8.9"], _events);
+        Assert.Equal(Version, new SettingsStore(_paths).Load().DbVersion);
+        Assert.Equal(ProcessState.Running, orchestrator.Status().Services.Single(s => s.Id == ServiceId.Database).State);
+    }
+
+    [Fact]
+    public async Task Database_series_upgrades_are_not_updates()
+    {
+        var orchestrator = await InstalledAsync();
+        InstallComponent(ComponentKind.MariaDb, "12.0.1");
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.MariaDb, "12.0.1", Ct);
+
+        Assert.Equal("MariaDB 12.0.1 is a new series, not an update of 11.8.9. Back up your databases first: a new series upgrades the data files and cannot be undone.", result.Error);
+        Assert.Empty(_events);
+        Assert.Equal("MySQL is not the active database.", (await orchestrator.ActivateAsync(ComponentKind.MySql, "8.4.13", Ct)).Error);
+    }
+
+    [Fact]
     public async Task Production_warns_when_the_database_listens_beyond_this_pc()
     {
         var store = new SettingsStore(_paths);

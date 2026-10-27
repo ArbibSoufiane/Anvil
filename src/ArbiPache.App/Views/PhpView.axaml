@@ -1,10 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:ArbiPache.App.ViewModels"
+             xmlns:v="using:ArbiPache.App.Views"
              x:Class="ArbiPache.App.Views.PhpView"
              x:DataType="vm:PhpViewModel">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="16">
+
+      <v:UpdatesBanner DataContext="{Binding Updates}" IsVisible="{Binding IsShown}" />
 
       <Border Classes="card">
         <StackPanel Spacing="8">

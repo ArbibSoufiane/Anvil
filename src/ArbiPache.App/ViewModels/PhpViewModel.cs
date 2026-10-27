@@ -80,6 +80,7 @@ public sealed partial class PhpViewModel : ObservableObject
         _paths = paths;
         _editor = editor;
         _ui = ui ?? (a => Dispatcher.UIThread.Post(a));
+        Updates = new UpdatesPanel(api, k => k == ComponentKind.Php, LoadAsync);
         var cores = Environment.ProcessorCount;
         WorkersHint = $"Suggested: half your cores ({Suggest.PhpWorkers(cores)} of {cores})";
         api.StatusChanged += (_, s) => _ui(() => ApplyMode(s.Mode));
@@ -138,6 +139,8 @@ public sealed partial class PhpViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     public partial InstallChoice? SelectedInstall { get; set; }
 
+    public UpdatesPanel Updates { get; }
+
     public async Task LoadAsync(CancellationToken ct = default)
     {
         try
@@ -145,6 +148,7 @@ public sealed partial class PhpViewModel : ObservableObject
             ApplyMode((await _api.GetStatusAsync(ct)).Mode);
             await RefreshVersionsAsync(Selected?.Version, ct);
             await RefreshInstallChoicesAsync(ct);
+            await Updates.RefreshAsync(ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

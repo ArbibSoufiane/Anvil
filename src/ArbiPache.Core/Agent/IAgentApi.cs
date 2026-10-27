@@ -32,7 +32,16 @@ public partial interface IAgentApi
     Task<IReadOnlyList<ComponentRelease>> GetAvailableAsync(ComponentKind k, CancellationToken ct = default);
     Task<IReadOnlyList<InstalledComponent>> GetInstalledAsync(ComponentKind k, CancellationToken ct = default);
     Task<InstalledComponent> InstallAsync(ComponentRelease r, CancellationToken ct = default);
+
+    /// <summary>
+    /// Switches to an installed version. Apache must pass the config test and answer; PHP moves everything on the
+    /// version's branch to it; the database takes a newer release of its series. A version that does not run is put
+    /// back, and the error says so.
+    /// </summary>
     Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct = default);
+
+    /// <summary>Newer patch releases of the active Apache, each PHP branch in use and the active database series.</summary>
+    Task<IReadOnlyList<UpdateOffer>> CheckUpdatesAsync(CancellationToken ct = default);
 
     /// <summary>Installed PHP versions, newest first.</summary>
     Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default);
