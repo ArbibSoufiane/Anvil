@@ -195,6 +195,15 @@ public sealed partial class Orchestrator
         if (!File.Exists(file) || File.ReadAllText(file) != text) AtomicFile.WriteAllText(file, text);
     }
 
+    /// <summary>The [mysqld] values the server runs with: my.ini, then the mode file on top. Null without a database.</summary>
+    private Dictionary<string, string>? EffectiveDbIni()
+    {
+        if (ActiveDb is not { } a || !File.Exists(MyIni.PathFor(a.Engine))) return null;
+        var values = new Dictionary<string, string>(MyIni.Read(a.Engine), OptionNames.Comparer);
+        foreach (var (key, value) in ModeValues(a.Engine)) values[key] = value;
+        return values;
+    }
+
     private Dictionary<string, string> ModeValues(DbEngine e)
     {
         var values = new Dictionary<string, string>(OptionNames.Comparer);

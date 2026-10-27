@@ -45,6 +45,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private IReadOnlyList<PreflightFinding> _findings = [];
     private IReadOnlyList<PreflightFinding> _expiryFindings = [];
     private readonly Dictionary<string, PreflightFinding> _renewalFailures = [];
+    private IReadOnlyList<PreflightFinding> _productionFindings = [];
     private string? _apacheUnderTest;
 
     public event EventHandler<AgentStatus>? StatusChanged;
@@ -119,7 +120,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             PhpStatus(),
             DbStatus(),
         ];
-        var findings = _findings.Concat(_expiryFindings).Concat(_renewalFailures.Values).ToList();
+        var findings = _findings.Concat(_expiryFindings).Concat(_renewalFailures.Values).Concat(_productionFindings).ToList();
         return new AgentStatus(_settings.Mode, services, findings, BuildInfo.Version, runningAsService);
     }
 
@@ -1031,10 +1032,36 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         }
         finally
         {
-            _gate.Release();
+            try
+            {
+                RefreshProductionFindings();
+            }
+            finally
+            {
+                _gate.Release();
+            }
             RaiseStatus();
         }
     }
 
     private void RaiseStatus() => StatusChanged?.Invoke(this, Status());
+
+    /// <summary>Read again after every operation: settings, sites, the Production profile and my.ini can all change.</summary>
+    private void RefreshProductionFindings()
+    {
+        if (_settings.Mode != ServerMode.Production)
+        {
+            _productionFindings = [];
+            return;
+        }
+        try
+        {
+            _productionFindings = ProductionChecks.Run(_settings, runningAsService, new ProfileStore(paths).Get(ServerMode.Production),
+                new SiteStore(paths).All(), EffectiveDbIni(), ProductionChecks.LooksLikePhpMyAdmin);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log.Warning("Production checks could not run: {Message}", e.Message);
+        }
+    }
 }

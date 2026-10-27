@@ -614,4 +614,33 @@ public sealed class SiteOperationsTests : IDisposable
         Assert.Equal(restarts + 1, _apache.Restarts);
         Assert.Equal(CertSource.LetsEncrypt, orchestrator.GetCertificates()["shop.example.com"].Source);
     }
+
+    [Fact]
+    public async Task Production_warnings_follow_the_sites()
+    {
+        var store = new SettingsStore(_paths);
+        store.Save(store.Load() with { Mode = ServerMode.Production });
+        var orchestrator = await StartedAsync();
+        Assert.Contains(orchestrator.Status().Findings, f => f.Id == "prod-not-service");
+
+        var pma = Site("pma.example.com");
+        Directory.CreateDirectory(Path.Combine(pma.Root, "libraries", "classes"));
+        File.WriteAllText(Path.Combine(pma.Root, "config.sample.inc.php"), "<?php");
+        Assert.True((await orchestrator.SaveSiteAsync(pma, null, Ct)).Ok);
+        Assert.Contains(orchestrator.Status().Findings, f => f.Id == "prod-pma-public");
+
+        Assert.True((await orchestrator.SaveSiteAsync(pma with { Access = AccessLevel.Network }, null, Ct)).Ok);
+        Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id == "prod-pma-public");
+    }
+
+    [Fact]
+    public async Task The_service_in_production_is_not_warned_about()
+    {
+        var store = new SettingsStore(_paths);
+        store.Save(store.Load() with { Mode = ServerMode.Production });
+
+        var orchestrator = await StartedAsync(runningAsService: true);
+
+        Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id.StartsWith("prod-", StringComparison.Ordinal));
+    }
 }

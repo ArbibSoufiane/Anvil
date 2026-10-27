@@ -265,4 +265,24 @@ public sealed class DatabaseOperationsTests : IDisposable
         Assert.Equal("Start the database first.", (await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.BackupDatabaseAsync(Ct))).Message);
         Assert.Equal("Use a root password of at least 8 characters.", (await orchestrator.SetDbRootPasswordAsync("short", Ct)).Error);
     }
+
+    [Fact]
+    public async Task Production_warns_when_the_database_listens_beyond_this_pc()
+    {
+        var store = new SettingsStore(_paths);
+        store.Save(store.Load() with { Mode = ServerMode.Production });
+        var orchestrator = await InstalledAsync();
+        Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id == "prod-db-exposed");
+
+        Assert.True((await orchestrator.SaveDbSettingsAsync(new Dictionary<string, string?> { ["bind-address"] = "0.0.0.0" }, Ct)).Ok);
+        Assert.Contains(orchestrator.Status().Findings, f => f.Id == "prod-db-exposed");
+
+        Assert.True((await orchestrator.SaveDbSettingsAsync(new Dictionary<string, string?> { ["bind-address"] = "127.0.0.1" }, Ct)).Ok);
+        Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id == "prod-db-exposed");
+
+        // The mode file is read after my.ini, so its value is the one the server uses.
+        File.AppendAllText(_ini.ModeFile(DbEngine.MariaDb), "bind-address=0.0.0.0\n");
+        await orchestrator.GetDbSettingsAsync(Ct);
+        Assert.Contains(orchestrator.Status().Findings, f => f.Id == "prod-db-exposed");
+    }
 }
