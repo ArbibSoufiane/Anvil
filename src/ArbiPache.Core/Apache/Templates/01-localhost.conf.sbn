@@ -8,4 +8,7 @@
         AllowOverride All
         Require local
     </Directory>
+{{~ if php_handler ~}}
+{{ php_handler }}
+{{~ end ~}}
 </VirtualHost>

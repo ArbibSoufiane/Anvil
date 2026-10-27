@@ -1,0 +1,6 @@
+DirectoryIndex index.php index.html
+<FilesMatch "\.php$">
+    <If "-f %{REQUEST_FILENAME}">
+        SetHandler "proxy:fcgi://127.0.0.1:{{ port }}/"
+    </If>
+</FilesMatch>

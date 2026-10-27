@@ -2,6 +2,7 @@ using System.Text;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
+using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
 using ArbiPache.Core.Tests.Support;
 
@@ -46,11 +47,23 @@ public sealed class ConfigRendererTests
         Snapshot.Match(Flatten(new ConfigRenderer(Paths).Render(Input(ServerMode.Production))), "production");
 
     [Fact]
+    public void Renders_php_snapshot() =>
+        Snapshot.Match(Flatten(new ConfigRenderer(Paths).Render(Input() with
+        {
+            Settings = Settings() with { DefaultPhp = "8.5.12" },
+            Pools =
+            [
+                new PhpPool("8.5.12", "php85", 9100, 4, 1000, @"D:\ArbiPache\runtime\php\8.5.12\php-cgi.exe", @"D:\ArbiPache\data\php\8.5.12", @"D:\ArbiPache\data\php\8.5.12\conf.d"),
+                new PhpPool("8.4.27", "php84", 9101, 2, 500, @"D:\ArbiPache\runtime\php\8.4.27\php-cgi.exe", @"D:\ArbiPache\data\php\8.4.27", @"D:\ArbiPache\data\php\8.4.27\conf.d"),
+            ],
+        })), "php");
+
+    [Fact]
     public void Renders_expected_files()
     {
         var files = new ConfigRenderer(Paths).Render(Input()).Files.Keys.Order(StringComparer.Ordinal);
 
-        Assert.Equal(["arbipache.conf", "mode.conf", @"vhosts\00-catchall.conf", @"vhosts\01-localhost.conf"], files);
+        Assert.Equal(["arbipache.conf", "mode.conf", "php-pools.conf", @"vhosts\00-catchall.conf", @"vhosts\01-localhost.conf"], files);
     }
 
     [Fact]

@@ -33,7 +33,7 @@ public sealed class ConfigApplierTests : IDisposable
         var outcome = await Applier().ApplyAsync(Input(), TestContext.Current.CancellationToken);
 
         Assert.True(outcome.Ok);
-        Assert.Equal(4, outcome.ChangedFiles.Count);
+        Assert.Equal(5, outcome.ChangedFiles.Count);
         Assert.True(File.Exists(Path.Combine(_paths.Vhosts, "00-catchall.conf")));
         Assert.Equal(1, _tester.Calls);
         Assert.True(Directory.Exists(Path.Combine(_paths.Logs, "apache")));

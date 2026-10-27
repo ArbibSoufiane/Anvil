@@ -17,9 +17,18 @@ internal static class Runtimes
     public static ComponentRelease Pinned(ComponentKind kind) =>
         new ShippedCatalogProvider(new AppPaths(Repo.Root)).All().First(r => r.Kind == kind);
 
-    public static async Task<string> InstallAsync(AppPaths paths, ComponentKind kind, CancellationToken ct)
+    /// <summary>The newest build of one PHP branch, e.g. "8.5", from the live windows.php.net feed.</summary>
+    public static async Task<ComponentRelease> LatestPhpAsync(string branch, CancellationToken ct) =>
+        (await new PhpCatalogProvider(Http).GetAsync(ct))
+            .Where(r => r.Version.StartsWith(branch + ".", StringComparison.Ordinal))
+            .OrderByDescending(r => r.Version, Comparer<string>.Create(SemVer.Compare))
+            .First();
+
+    public static async Task<string> InstallAsync(AppPaths paths, ComponentKind kind, CancellationToken ct) =>
+        (await InstallAsync(paths, Pinned(kind), ct)).Version;
+
+    public static async Task<InstalledComponent> InstallAsync(AppPaths paths, ComponentRelease release, CancellationToken ct)
     {
-        var release = Pinned(kind);
         var file = Path.GetFileName(release.Url.AbsolutePath);
         var cached = Path.Combine(CacheDir, file);
         await Gate.WaitAsync(ct);
@@ -36,8 +45,7 @@ internal static class Runtimes
         var seeded = Path.Combine(paths.Tmp, "downloads", file);
         Directory.CreateDirectory(Path.GetDirectoryName(seeded)!);
         File.Copy(cached, seeded, overwrite: true);
-        await new ComponentInstaller(paths, new Downloader(Http), _ => null).InstallAsync(release, null, ct);
-        return release.Version;
+        return await new ComponentInstaller(paths, new Downloader(Http), _ => null).InstallAsync(release, null, ct);
     }
 
     public static AppPaths NewRoot(string name)

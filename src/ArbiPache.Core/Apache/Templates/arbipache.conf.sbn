@@ -33,4 +33,5 @@ MaxKeepAliveRequests 100
 {{~ end ~}}
 
 Include "{{ mode_conf }}"
+Include "{{ php_pools_conf }}"
 IncludeOptional "{{ vhosts }}/*.conf"

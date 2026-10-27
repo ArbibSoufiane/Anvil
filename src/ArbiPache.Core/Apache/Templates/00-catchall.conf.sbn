@@ -13,5 +13,8 @@
         AllowOverride All
         Require {{ require }}
     </Directory>
+{{~ if php_handler ~}}
+{{ php_handler }}
+{{~ end ~}}
 {{~ end ~}}
 </VirtualHost>
