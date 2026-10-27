@@ -17,6 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Preflight\Fixtures\*.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Components\Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

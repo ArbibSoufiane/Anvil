@@ -8,6 +8,8 @@ public sealed class Downloader(HttpClient http)
 {
     private const string ApacheLoungeHost = "apachelounge.com";
 
+    public static string UserAgent { get; } = $"ArbiPache/{BuildInfo.Version} (+https://github.com/ArbibSoufiane/ArbiPache)";
+
     public async Task<string> FetchAsync(Uri url, string expectedSha256, string destFile, IProgress<long>? progress, CancellationToken ct)
     {
         if (url.Scheme != Uri.UriSchemeHttps)
@@ -20,7 +22,7 @@ public sealed class Downloader(HttpClient http)
         var part = destFile + ".part";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd($"ArbiPache/{BuildInfo.Version} (+https://github.com/ArbibSoufiane/ArbiPache)");
+        request.Headers.UserAgent.ParseAdd(UserAgent);
         // Apache Lounge rejects requests without a referer from its own download page (hotlink protection).
         if (url.Host.Equals(ApacheLoungeHost, StringComparison.OrdinalIgnoreCase)
             || url.Host.EndsWith("." + ApacheLoungeHost, StringComparison.OrdinalIgnoreCase))
