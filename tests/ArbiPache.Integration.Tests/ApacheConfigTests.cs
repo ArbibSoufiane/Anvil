@@ -91,6 +91,7 @@ public sealed class ApacheConfigTests : IDisposable
             using var cert = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(90));
             var certs = new CertificateStore(paths);
             certs.Save("shop.example.com", cert.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem(), cert.ExportCertificatePem(), CertSource.Imported);
+            new LocalCa(paths, certs, TimeProvider.System).Issue("dev.test", ["dev.test"]);
 
             SiteDefinition[] sites =
             [
@@ -119,6 +120,7 @@ public sealed class ApacheConfigTests : IDisposable
                     Cert = CertSource.LoadBalancer, TrustedProxies = ["10.0.0.5", "10.0.1.0/24"], AcceptOnlyFromProxies = true,
                 },
                 Site(SiteKind.Domain, "static.test", Folder("static")) with { Type = SiteType.Static, Index = ["index.html"] },
+                Site(SiteKind.Domain, "dev.test", Folder("dev")) with { Cert = CertSource.LocalDev },
                 Site(SiteKind.Htdocs, "legacy", Path.Combine(paths.Htdocs, "legacy")) with
                 {
                     PhpVersion = "8.4.27", Access = AccessLevel.SpecificIps, AllowedIps = ["192.168.1.50"],

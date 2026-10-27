@@ -50,10 +50,11 @@ public sealed class CertificateStore(AppPaths paths)
         return all;
     }
 
-    /// <summary>The DNS names in the certificate's subject alternative names, or its common name when it has none.</summary>
+    /// <summary>The DNS names then IP addresses in the certificate's subject alternative names, or its common name when it has none.</summary>
     internal static IReadOnlyList<string> NamesOf(X509Certificate2 cert)
     {
-        var names = cert.Extensions.OfType<X509SubjectAlternativeNameExtension>().SelectMany(e => e.EnumerateDnsNames()).ToList();
+        var sans = cert.Extensions.OfType<X509SubjectAlternativeNameExtension>().ToList();
+        var names = sans.SelectMany(e => e.EnumerateDnsNames()).Concat(sans.SelectMany(e => e.EnumerateIPAddresses()).Select(ip => ip.ToString())).ToList();
         return names.Count > 0 ? names : [cert.GetNameInfo(X509NameType.SimpleName, forIssuer: false)];
     }
 
