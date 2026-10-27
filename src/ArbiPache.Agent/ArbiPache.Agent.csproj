@@ -12,4 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ArbiPache.Core\ArbiPache.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\catalog\components.json" Link="catalog\components.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

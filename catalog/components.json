@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "releases": [
+    {
+      "kind": "Apache",
+      "version": "2.4.69",
+      "url": "https://www.apachelounge.com/download/VS18/binaries/httpd-2.4.69-261002-Win64-VS18.zip",
+      "sha256": "77d715d0d9cee731e2251e7ddc2090a7a8e6d41fedef2e9827cd918593c5a652",
+      "toolset": "VS18",
+      "stripRoot": "Apache24"
+    },
+    {
+      "kind": "CaBundle",
+      "version": "2026-10-20",
+      "url": "https://curl.se/ca/cacert-2026-10-20.pem",
+      "sha256": "796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe"
+    }
+  ]
+}

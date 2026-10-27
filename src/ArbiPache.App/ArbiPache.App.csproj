@@ -24,4 +24,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="ArbiPache.App.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\catalog\components.json" Link="catalog\components.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
