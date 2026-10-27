@@ -3,6 +3,7 @@ using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
+using ArbiPache.Core.Modes;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
@@ -38,6 +39,8 @@ public sealed class FakeAgentApi : IAgentApi
     public List<DbSettingRow> DbRows { get; } = [];
     public IReadOnlyDictionary<string, string?>? DbSaved { get; private set; }
     public Exception? BackupError { get; set; }
+    public ModeChangeSet? ModePreview { get; set; }
+    public (ServerMode Target, ModeOptions Options)? ModeApplied { get; private set; }
     public string BackupFile { get; set; } = @"D:\ArbiPache\data\backups\db\2026-10-27-120000.sql.gz";
 
     public event EventHandler<AgentStatus>? StatusChanged;
@@ -192,6 +195,18 @@ public sealed class FakeAgentApi : IAgentApi
     {
         Calls.Add("backup db");
         return BackupError is { } error ? Task.FromException<string>(error) : Task.FromResult(BackupFile);
+    }
+
+    public Task<ModeChangeSet> PreviewModeAsync(ServerMode target, CancellationToken ct = default)
+    {
+        Calls.Add($"preview mode {target}");
+        return Task.FromResult(ModePreview ?? new ModeChangeSet(Status.Mode, target, [], [], @"D:\ArbiPache\data\backups\2026-10-27-120000"));
+    }
+
+    public Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default)
+    {
+        ModeApplied = (target, options);
+        return Record($"apply mode {target}");
     }
 
     private Task<SiteCertificate> Issue(string siteId, CertSource source)

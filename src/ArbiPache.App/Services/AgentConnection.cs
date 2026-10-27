@@ -4,6 +4,7 @@ using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
+using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
@@ -219,6 +220,12 @@ public sealed class AgentConnection : IAsyncDisposable
             await (await Remote()).SetDbRootPasswordAsync(password, ct);
 
         public async Task<string> BackupDatabaseAsync(CancellationToken ct = default) => await (await Remote()).BackupDatabaseAsync(ct);
+
+        public async Task<ModeChangeSet> PreviewModeAsync(ServerMode target, CancellationToken ct = default) =>
+            await (await Remote()).PreviewModeAsync(target, ct);
+
+        public async Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default) =>
+            await (await Remote()).ApplyModeAsync(target, options, ct);
 
         public async Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => await (await Remote()).ShutdownAsync(stopServices, ct);
     }

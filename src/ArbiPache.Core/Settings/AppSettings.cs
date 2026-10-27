@@ -17,6 +17,8 @@ public sealed record AppSettings
     public int HttpPort { get; init; } = 80;
     public int HttpsPort { get; init; } = 443;
     public ServerMode Mode { get; init; } = ServerMode.Development;
+    /// <summary>Production keeps Xdebug loaded: the mode switch's "Keep Xdebug loaded".</summary>
+    public bool XdebugInProduction { get; init; }
     public string? ActiveApache { get; init; }
     public string? DefaultPhp { get; init; }
     public DbEngine? DbEngine { get; init; }

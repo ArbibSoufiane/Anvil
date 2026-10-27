@@ -2,6 +2,7 @@ using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
+using ArbiPache.Core.Modes;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
 using ArbiPache.Core.Sites;
@@ -99,6 +100,15 @@ public partial interface IAgentApi
 
     /// <summary>Dumps every database to data\backups\db; returns the file.</summary>
     Task<string> BackupDatabaseAsync(CancellationToken ct = default);
+
+    /// <summary>What switching to the mode would change and restart. Writes nothing.</summary>
+    Task<ModeChangeSet> PreviewModeAsync(ServerMode target, CancellationToken ct = default);
+
+    /// <summary>
+    /// Backs up the files, switches to the mode and restarts what changed. Any failure puts the previous mode and its
+    /// files back. RequiredFirewall names the scope the web ports need in the new mode.
+    /// </summary>
+    Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default);
 
     /// <summary>Ends the Agent. With stopServices false, its processes still end with it (they live in its job).</summary>
     Task ShutdownAsync(bool stopServices, CancellationToken ct = default);

@@ -136,7 +136,7 @@ public sealed class DatabaseOperationsTests : IDisposable
     public async Task Settings_rows_show_my_ini_mode_file_and_probed_defaults()
     {
         var orchestrator = await InstalledAsync();
-        File.WriteAllText(_ini.ModeFile, "[mysqld]\nmax_statement_time = 60\n");
+        File.WriteAllText(_ini.ModeFile(DbEngine.MariaDb), "[mysqld]\nmax_statement_time = 60\n");
         _ini.Set(DbEngine.MariaDb, new Dictionary<string, string?>
         {
             ["innodb_buffer_pool_size"] = "128M", ["slow_query_log"] = "OFF", ["max_allowed_packet"] = "64M",
@@ -194,17 +194,17 @@ public sealed class DatabaseOperationsTests : IDisposable
     {
         var orchestrator = await InstalledAsync();
 
-        var cnf = File.ReadAllText(_ini.ModeFile).ReplaceLineEndings("\n");
+        var cnf = File.ReadAllText(_ini.ModeFile(DbEngine.MariaDb)).ReplaceLineEndings("\n");
         Assert.Contains("max_statement_time = 0\n", cnf, StringComparison.Ordinal);
         Assert.Contains("wait_timeout = 28800\n", cnf, StringComparison.Ordinal);
         var rows = (await orchestrator.GetDbSettingsAsync(Ct)).ToDictionary(r => r.Key);
         Assert.True(rows["wait_timeout"].SetByMode);
         Assert.Equal("28800", rows["wait_timeout"].Current);
 
-        File.WriteAllText(_ini.ModeFile, "[mysqld]\n");
+        File.WriteAllText(_ini.ModeFile(DbEngine.MariaDb), "[mysqld]\n");
         await orchestrator.StopAsync(ServiceId.Database, Ct);
         await orchestrator.StartAsync(ServiceId.Database, Ct);
-        Assert.Contains("general_log = ON", File.ReadAllText(_ini.ModeFile), StringComparison.Ordinal);
+        Assert.Contains("general_log = ON", File.ReadAllText(_ini.ModeFile(DbEngine.MariaDb)), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -228,7 +228,7 @@ public sealed class DatabaseOperationsTests : IDisposable
     public async Task Mode_init_only_and_unknown_keys_are_refused()
     {
         var orchestrator = await InstalledAsync();
-        File.WriteAllText(_ini.ModeFile, "[mysqld]\nwait_timeout = 600\n");
+        File.WriteAllText(_ini.ModeFile(DbEngine.MariaDb), "[mysqld]\nwait_timeout = 600\n");
 
         var mode = await orchestrator.SaveDbSettingsAsync(new Dictionary<string, string?> { ["wait_timeout"] = "100" }, Ct);
         var init = await orchestrator.SaveDbSettingsAsync(new Dictionary<string, string?> { ["lower_case_table_names"] = "2" }, Ct);
@@ -264,71 +264,5 @@ public sealed class DatabaseOperationsTests : IDisposable
         Assert.Equal("Start the database first.", (await orchestrator.SetDbRootPasswordAsync("third-pass", Ct)).Error);
         Assert.Equal("Start the database first.", (await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.BackupDatabaseAsync(Ct))).Message);
         Assert.Equal("Use a root password of at least 8 characters.", (await orchestrator.SetDbRootPasswordAsync("short", Ct)).Error);
-    }
-
-    private sealed class FakeDb(List<string> events) : IDatabaseServer
-    {
-        private readonly Dictionary<DbEngine, ProcessState> _state = [];
-
-        public event EventHandler<ProcessStatus>? StatusChanged { add { } remove { } }
-
-        public HashSet<DbEngine> Existing { get; } = [];
-        public string? AcceptedPassword { get; set; }
-        public string? FailNextStart { get; set; }
-
-        public ProcessStatus? Status(DbEngine e) =>
-            _state.TryGetValue(e, out var s) ? new ProcessStatus(DatabaseManager.ProcessName(e), s, null, null, 0, null) : null;
-
-        public bool Initialized(DbEngine e) => Existing.Contains(e);
-
-        public Task InitializeAsync(DbEngine e, string version, string rootPassword, CancellationToken ct)
-        {
-            events.Add($"db init {e} {version}");
-            Existing.Add(e);
-            AcceptedPassword = rootPassword;
-            return Task.CompletedTask;
-        }
-
-        public Task StartAsync(DbEngine e, string version, CancellationToken ct)
-        {
-            events.Add($"db start {e} {version}");
-            if (FailNextStart is { } error)
-            {
-                FailNextStart = null;
-                _state[e] = ProcessState.Failed;
-                throw new InvalidOperationException(error);
-            }
-            _state[e] = ProcessState.Running;
-            return Task.CompletedTask;
-        }
-
-        public Task StopAsync(DbEngine e, string version, CancellationToken ct)
-        {
-            events.Add($"db stop {e} {version}");
-            _state[e] = ProcessState.Stopped;
-            return Task.CompletedTask;
-        }
-
-        public Task<bool> AdoptRootPasswordAsync(DbEngine e, string password, CancellationToken ct)
-        {
-            events.Add($"db adopt {e}");
-            return Task.FromResult(password == AcceptedPassword);
-        }
-
-        public Task SetRootPasswordAsync(DbEngine e, string password, CancellationToken ct)
-        {
-            AcceptedPassword = password;
-            return Task.CompletedTask;
-        }
-
-        public Task<IReadOnlyDictionary<string, string>> DefaultsAsync(DbEngine e, string version, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["max_connections"] = "151", ["bind_address"] = "", ["character_set_server"] = "utf8mb4", ["port"] = "3306",
-                ["innodb_buffer_pool_size"] = "134217728", ["slow_query_log"] = "FALSE", ["max_allowed_packet"] = "16777216",
-            });
-
-        public Task<string> BackupAsync(DbEngine e, string version, CancellationToken ct) =>
-            Task.FromResult(@"D:\ArbiPache\data\backups\db\2026-10-27-120000.sql.gz");
     }
 }

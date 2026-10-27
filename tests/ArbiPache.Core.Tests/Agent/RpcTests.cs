@@ -8,6 +8,8 @@ using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
+using ArbiPache.Core.Elevation;
+using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Preflight;
@@ -121,6 +123,27 @@ public sealed class RpcTests
         Assert.Null(fake.DbChanges["max_connections"]);
         Assert.Equal("600", fake.DbChanges["wait_timeout"]);
         Assert.Contains("Start the database first.", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Mode_calls_round_trip_with_changes_and_options()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fake = new FakeApi();
+        var name = UniquePipe();
+        await using var server = new PipeServer(name, fake, []);
+        server.Start();
+        await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
+
+        var preview = await client.Api.PreviewModeAsync(ServerMode.Production, ct);
+        var applied = await client.Api.ApplyModeAsync(ServerMode.Production, new ModeOptions(KeepXdebug: true), ct);
+
+        Assert.Equal((ServerMode.Development, ServerMode.Production), (preview.From, preview.To));
+        Assert.Equal(new SettingChange("PHP", @"php\8.5.12\conf.d\99-arbipache-mode.ini", "display_errors", "On", "Off"), Assert.Single(preview.Changes));
+        Assert.Equal([ServiceId.Php, ServiceId.Apache], preview.Restarts);
+        Assert.Equal(@"D:\ArbiPache\data\backups\2026-10-27-120000", preview.BackupPreviewPath);
+        Assert.Equal(FirewallScope.Internet, applied.RequiredFirewall);
+        Assert.Equal((ServerMode.Production, new ModeOptions(KeepXdebug: true)), fake.ModeApplied);
     }
 
     [Fact]
@@ -335,6 +358,19 @@ public sealed class RpcTests
 
         public Task<string> BackupDatabaseAsync(CancellationToken ct = default) =>
             Task.FromException<string>(new InvalidOperationException("Start the database first."));
+
+        public (ServerMode Target, ModeOptions Options)? ModeApplied { get; private set; }
+
+        public Task<ModeChangeSet> PreviewModeAsync(ServerMode target, CancellationToken ct = default) =>
+            Task.FromResult(new ModeChangeSet(ServerMode.Development, target,
+                [new SettingChange("PHP", @"php\8.5.12\conf.d\99-arbipache-mode.ini", "display_errors", "On", "Off")],
+                [ServiceId.Php, ServiceId.Apache], @"D:\ArbiPache\data\backups\2026-10-27-120000"));
+
+        public Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default)
+        {
+            ModeApplied = (target, options);
+            return Task.FromResult(ApplyResult.Success() with { RequiredFirewall = FirewallScope.Internet });
+        }
 
         public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate> { ["shop.test"] = Cert });

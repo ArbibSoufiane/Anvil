@@ -5,7 +5,7 @@ namespace ArbiPache.Core.Database;
 
 /// <summary>
 /// data\&lt;engine&gt;\my.ini: the user's file. ArbiPache writes it once, then only changes the [mysqld] keys set on the
-/// Database page. Its last line includes data\conf\db-mode.cnf, so Development and Production settings win.
+/// Database page. Its last line includes mode.cnf beside it, so Development and Production settings win.
 /// </summary>
 public sealed class MyIni(AppPaths paths)
 {
@@ -16,17 +16,20 @@ public sealed class MyIni(AppPaths paths)
     /// <summary>A folder of its own: MySQL refuses to initialize a datadir that already holds files such as my.ini.</summary>
     public string DataDir(DbEngine e) => Path.Combine(paths.DbData(e), "data");
 
-    public string ModeFile => Path.Combine(paths.Conf, "db-mode.cnf");
+    /// <summary>
+    /// The mode's values for the engine. Not in data\conf: the Apache config writer replaces that folder as a whole.
+    /// </summary>
+    public string ModeFile(DbEngine e) => Path.Combine(paths.DbData(e), "mode.cnf");
 
     public string ErrorLog => Path.Combine(paths.Logs, "db", "error.log");
 
-    private string Include => $"!include {AppPaths.ForApache(ModeFile)}";
+    private string Include(DbEngine e) => $"!include {AppPaths.ForApache(ModeFile(e))}";
 
     public void EnsureCreated(DbEngine e, int port)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ErrorLog)!);
         // The server refuses to start when an included file is missing.
-        if (!File.Exists(ModeFile)) AtomicFile.WriteAllText(ModeFile, "[mysqld]\n");
+        if (!File.Exists(ModeFile(e))) AtomicFile.WriteAllText(ModeFile(e), "[mysqld]\n");
 
         var file = PathFor(e);
         if (File.Exists(file)) return;
@@ -41,7 +44,7 @@ public sealed class MyIni(AppPaths paths)
             bind-address=127.0.0.1
             log-error="{AppPaths.ForApache(ErrorLog)}"
             character-set-server=utf8mb4
-            {Include}
+            {Include(e)}
 
             """);
     }
@@ -61,7 +64,7 @@ public sealed class MyIni(AppPaths paths)
         var text = File.ReadAllText(file);
         var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         // Lift the mode include out so new keys land above it, then put it back as the last line.
-        var withoutInclude = string.Join('\n', text.Split('\n').Where(l => !string.Equals(l.Trim(), Include, StringComparison.OrdinalIgnoreCase)));
+        var withoutInclude = string.Join('\n', text.Split('\n').Where(l => !string.Equals(l.Trim(), Include(e), StringComparison.OrdinalIgnoreCase)));
         var doc = IniDocument.Parse(withoutInclude);
 
         foreach (var (key, value) in changes)
@@ -73,6 +76,6 @@ public sealed class MyIni(AppPaths paths)
         }
 
         var result = doc.ToString().TrimEnd('\r', '\n');
-        AtomicFile.WriteAllText(file, result + newline + Include + newline);
+        AtomicFile.WriteAllText(file, result + newline + Include(e) + newline);
     }
 }

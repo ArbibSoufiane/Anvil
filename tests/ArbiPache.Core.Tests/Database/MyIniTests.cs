@@ -34,8 +34,8 @@ public sealed class MyIniTests : IDisposable
         Assert.Contains($"datadir=\"{AppPaths.ForApache(_ini.DataDir(DbEngine.MariaDb))}\"", Text(DbEngine.MariaDb));
 
         var lines = Text(DbEngine.MariaDb).TrimEnd().Split('\n');
-        Assert.Equal($"!include {AppPaths.ForApache(_ini.ModeFile)}", lines[^1].TrimEnd('\r'));
-        Assert.Equal("[mysqld]", File.ReadAllText(_ini.ModeFile).Trim());
+        Assert.Equal($"!include {AppPaths.ForApache(_ini.ModeFile(DbEngine.MariaDb))}", lines[^1].TrimEnd('\r'));
+        Assert.Equal("[mysqld]", File.ReadAllText(_ini.ModeFile(DbEngine.MariaDb)).Trim());
         Assert.True(Directory.Exists(Path.Combine(_paths.Logs, "db")));
     }
 
@@ -44,13 +44,13 @@ public sealed class MyIniTests : IDisposable
     {
         _ini.EnsureCreated(DbEngine.MySql, 3306);
         _ini.Set(DbEngine.MySql, new Dictionary<string, string?> { ["max_connections"] = "300" });
-        File.WriteAllText(_ini.ModeFile, "[mysqld]\nmax_execution_time = 30000\n");
+        File.WriteAllText(_ini.ModeFile(DbEngine.MySql), "[mysqld]\nmax_execution_time = 30000\n");
 
         _ini.EnsureCreated(DbEngine.MySql, 3307);
 
         Assert.Equal("300", _ini.Read(DbEngine.MySql)["max_connections"]);
         Assert.Equal("3306", _ini.Read(DbEngine.MySql)["port"]);
-        Assert.Contains("max_execution_time", File.ReadAllText(_ini.ModeFile));
+        Assert.Contains("max_execution_time", File.ReadAllText(_ini.ModeFile(DbEngine.MySql)));
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public sealed class MyIniTests : IDisposable
         Directory.CreateDirectory(_paths.DbData(DbEngine.MySql));
         File.WriteAllText(_ini.PathFor(DbEngine.MySql),
             "# tuned for the shop server\n[mysqld]\nport=3306\n# keep this low: 8 GB box\nmax-connections = 80\n\n[client]\nport=3306\n" +
-            $"!include {AppPaths.ForApache(_ini.ModeFile)}\n");
+            $"!include {AppPaths.ForApache(_ini.ModeFile(DbEngine.MySql))}\n");
 
         _ini.Set(DbEngine.MySql, new Dictionary<string, string?> { ["max_connections"] = "120", ["slow_query_log"] = "ON" });
 
@@ -97,6 +97,6 @@ public sealed class MyIniTests : IDisposable
         Assert.Equal("ON", _ini.Read(DbEngine.MySql)["slow_query_log"]);
         // New server keys land in [mysqld], not in the [client] section the user added below it.
         Assert.True(text.IndexOf("slow_query_log", StringComparison.Ordinal) < text.IndexOf("[client]", StringComparison.Ordinal));
-        Assert.EndsWith($"[client]\nport=3306\n!include {AppPaths.ForApache(_ini.ModeFile)}\n", text);
+        Assert.EndsWith($"[client]\nport=3306\n!include {AppPaths.ForApache(_ini.ModeFile(DbEngine.MySql))}\n", text);
     }
 }

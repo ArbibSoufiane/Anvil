@@ -10,7 +10,7 @@ namespace ArbiPache.Agent;
 
 /// <summary>
 /// The database: one engine active at a time, its settings in the user's my.ini, Development/Production values in
-/// db-mode.cnf. A settings change the server will not start with is put back, and the server runs on as before.
+/// mode.cnf. A settings change the server will not start with is put back, and the server runs on as before.
 /// </summary>
 public sealed partial class Orchestrator
 {
@@ -92,7 +92,7 @@ public sealed partial class Orchestrator
         if (ActiveDb is not { } a) return [];
         var defaults = new Dictionary<string, string>(await db!.DefaultsAsync(a.Engine, a.Version, ct), OptionNames.Comparer);
         var ini = MyIni.Read(a.Engine);
-        var mode = ModeValues();
+        var mode = ModeValues(a.Engine);
         return _dbSettings.For(a.Engine).Select(d =>
         {
             var setByMode = mode.TryGetValue(d.Key, out var modeValue);
@@ -108,7 +108,7 @@ public sealed partial class Orchestrator
     {
         if (ActiveDb is not { } a) return ApplyResult.Failure(NoDatabase);
         var defs = _dbSettings.For(a.Engine).ToDictionary(d => d.Key, OptionNames.Comparer);
-        var mode = ModeValues();
+        var mode = ModeValues(a.Engine);
         foreach (var (key, value) in changes)
         {
             if (!defs.TryGetValue(key, out var def)) return ApplyResult.Failure($"{key} is not a setting ArbiPache manages. Edit my.ini for it.");
@@ -187,18 +187,20 @@ public sealed partial class Orchestrator
         return ApplyResult.Success();
     }
 
-    /// <summary>Writes data\conf\db-mode.cnf for the engine from the mode's profile; untouched when it already says the same.</summary>
+    /// <summary>Writes the engine's mode.cnf from the mode's profile; untouched when it already says the same.</summary>
     private void WriteDbMode(DbEngine e)
     {
-        var text = DbModeRenderer.Render(Profile(_settings.Mode), e);
-        if (!File.Exists(MyIni.ModeFile) || File.ReadAllText(MyIni.ModeFile) != text) AtomicFile.WriteAllText(MyIni.ModeFile, text);
+        var text = DbModeRenderer.Render(Profile(_settings), e);
+        var file = MyIni.ModeFile(e);
+        if (!File.Exists(file) || File.ReadAllText(file) != text) AtomicFile.WriteAllText(file, text);
     }
 
-    private Dictionary<string, string> ModeValues()
+    private Dictionary<string, string> ModeValues(DbEngine e)
     {
         var values = new Dictionary<string, string>(OptionNames.Comparer);
-        if (!File.Exists(MyIni.ModeFile)) return values;
-        foreach (var (key, value) in IniDocument.Parse(File.ReadAllText(MyIni.ModeFile)).Pairs("mysqld")) values[key] = value;
+        var file = MyIni.ModeFile(e);
+        if (!File.Exists(file)) return values;
+        foreach (var (key, value) in IniDocument.Parse(File.ReadAllText(file)).Pairs("mysqld")) values[key] = value;
         return values;
     }
 

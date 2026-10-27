@@ -61,7 +61,7 @@ public sealed class DatabaseTests : IAsyncDisposable
     {
         var s = await InstallAsync(DbEngine.MariaDb, 13306);
         await s.Manager.InitializeAsync(s.Engine, s.Version, Password, Ct);
-        File.WriteAllText(s.Ini.ModeFile, DbModeRenderer.Render(BuiltInProfiles.Production, DbEngine.MariaDb));
+        File.WriteAllText(s.Ini.ModeFile(DbEngine.MariaDb), DbModeRenderer.Render(BuiltInProfiles.Production, DbEngine.MariaDb));
         await StartAsync(s);
 
         Assert.StartsWith("11.8.", await ScalarAsync(s, Password, "SELECT VERSION()"), StringComparison.Ordinal);
@@ -86,7 +86,7 @@ public sealed class DatabaseTests : IAsyncDisposable
     {
         var s = await InstallAsync(DbEngine.MySql, 13307);
         await s.Manager.InitializeAsync(s.Engine, s.Version, Password, Ct);
-        File.WriteAllText(s.Ini.ModeFile, DbModeRenderer.Render(BuiltInProfiles.Production, DbEngine.MySql));
+        File.WriteAllText(s.Ini.ModeFile(DbEngine.MySql), DbModeRenderer.Render(BuiltInProfiles.Production, DbEngine.MySql));
         await StartAsync(s);
 
         Assert.StartsWith("8.4.", await ScalarAsync(s, Password, "SELECT VERSION()"), StringComparison.Ordinal);

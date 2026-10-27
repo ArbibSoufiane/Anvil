@@ -3,6 +3,7 @@ using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
+using ArbiPache.Core.Modes;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Sites;
 using ArbiPache.Core.Settings;
@@ -102,6 +103,11 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
     public Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default) => orchestrator.SetDbRootPasswordAsync(password, ct);
 
     public Task<string> BackupDatabaseAsync(CancellationToken ct = default) => orchestrator.BackupDatabaseAsync(ct);
+
+    public Task<ModeChangeSet> PreviewModeAsync(ServerMode target, CancellationToken ct = default) => orchestrator.PreviewModeAsync(target, ct);
+
+    public Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default) =>
+        orchestrator.ApplyModeAsync(target, options, ct);
 
     /// <summary>Returns at once so the reply reaches the caller before the pipe closes.</summary>
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)

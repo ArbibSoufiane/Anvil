@@ -194,13 +194,15 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     public Task<ApplyResult> SaveSettingsAsync(AppSettings s, CancellationToken ct) => Locked(async () =>
     {
         var previous = _settings;
-        // Versions and pools change through their own calls, so a page holding older settings cannot undo them.
+        // Versions, pools and the mode change through their own calls, so a page holding older settings cannot undo them.
         s = s with
         {
             ActiveApache = previous.ActiveApache,
             DefaultPhp = previous.DefaultPhp,
             PhpPools = previous.PhpPools,
             PhpPoolPorts = previous.PhpPoolPorts,
+            Mode = previous.Mode,
+            XdebugInProduction = previous.XdebugInProduction,
         };
         if (Validate(s) is { } invalid) return ApplyResult.Failure(invalid);
 
@@ -861,7 +863,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private async Task StartPoolsAsync(IReadOnlyList<PhpPool> pools, CancellationToken ct)
     {
         var ini = new PhpIniBootstrap(paths);
-        var profile = Profile(_settings.Mode);
+        var profile = Profile(_settings);
         foreach (var pool in pools)
         {
             ini.EnsureIni(pool.Version);
@@ -883,7 +885,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private async Task RestartPoolsAsync(CancellationToken ct)
     {
         var ini = new PhpIniBootstrap(paths);
-        var profile = Profile(_settings.Mode);
+        var profile = Profile(_settings);
         foreach (var pool in php.Running)
         {
             ini.EnsureIni(pool.Version);
@@ -912,18 +914,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         _apacheUnderTest = version;
         try
         {
-            var sites = new SiteStore(paths).All();
-            var input = new RenderInput
-            {
-                Settings = s,
-                Stock = StockConfScanner.Scan(await File.ReadAllTextAsync(paths.HttpdConf, ct)),
-                Profile = Profile(s.Mode),
-                ApacheVersion = version,
-                Pools = pools,
-                Sites = sites,
-                Htdocs = HtdocsOf(s, sites),
-                Certificates = new CertificateStore(paths).All(),
-            };
+            var input = RenderInputFor(s, version, pools);
             var outcome = await new ConfigApplier(new ConfigRenderer(paths), new ConfigWriter(paths), tester).ApplyAsync(input, ct);
             if (!alwaysTest || outcome.ChangedFiles.Count > 0) return outcome;
             var test = await tester.TestAsync(ct);
@@ -935,13 +926,32 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         }
     }
 
-    /// <summary>The mode's profile: built-in values with the user's edits from data\profiles.</summary>
-    private ModeProfile Profile(ServerMode mode)
+    private RenderInput RenderInputFor(AppSettings s, string version, IReadOnlyList<PhpPool> pools)
+    {
+        var sites = new SiteStore(paths).All();
+        return new RenderInput
+        {
+            Settings = s,
+            Stock = StockConfScanner.Scan(File.ReadAllText(paths.HttpdConf)),
+            Profile = Profile(s),
+            ApacheVersion = version,
+            Pools = pools,
+            Sites = sites,
+            Htdocs = HtdocsOf(s, sites),
+            Certificates = new CertificateStore(paths).All(),
+        };
+    }
+
+    /// <summary>
+    /// The settings' mode profile: built-in values with the user's edits from data\profiles, and Xdebug kept in
+    /// Production when the switch asked for it.
+    /// </summary>
+    private ModeProfile Profile(AppSettings s)
     {
         var profiles = new ProfileStore(paths);
-        var profile = profiles.Get(mode);
+        var profile = profiles.Get(s.Mode);
         if (profiles.LastLoadWarning is { } warning) Log.Warning("{Warning}", warning);
-        return profile;
+        return s.Mode == ServerMode.Production && s.XdebugInProduction ? profile with { Xdebug = true } : profile;
     }
 
     /// <summary>Writes conf.d\99-arbipache-mode.ini for a PHP version; untouched when it already says the same.</summary>
