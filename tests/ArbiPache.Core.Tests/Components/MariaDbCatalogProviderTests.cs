@@ -27,7 +27,7 @@ public sealed class MariaDbCatalogProviderTests
         var mariadb118 = Assert.Single(releases, r => r.Version.StartsWith("11.8.", StringComparison.Ordinal));
         Assert.Equal(ComponentKind.MariaDb, mariadb118.Kind);
         Assert.Equal("11.8.9", mariadb118.Version);
-        Assert.Equal(new Uri("https://downloads.mariadb.org/rest-api/mariadb/11.8.9/mariadb-11.8.9-winx64.zip"), mariadb118.Url);
+        Assert.Equal(new Uri("https://archive.mariadb.org/mariadb-11.8.9/winx64-packages/mariadb-11.8.9-winx64.zip"), mariadb118.Url);
         Assert.Equal("830c46727d9278eae212ae3eca44eeb9e71b2a68704e95f344a64fba7b1963f5", mariadb118.Sha256);
         Assert.Equal("mariadb-11.8.9-winx64", mariadb118.StripRoot);
     }

@@ -9,6 +9,9 @@ public sealed partial class MariaDbCatalogProvider(HttpClient http, TimeProvider
 {
     private static readonly Uri Base = new("https://downloads.mariadb.org/rest-api/mariadb/");
 
+    // The API's download links redirect to a nearby mirror, which can crawl; MariaDB's own archive serves every release.
+    private static readonly Uri Archive = new("https://archive.mariadb.org/");
+
     public ComponentKind Kind => ComponentKind.MariaDb;
 
     public async Task<IReadOnlyList<ComponentRelease>> GetAsync(CancellationToken ct)
@@ -37,7 +40,7 @@ public sealed partial class MariaDbCatalogProvider(HttpClient http, TimeProvider
                     if (Text(file, "file_name") is not { } name || !WinX64Zip().IsMatch(name)) continue;
                     if (!file.TryGetProperty("checksum", out var checksum) || Text(checksum, "sha256sum") is not { } sha256) continue;
                     releases.Add(new ComponentRelease(ComponentKind.MariaDb, release.Name,
-                        new Uri(Base, $"{release.Name}/{name}"), sha256.ToLowerInvariant(),
+                        new Uri(Archive, $"mariadb-{release.Name}/winx64-packages/{name}"), sha256.ToLowerInvariant(),
                         StripRoot: Path.GetFileNameWithoutExtension(name), Lts: lts,
                         Notes: eol is { } end && today > end ? "End of life" : null));
                 }
