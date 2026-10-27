@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using ArbiPache.Core.IO;
 using ArbiPache.Core.Paths;
 
@@ -8,13 +7,6 @@ namespace ArbiPache.Core.Settings;
 /// <summary>Loads and saves data\arbipache.json. A file that cannot be read is moved aside, never overwritten.</summary>
 public sealed class SettingsStore(AppPaths paths)
 {
-    internal static readonly JsonSerializerOptions Json = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
-
     private string FilePath => Path.Combine(paths.Data, "arbipache.json");
 
     public string? LastLoadWarning { get; private set; }
@@ -25,7 +17,7 @@ public sealed class SettingsStore(AppPaths paths)
         if (!File.Exists(FilePath)) return new AppSettings();
         try
         {
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath), Json) ?? new AppSettings();
+            return JsonFiles.Read<AppSettings>(FilePath) ?? new AppSettings();
         }
         catch (JsonException ex)
         {
@@ -36,5 +28,5 @@ public sealed class SettingsStore(AppPaths paths)
         }
     }
 
-    public void Save(AppSettings s) => AtomicFile.WriteAllText(FilePath, JsonSerializer.Serialize(s, Json));
+    public void Save(AppSettings s) => JsonFiles.Write(FilePath, s);
 }
