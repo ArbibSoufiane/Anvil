@@ -44,6 +44,7 @@ public partial class App : Application
             var dashboard = new DashboardViewModel(_agent.Api, paths, editor);
             var apache = new ApacheViewModel(_agent.Api, paths, editor);
             var php = new PhpViewModel(_agent.Api, paths, editor);
+            var database = new DatabaseViewModel(_agent.Api, paths, editor);
             var logs = new LogsViewModel(paths, editor);
             var elevator = new UacElevator(paths);
             var ca = new LocalCaTrust(paths);
@@ -57,7 +58,7 @@ public partial class App : Application
                 settings = s;
                 vm.CloseToTray = s.CloseToTray;
             }, () => _ = sites.LoadAsync());
-            vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage);
+            vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage, database);
             dashboard.CompareProfilesRequested += (_, _) => vm.NavigateCommand.Execute(AppPage.Mode);
             _agent.Api.StatusChanged += (_, s) => Dispatcher.UIThread.Post(() => vm.Mode = s.Mode);
 
@@ -78,14 +79,15 @@ public partial class App : Application
             Program.Activated = _ => vm.ShowAndActivate();
 
             if (!(desktop.Args ?? []).Contains("--minimized")) window.Show();
-            var pages = new Pages(dashboard, apache, php, sites, settingsPage);
+            var pages = new Pages(dashboard, apache, php, database, sites, settingsPage);
             _agent.Reconnected += (_, _) => Dispatcher.UIThread.Post(() => _ = LoadPagesAsync(pages));
             _ = ConnectAsync(pages);
         }
         base.OnFrameworkInitializationCompleted();
     }
 
-    private sealed record Pages(DashboardViewModel Dashboard, ApacheViewModel Apache, PhpViewModel Php, SitesViewModel Sites, SettingsViewModel Settings);
+    private sealed record Pages(DashboardViewModel Dashboard, ApacheViewModel Apache, PhpViewModel Php, DatabaseViewModel Database, SitesViewModel Sites,
+        SettingsViewModel Settings);
 
     private async Task ConnectAsync(Pages pages)
     {
@@ -110,6 +112,7 @@ public partial class App : Application
             await pages.Dashboard.LoadAsync();
             await pages.Apache.LoadAsync();
             await pages.Php.LoadAsync();
+            await pages.Database.LoadAsync();
             await pages.Sites.LoadAsync();
             await pages.Settings.LoadAsync();
         }

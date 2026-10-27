@@ -2,6 +2,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Database;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Sites;
 using ArbiPache.Core.Settings;
@@ -89,6 +90,18 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
         orchestrator.IssueLetsEncryptAsync(siteId, staging, ct);
 
     public Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default) => DnsCheck.ResolveAsync(name, ct);
+
+    public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
+        orchestrator.InstallDatabaseAsync(e, version, rootPassword, ct);
+
+    public Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default) => orchestrator.GetDbSettingsAsync(ct);
+
+    public Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default) =>
+        orchestrator.SaveDbSettingsAsync(changes, ct);
+
+    public Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default) => orchestrator.SetDbRootPasswordAsync(password, ct);
+
+    public Task<string> BackupDatabaseAsync(CancellationToken ct = default) => orchestrator.BackupDatabaseAsync(ct);
 
     /// <summary>Returns at once so the reply reaches the caller before the pipe closes.</summary>
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)

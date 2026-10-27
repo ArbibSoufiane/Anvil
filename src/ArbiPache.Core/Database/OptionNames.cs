@@ -1,7 +1,7 @@
 namespace ArbiPache.Core.Database;
 
 /// <summary>MariaDB and MySQL treat "max-connections" and "max_connections" as the same option.</summary>
-internal sealed class OptionNames : IEqualityComparer<string>
+public sealed class OptionNames : IEqualityComparer<string>
 {
     public static readonly OptionNames Comparer = new();
 

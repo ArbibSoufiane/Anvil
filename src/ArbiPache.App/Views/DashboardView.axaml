@@ -25,7 +25,7 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
-      <!-- Service cards; the database card joins in Phase 5 -->
+      <!-- Service cards -->
       <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
         <Border Classes="card" x:Name="ApacheCard">
           <StackPanel Spacing="14">
@@ -87,6 +87,40 @@
             <WrapPanel ItemSpacing="8" LineSpacing="8">
               <Button Classes="secondary" Content="Restart pools" Command="{Binding RestartPhpCommand}" IsEnabled="{Binding PhpRunning}" />
               <Button Classes="ghost" Content="php.ini" Command="{Binding OpenPhpIniCommand}" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+        <Border Classes="card" x:Name="DbCard" Grid.Column="2">
+          <StackPanel Spacing="14">
+            <DockPanel>
+              <Viewbox Width="20" Height="20" DockPanel.Dock="Left">
+                <Canvas Width="24" Height="24">
+                  <Path Classes="icon" Stroke="{StaticResource AccentBrush}"
+                        Data="M4 5.5 A8 2.5 0 1 1 20 5.5 A8 2.5 0 1 1 4 5.5 Z M4 5.5 V18.5 C4 19.9 7.6 21 12 21 C16.4 21 20 19.9 20 18.5 V5.5" />
+                </Canvas>
+              </Viewbox>
+              <Border Classes="pill" Classes.ok="{Binding DbRunning}" Classes.bad="{Binding DbFailed}" DockPanel.Dock="Right">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Ellipse />
+                  <TextBlock x:Name="DbState" Text="{Binding DbStateText}" />
+                </StackPanel>
+              </Border>
+              <TextBlock Classes="h2" x:Name="DbTitle" Text="{Binding DbTitle}" Margin="10,0,0,0" />
+            </DockPanel>
+            <TextBlock Classes="dd" Text="{Binding DbVersion}" TextWrapping="Wrap" IsVisible="{Binding !DbInstalled}" />
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="16" RowSpacing="6" IsVisible="{Binding DbInstalled}">
+              <TextBlock Classes="dt" Text="Version" />
+              <TextBlock Classes="dd" Grid.Column="1" Text="{Binding DbVersion}" />
+              <TextBlock Classes="dt" Grid.Row="1" Text="Listening" />
+              <TextBlock Classes="dd" x:Name="DbListening" Grid.Row="1" Grid.Column="1" Text="{Binding DbListening}" />
+              <TextBlock Classes="dt" Grid.Row="2" Text="Root user" />
+              <TextBlock Classes="dd" Grid.Row="2" Grid.Column="1" Text="{Binding DbRootUser}" />
+            </Grid>
+            <TextBlock Classes="result" Text="{Binding DbMessage}" TextWrapping="Wrap"
+                       IsVisible="{Binding DbMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <WrapPanel ItemSpacing="8" LineSpacing="8" IsVisible="{Binding DbInstalled}">
+              <Button Classes="secondary" Content="{Binding DbStartStopLabel}" Command="{Binding StartStopDbCommand}" />
+              <Button Classes="ghost" Content="my.ini" Command="{Binding OpenMyIniCommand}" />
             </WrapPanel>
           </StackPanel>
         </Border>

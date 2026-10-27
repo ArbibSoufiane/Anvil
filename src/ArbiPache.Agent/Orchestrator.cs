@@ -6,6 +6,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Database;
 using ArbiPache.Core.Hosts;
 using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
@@ -25,10 +26,10 @@ namespace ArbiPache.Agent;
 /// </summary>
 /// <param name="portFree">True when nothing listens on the port; picks ports for new PHP pools.</param>
 /// <param name="hostsText">Reads the Windows hosts file; the Agent never writes it (the Elevator does).</param>
-public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTester tester, IApacheControl apache,
+public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IConfigTester tester, IApacheControl apache,
     Func<AppSettings, IReadOnlyList<PreflightFinding>> preflight, ComponentCatalog catalog, ComponentInstaller installer,
     IPhpPools php, Func<int, bool> portFree, bool runningAsService = false, Func<string>? hostsText = null,
-    string? legacyHome = null, Func<bool, IAcmeProtocol>? acme = null, TimeProvider? time = null)
+    string? legacyHome = null, Func<bool, IAcmeProtocol>? acme = null, TimeProvider? time = null, IDatabaseServer? db = null)
 {
     public const int MaxWorkers = 64;
     public const int MaxRecycleRequests = 1_000_000;
@@ -62,6 +63,7 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
     public async Task InitializeAsync(CancellationToken ct)
     {
         apache.StatusChanged += (_, _) => RaiseStatus();
+        if (db is not null) db.StatusChanged += (_, _) => RaiseStatus();
         await Locked(async () =>
         {
             paths.EnsureCreated();
@@ -96,6 +98,11 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
                 var started = await StartApacheCoreAsync(version, ct);
                 if (!started.Ok) Log.Warning("Apache did not start on launch: {Error}", started.Error);
             }
+            if (ActiveDb is not null && _settings.StartServicesOnLaunch)
+            {
+                var started = await StartDbCoreAsync(ct);
+                if (!started.Ok) Log.Warning("The database did not start on launch: {Error}", started.Error);
+            }
             return ApplyResult.Success();
         }, ct);
     }
@@ -108,15 +115,26 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
             new(ServiceId.Apache, a?.State ?? ProcessState.Stopped, _settings.ActiveApache,
                 a?.State == ProcessState.Failed ? a.LastError : null),
             PhpStatus(),
+            DbStatus(),
         ];
         var findings = _findings.Concat(_expiryFindings).Concat(_renewalFailures.Values).ToList();
         return new AgentStatus(_settings.Mode, services, findings, BuildInfo.Version, runningAsService);
     }
 
-    /// <summary>Apache and PHP start and stop together: either id, or null, means the web server.</summary>
+    /// <summary>
+    /// Apache and PHP start and stop together: either id means the web server. Null means the web server and the
+    /// database, when one is installed.
+    /// </summary>
     public Task<ApplyResult> StartAsync(ServiceId? id, CancellationToken ct) => Locked(async () =>
     {
-        if (id is ServiceId.Database) return NotAvailableYet(id.Value);
+        if (id is ServiceId.Database) return await StartDbCoreAsync(ct);
+        var database = id is null && ActiveDb is not null ? await StartDbCoreAsync(ct) : ApplyResult.Success();
+        var web = await StartWebCoreAsync(ct);
+        return web.Ok ? database : web;
+    }, ct);
+
+    private async Task<ApplyResult> StartWebCoreAsync(CancellationToken ct)
+    {
         if (InstalledApache(_settings.ActiveApache) is not { } version) return ApplyResult.Failure(NotInstalled);
         if (ApacheRunning) return ApplyResult.Success();
 
@@ -124,13 +142,14 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
         if (_findings.FirstOrDefault(f => f.Severity == Severity.Blocking) is { } blocking)
             return ApplyResult.Failure(blocking.Fix is null ? blocking.Message : $"{blocking.Message} {blocking.Fix}");
         return await StartApacheCoreAsync(version, ct);
-    }, ct);
+    }
 
     public Task<ApplyResult> StopAsync(ServiceId? id, CancellationToken ct) => Locked(async () =>
     {
-        if (id is ServiceId.Database) return NotAvailableYet(id.Value);
+        if (id is ServiceId.Database) return await StopDbCoreAsync(ct);
         await apache.StopAsync(ct);
         await php.ApplyAsync([], ct);
+        if (id is null && ActiveDb is not null) return await StopDbCoreAsync(ct);
         return ApplyResult.Success();
     }, ct);
 
@@ -140,7 +159,11 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
     /// </summary>
     public Task<ApplyResult> RestartAsync(ServiceId? id, CancellationToken ct) => Locked(async () =>
     {
-        if (id is ServiceId.Database) return NotAvailableYet(id.Value);
+        if (id is ServiceId.Database)
+        {
+            var stopped = await StopDbCoreAsync(ct);
+            return stopped.Ok ? await StartDbCoreAsync(ct) : stopped;
+        }
         if (InstalledApache(_settings.ActiveApache) is not { } version) return ApplyResult.Failure(NotInstalled);
         if (!ApacheRunning) return await StartApacheCoreAsync(version, ct);
         if (id is null or ServiceId.Php)
@@ -920,7 +943,6 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
     private static ApplyResult Rejected(ApplyOutcome applied, string consequence) =>
         ApplyResult.Failure($"Apache rejected the configuration. {consequence}", applied.TestOutput, applied.ChangedFiles);
 
-    private static ApplyResult NotAvailableYet(ServiceId id) => ApplyResult.Failure($"{id} is not available yet.");
 
     private static string? Validate(AppSettings s)
     {

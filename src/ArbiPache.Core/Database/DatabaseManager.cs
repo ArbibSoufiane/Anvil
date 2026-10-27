@@ -72,16 +72,20 @@ public sealed class DatabaseManager(AppPaths paths, ProcessSupervisor sup, DbSec
         new(ProcessName(e), Path.Combine(Bin(e, version), ServerExe(e)), [$"--defaults-file={ini.PathFor(e)}"],
             new Dictionary<string, string>(), Bin(e, version), Path.Combine(paths.Logs, "db", $"{ProcessName(e)}.log"));
 
-    /// <summary>Waits until the server accepts connections on its port, or fails when the process gives up.</summary>
+    /// <summary>
+    /// Waits until the server accepts connections on its port. Fails at the first exit: a server that stops while
+    /// starting stops again on every retry (a bad my.ini value), so the supervisor's restarts would only add delay.
+    /// </summary>
     public async Task WaitUntilReadyAsync(DbEngine e, CancellationToken ct)
     {
         var port = Port(e);
         var deadline = Stopwatch.StartNew();
+        var restarts = sup.Snapshot().FirstOrDefault(s => s.Name == ProcessName(e))?.Restarts ?? 0;
         while (deadline.Elapsed < ReadyLimit)
         {
             ct.ThrowIfCancellationRequested();
             var status = sup.Snapshot().FirstOrDefault(s => s.Name == ProcessName(e));
-            if (status is { State: ProcessState.Failed or ProcessState.Stopped })
+            if (status is { State: ProcessState.Failed or ProcessState.Stopped or ProcessState.Restarting } || status?.Restarts > restarts)
                 throw new InvalidOperationException($"The database server stopped while starting. {status.LastError} See {ini.ErrorLog}.");
             using var client = new TcpClient();
             try
@@ -132,6 +136,20 @@ public sealed class DatabaseManager(AppPaths paths, ProcessSupervisor sup, DbSec
             await alter.ExecuteNonQueryAsync(ct);
         }
         secrets.SaveRootPassword(newPwd);
+    }
+
+    /// <summary>True when root logs in to the running server with this password.</summary>
+    public async Task<bool> CanLogInAsync(DbEngine e, string password, CancellationToken ct)
+    {
+        try
+        {
+            await using var connection = await OpenAsync(e, password, ct);
+            return true;
+        }
+        catch (MySqlException ex) when (ex.ErrorCode == MySqlErrorCode.AccessDenied)
+        {
+            return false;
+        }
     }
 
     private string RootPassword() =>

@@ -112,6 +112,27 @@ public sealed class DatabaseTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Server_that_will_not_start_says_why_and_known_passwords_are_adopted()
+    {
+        var s = await InstallAsync(DbEngine.MariaDb, 13310);
+        await s.Manager.InitializeAsync(s.Engine, s.Version, Password, Ct);
+        var server = new DatabaseServer(s.Paths, _supervisor, TimeProvider.System);
+        s.Ini.Set(s.Engine, new Dictionary<string, string?> { ["innodb_buffer_pool_size"] = "banana" });
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync(s.Engine, s.Version, Ct));
+
+        Assert.Contains("Unknown suffix 'b' used for variable 'innodb-buffer-pool-size' (value 'banana')", e.Message, StringComparison.Ordinal);
+        Assert.NotEqual(ProcessState.Running, server.Status(s.Engine)?.State);
+
+        s.Ini.Set(s.Engine, new Dictionary<string, string?> { ["innodb_buffer_pool_size"] = null });
+        await server.StartAsync(s.Engine, s.Version, Ct);
+        Assert.False(await server.AdoptRootPasswordAsync(s.Engine, "not-the-password", Ct));
+        Assert.True(await server.AdoptRootPasswordAsync(s.Engine, Password, Ct));
+        Assert.Equal("151", (await server.DefaultsAsync(s.Engine, s.Version, Ct))["max_connections"]);
+        await server.StopAsync(s.Engine, s.Version, Ct);
+    }
+
+    [Fact]
     public async Task Stop_is_clean()
     {
         var s = await InstallAsync(DbEngine.MariaDb, 13308);

@@ -3,6 +3,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Database;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
@@ -205,6 +206,19 @@ public sealed class AgentConnection : IAsyncDisposable
             await (await Remote()).IssueLetsEncryptAsync(siteId, staging, ct);
 
         public async Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default) => await (await Remote()).ResolveAsync(name, ct);
+
+        public async Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
+            await (await Remote()).InstallDatabaseAsync(e, version, rootPassword, ct);
+
+        public async Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default) => await (await Remote()).GetDbSettingsAsync(ct);
+
+        public async Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default) =>
+            await (await Remote()).SaveDbSettingsAsync(changes, ct);
+
+        public async Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default) =>
+            await (await Remote()).SetDbRootPasswordAsync(password, ct);
+
+        public async Task<string> BackupDatabaseAsync(CancellationToken ct = default) => await (await Remote()).BackupDatabaseAsync(ct);
 
         public async Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => await (await Remote()).ShutdownAsync(stopServices, ct);
     }

@@ -2,6 +2,7 @@ using ArbiPache.App.Services;
 using ArbiPache.App.Tests.Support;
 using ArbiPache.App.ViewModels;
 using ArbiPache.Core.Agent;
+using ArbiPache.Core.Database;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
@@ -145,5 +146,45 @@ public sealed class DashboardViewModelTests
 
         Assert.Equal("Production", vm.ModeName);
         Assert.Contains("Errors logged, never shown; version headers hidden", vm.ModeLines);
+    }
+
+    [Fact]
+    public async Task Database_card_shows_engine_version_and_where_it_listens()
+    {
+        _api.Settings = _api.Settings with { DbEngine = DbEngine.MariaDb, DbVersion = "11.8.9", DbPort = 3307 };
+        _api.Status = _api.Status with { Services = [new ServiceStatus(ServiceId.Database, ProcessState.Running, "MariaDB 11.8.9", null)] };
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("MariaDB", vm.DbTitle);
+        Assert.Equal("Running", vm.DbStateText);
+        Assert.True(vm.DbRunning);
+        Assert.True(vm.DbInstalled);
+        Assert.Equal("11.8.9", vm.DbVersion);
+        Assert.Equal("127.0.0.1:3307", vm.DbListening);
+        Assert.Equal("Password set", vm.DbRootUser);
+        Assert.Equal("Stop", vm.DbStartStopLabel);
+
+        await vm.StartStopDbCommand.ExecuteAsync(null);
+        Assert.Contains("stop Database", _api.Calls);
+
+        _api.Raise(_api.Status with { Services = [new ServiceStatus(ServiceId.Database, ProcessState.Failed, "MariaDB 11.8.9", "MariaDB did not start.")] });
+        Assert.True(vm.DbFailed);
+        Assert.False(vm.DbRunning);
+        Assert.Equal("Failed", vm.DbStateText);
+        Assert.Equal("Start", vm.DbStartStopLabel);
+        Assert.Equal("MariaDB did not start.", vm.DbMessage);
+    }
+
+    [Fact]
+    public async Task Database_card_without_a_database_points_to_the_page()
+    {
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("Database", vm.DbTitle);
+        Assert.Equal("Not installed", vm.DbStateText);
+        Assert.False(vm.DbInstalled);
+        Assert.Equal("Set up MariaDB or MySQL on the Database page", vm.DbVersion);
     }
 }

@@ -1,6 +1,7 @@
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Database;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Platform;
@@ -42,7 +43,7 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
             k => k == ComponentKind.Apache ? orchestrator?.Settings.ActiveApache : null);
         orchestrator = new Orchestrator(paths, store, tester, new ApacheControl(supervisor, paths, tester, probeHttp), preflight.Run,
             new ComponentCatalog([new PhpCatalogProvider(probeHttp), new MariaDbCatalogProvider(probeHttp)], new ShippedCatalogProvider(paths)), installer,
-            pools, port => ports.HolderOf(port) is null, options.RunningAsService);
+            pools, port => ports.HolderOf(port) is null, options.RunningAsService, db: new DatabaseServer(paths, supervisor, TimeProvider.System));
 
         var shutdown = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var api = new AgentApi(orchestrator, stopServices => shutdown.TrySetResult(stopServices));
@@ -69,6 +70,8 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
 
         // Without a graceful stop, the job still ends every child when it closes below.
         if (stopServices) await orchestrator.StopAllAsync(CancellationToken.None);
+        // The rest ends with the Agent's job; a killed database would need crash recovery on its next start.
+        else await orchestrator.StopAsync(ServiceId.Database, CancellationToken.None);
         Log.Information("Agent stopped");
         return ExitOk;
     }

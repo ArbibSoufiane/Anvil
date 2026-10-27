@@ -2,6 +2,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Database;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
@@ -34,6 +35,10 @@ public sealed class FakeAgentApi : IAgentApi
     public Dictionary<string, SiteCertificate> Certificates { get; } = [];
     public List<string> Resolved { get; } = [];
     public Exception? CertificateError { get; set; }
+    public List<DbSettingRow> DbRows { get; } = [];
+    public IReadOnlyDictionary<string, string?>? DbSaved { get; private set; }
+    public Exception? BackupError { get; set; }
+    public string BackupFile { get; set; } = @"D:\ArbiPache\data\backups\db\2026-10-27-120000.sql.gz";
 
     public event EventHandler<AgentStatus>? StatusChanged;
 
@@ -164,6 +169,29 @@ public sealed class FakeAgentApi : IAgentApi
     {
         Calls.Add($"resolve {name}");
         return Task.FromResult<IReadOnlyList<string>>(Resolved.ToList());
+    }
+
+    public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default)
+    {
+        if (NextResult.Ok) Settings = Settings with { DbEngine = e, DbVersion = version };
+        return Record($"install db {e} {version}");
+    }
+
+    public Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<DbSettingRow>>(DbRows.ToList());
+
+    public Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default)
+    {
+        DbSaved = changes;
+        return Record("save db " + string.Join(" ", changes.OrderBy(c => c.Key).Select(c => $"{c.Key}={c.Value ?? "(default)"}")));
+    }
+
+    public Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default) => Record("db password");
+
+    public Task<string> BackupDatabaseAsync(CancellationToken ct = default)
+    {
+        Calls.Add("backup db");
+        return BackupError is { } error ? Task.FromException<string>(error) : Task.FromResult(BackupFile);
     }
 
     private Task<SiteCertificate> Issue(string siteId, CertSource source)

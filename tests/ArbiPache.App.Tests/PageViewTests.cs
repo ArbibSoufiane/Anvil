@@ -6,6 +6,7 @@ using ArbiPache.App.Views;
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Database;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
@@ -27,10 +28,12 @@ public sealed class PageViewTests
         var dashboard = new DashboardViewModel(_api, Paths, editor, ui: a => a());
         var apache = new ApacheViewModel(_api, Paths, editor, ui: a => a());
         var php = new PhpViewModel(_api, Paths, editor, ui: a => a());
+        var database = new DatabaseViewModel(_api, Paths, editor, ui: a => a());
         dashboard.LoadAsync().GetAwaiter().GetResult();
         apache.LoadAsync().GetAwaiter().GetResult();
         php.LoadAsync().GetAwaiter().GetResult();
-        var shell = new ShellViewModel(_api.Settings, dashboard, apache, php: php);
+        database.LoadAsync().GetAwaiter().GetResult();
+        var shell = new ShellViewModel(_api.Settings, dashboard, apache, php: php, database: database);
         var window = new MainWindow(shell);
         window.Show();
         window.UpdateLayout();
@@ -75,6 +78,66 @@ public sealed class PageViewTests
         Assert.Equal("Running", Named<TextBlock>(window, "PhpState").Text);
         Assert.Equal("PHP 8.5.12 NTS x64", Named<TextBlock>(window, "PhpDefault").Text);
         Assert.Equal("8.5 ×4", Named<TextBlock>(window, "PhpPools").Text);
+    }
+
+    private void WithMariaDb()
+    {
+        _api.Settings = _api.Settings with { DbEngine = DbEngine.MariaDb, DbVersion = "11.8.9" };
+        _api.Status = _api.Status with { Services = [new ServiceStatus(ServiceId.Database, ProcessState.Running, "MariaDB 11.8.9", null)] };
+        _api.DbRows.AddRange(
+        [
+            new("innodb_buffer_pool_size", "1G", "134217728", "Memory for table and index data", true, false, false, false),
+            new("max_connections", null, "151", "Most clients connected at once", false, false, false, false),
+            new("max_statement_time", "60", "0", "Seconds before a query is stopped", true, true, false, false),
+        ]);
+    }
+
+    [AvaloniaFact]
+    public void Dashboard_view_shows_database_card()
+    {
+        WithMariaDb();
+
+        var (window, _) = Show();
+
+        Assert.Equal("MariaDB", Named<TextBlock>(window, "DbTitle").Text);
+        Assert.Equal("Running", Named<TextBlock>(window, "DbState").Text);
+        Assert.Equal("127.0.0.1:3306", Named<TextBlock>(window, "DbListening").Text);
+    }
+
+    [AvaloniaFact]
+    public void Database_view_shows_settings_next_to_defaults()
+    {
+        WithMariaDb();
+        var (window, shell) = Show();
+
+        shell.NavigateCommand.Execute(AppPage.Database);
+        window.UpdateLayout();
+
+        Assert.IsType<DatabaseView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
+        Assert.Equal("MariaDB 11.8.9 · Running on 127.0.0.1:3306", Named<TextBlock>(window, "DbStatus").Text);
+        Assert.False(Named<Border>(window, "DbSetup").IsVisible);
+        var table = Named<ItemsControl>(window, "DbSettings");
+        var boxes = table.GetVisualDescendants().OfType<TextBox>().ToList();
+        Assert.Equal(["1G", "", "60"], boxes.Select(b => b.Text));
+        Assert.Equal([false, false, true], boxes.Select(b => b.IsReadOnly));
+        Assert.Contains(table.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "134217728");
+        Assert.Contains(table.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Set by Development mode. Change it on the Dev / Production page.");
+        var resets = table.GetVisualDescendants().OfType<Button>().Where(b => (string?)b.Content == "Reset").ToList();
+        Assert.Single(resets, b => b.IsEffectivelyVisible);
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Save and restart MariaDB");
+    }
+
+    [AvaloniaFact]
+    public void Database_view_without_database_offers_setup()
+    {
+        var (window, shell) = Show();
+
+        shell.NavigateCommand.Execute(AppPage.Database);
+        window.UpdateLayout();
+
+        Assert.True(Named<Border>(window, "DbSetup").IsVisible);
+        Assert.False(Named<ItemsControl>(window, "DbSettings").IsEffectivelyVisible);
+        Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Set up MariaDB");
     }
 
     [AvaloniaFact]

@@ -1,7 +1,130 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="ArbiPache.App.Views.DatabaseView">
-  <Border Classes="card" VerticalAlignment="Top">
-    <TextBlock Classes="dim" Text="This page is not built yet." />
-  </Border>
+             xmlns:vm="using:ArbiPache.App.ViewModels"
+             xmlns:db="using:ArbiPache.Core.Database"
+             x:Class="ArbiPache.App.Views.DatabaseView"
+             x:DataType="vm:DatabaseViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16">
+
+      <!-- Engine switch, status and the server's buttons -->
+      <Border Classes="card" Padding="20,16">
+        <DockPanel>
+          <Border Classes="segs" DockPanel.Dock="Left" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <Button Classes="seg" Classes.selected="{Binding IsMariaDbSelected}" Content="MariaDB"
+                      Command="{Binding SelectEngineCommand}" CommandParameter="{x:Static db:DbEngine.MariaDb}" />
+              <Button Classes="seg" Classes.selected="{Binding IsMySqlSelected}" Content="MySQL"
+                      Command="{Binding SelectEngineCommand}" CommandParameter="{x:Static db:DbEngine.MySql}" />
+            </StackPanel>
+          </Border>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding ShowsActive}">
+            <Button Classes="secondary" Content="{Binding StartStopLabel}" Command="{Binding StartStopCommand}" />
+            <Button Classes="secondary" Content="Open my.ini" Command="{Binding OpenMyIniCommand}" />
+            <Button Classes="secondary" Content="Back up all" Command="{Binding BackupCommand}" IsEnabled="{Binding IsRunning}" />
+          </StackPanel>
+          <StackPanel Margin="16,0" Spacing="2" VerticalAlignment="Center" IsVisible="{Binding ShowsActive}">
+            <TextBlock x:Name="DbStatus" FontWeight="Medium" Text="{Binding StatusText}" TextTrimming="CharacterEllipsis" />
+            <TextBlock Classes="mono dim" FontSize="12" Text="{Binding DataFolder}" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- Setting up, or switching to, the selected engine -->
+      <Border Classes="card" x:Name="DbSetup" IsVisible="{Binding ShowsSetup}">
+        <StackPanel Spacing="14">
+          <TextBlock Classes="h2" Text="{Binding SetupTitle}" />
+          <TextBlock Classes="para" Text="{Binding SetupNote}" />
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+            <StackPanel Spacing="4">
+              <TextBlock Classes="fieldLabel" Text="Version" />
+              <ComboBox HorizontalAlignment="Stretch" MinHeight="38" ItemsSource="{Binding InstallChoices}" SelectedItem="{Binding SelectedInstall}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:DbInstallChoice">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Spacing="4" Grid.Column="1">
+              <TextBlock Classes="fieldLabel" Text="Root password" />
+              <TextBox Classes="field" Text="{Binding RootPassword}" PasswordChar="•" PlaceholderText="At least 8 characters" />
+            </StackPanel>
+          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Classes="primary" Content="{Binding SetupTitle}" Command="{Binding InstallCommand}" />
+            <TextBlock Classes="note" VerticalAlignment="Center" Text="Downloads are SHA-256 verified. The server listens on 127.0.0.1 only." />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Classes="result" Classes.ok="{Binding ResultOk}" Text="{Binding ResultText}" TextWrapping="Wrap"
+                 IsVisible="{Binding ResultText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+      <!-- Server settings next to the server's own defaults -->
+      <StackPanel Spacing="12" IsVisible="{Binding ShowsActive}">
+        <DockPanel>
+          <TextBox Classes="field" DockPanel.Dock="Right" Width="200" Text="{Binding Filter}" PlaceholderText="Filter settings" />
+          <CheckBox DockPanel.Dock="Right" Margin="0,0,16,0" Content="Only changed" IsChecked="{Binding OnlyChanged}" />
+          <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <TextBlock Classes="h2" Text="Server settings" />
+            <TextBlock Classes="note" VerticalAlignment="Center" Text="{Binding ChangedText}" />
+          </StackPanel>
+        </DockPanel>
+
+        <Border Classes="card" Padding="0,8">
+          <StackPanel>
+            <Grid ColumnDefinitions="1.5*,1.2*,1.1*,2.2*,90" Margin="16,4,16,8">
+              <TextBlock Classes="dt" Text="Setting" />
+              <TextBlock Classes="dt" Grid.Column="1" Text="Current" />
+              <TextBlock Classes="dt" Grid.Column="2" Text="Default" Margin="8,0,0,0" />
+              <TextBlock Classes="dt" Grid.Column="3" Text="What it does" />
+            </Grid>
+            <ItemsControl x:Name="DbSettings" ItemsSource="{Binding VisibleRows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:DbSettingItem">
+                  <Border Classes="row" Padding="16,6">
+                    <Grid ColumnDefinitions="1.5*,1.2*,1.1*,2.2*,90">
+                      <TextBlock Classes="mono" FontSize="12" VerticalAlignment="Center" Text="{Binding Key}" TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding Key}" />
+                      <TextBox Classes="field" Grid.Column="1" VerticalAlignment="Center" Text="{Binding Value}" IsReadOnly="{Binding IsReadOnly}"
+                               PlaceholderText="{Binding Default}" />
+                      <TextBlock Classes="mono dim" Grid.Column="2" FontSize="12" Margin="8,0" VerticalAlignment="Center" Text="{Binding Default}"
+                                 TextTrimming="CharacterEllipsis" />
+                      <StackPanel Grid.Column="3" Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Classes="dd" Text="{Binding Description}" TextWrapping="Wrap" />
+                        <TextBlock Classes="note" Text="{Binding Hint}" TextWrapping="Wrap"
+                                   IsVisible="{Binding Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                      </StackPanel>
+                      <Button Classes="ghost" Grid.Column="4" HorizontalAlignment="Right" VerticalAlignment="Center" Content="Reset"
+                              Command="{Binding ResetCommand}" IsVisible="{Binding CanBeReset}" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+        <TextBlock Classes="note"
+                   Text="An empty value uses the server's default. Save writes my.ini and restarts the server; if it will not start, the previous settings are put back." />
+
+        <WrapPanel ItemSpacing="8" LineSpacing="8">
+          <Button Classes="primary" Content="{Binding SaveLabel}" Command="{Binding SaveCommand}" />
+          <Button Classes="secondary" Content="Change root password" Command="{Binding ChangeRootPasswordCommand}" />
+        </WrapPanel>
+
+        <Border Classes="card" IsVisible="{Binding IsChangingPassword}">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="h2" Text="New root password" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <TextBox Classes="field" Width="280" Text="{Binding NewRootPassword}" PasswordChar="•" PlaceholderText="At least 8 characters" />
+              <Button Classes="primary" Content="Set password" Command="{Binding ApplyRootPasswordCommand}" />
+              <Button Classes="ghost" Content="Cancel" Command="{Binding ChangeRootPasswordCommand}" />
+            </StackPanel>
+            <TextBlock Classes="note" Text="Changes root on every host it is defined for. ArbiPache keeps it encrypted for backups and clean shutdowns." />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>

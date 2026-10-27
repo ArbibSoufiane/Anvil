@@ -1,6 +1,7 @@
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Database;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
 using ArbiPache.Core.Sites;
@@ -82,6 +83,22 @@ public partial interface IAgentApi
 
     /// <summary>The addresses a domain resolves to from this server; empty when it does not resolve.</summary>
     Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// Makes an installed MariaDB or MySQL version the active database: initializes an empty datadir with the root
+    /// password (an existing one must accept it), stops the other engine and starts this one.
+    /// </summary>
+    Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default);
+
+    Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default);
+
+    /// <summary>Writes my.ini (a null value removes the key) and restarts the server; put back when it will not start.</summary>
+    Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default);
+
+    Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default);
+
+    /// <summary>Dumps every database to data\backups\db; returns the file.</summary>
+    Task<string> BackupDatabaseAsync(CancellationToken ct = default);
 
     /// <summary>Ends the Agent. With stopServices false, its processes still end with it (they live in its job).</summary>
     Task ShutdownAsync(bool stopServices, CancellationToken ct = default);

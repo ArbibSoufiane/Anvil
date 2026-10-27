@@ -7,6 +7,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Database;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Preflight;
@@ -98,6 +99,28 @@ public sealed class RpcTests
         Assert.Equal(["shop.test: already exists"], imported.Skipped);
         Assert.Equal(["7.4.9"], imported.MissingPhpVersions);
         Assert.Equal(["afaq.test"], imported.Result?.HostsDomains);
+    }
+
+    [Fact]
+    public async Task Database_calls_round_trip_with_null_resets_and_messages()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fake = new FakeApi();
+        var name = UniquePipe();
+        await using var server = new PipeServer(name, fake, []);
+        server.Start();
+        await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
+
+        var rows = await client.Api.GetDbSettingsAsync(ct);
+        var saved = await client.Api.SaveDbSettingsAsync(new Dictionary<string, string?> { ["max_connections"] = null, ["wait_timeout"] = "600" }, ct);
+        var error = await Assert.ThrowsAnyAsync<Exception>(() => client.Api.BackupDatabaseAsync(ct));
+
+        Assert.Equal(new DbSettingRow("max_connections", "300", "151", "Clients at once", true, false, false, false), Assert.Single(rows));
+        Assert.True(saved.Ok);
+        Assert.True(fake.DbChanges!.ContainsKey("max_connections"));
+        Assert.Null(fake.DbChanges["max_connections"]);
+        Assert.Equal("600", fake.DbChanges["wait_timeout"]);
+        Assert.Contains("Start the database first.", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -293,6 +316,25 @@ public sealed class RpcTests
 
         public Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<string>>(["203.0.113.5"]);
+
+        public IReadOnlyDictionary<string, string?>? DbChanges { get; private set; }
+
+        public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
+            Task.FromResult(ApplyResult.Success());
+
+        public Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<DbSettingRow>>([new DbSettingRow("max_connections", "300", "151", "Clients at once", true, false, false, false)]);
+
+        public Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default)
+        {
+            DbChanges = changes;
+            return Task.FromResult(ApplyResult.Success());
+        }
+
+        public Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default) => Task.FromResult(ApplyResult.Success());
+
+        public Task<string> BackupDatabaseAsync(CancellationToken ct = default) =>
+            Task.FromException<string>(new InvalidOperationException("Start the database first."));
 
         public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate> { ["shop.test"] = Cert });

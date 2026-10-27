@@ -25,16 +25,18 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly ApacheViewModel? _apache;
     private readonly LogsViewModel? _logs;
     private readonly PhpViewModel? _php;
+    private readonly DatabaseViewModel? _database;
     private readonly SitesViewModel? _sites;
     private readonly SettingsViewModel? _settings;
 
     public ShellViewModel(AppSettings settings, DashboardViewModel? dashboard = null, ApacheViewModel? apache = null, LogsViewModel? logs = null,
-        PhpViewModel? php = null, SitesViewModel? sites = null, SettingsViewModel? settingsPage = null)
+        PhpViewModel? php = null, SitesViewModel? sites = null, SettingsViewModel? settingsPage = null, DatabaseViewModel? database = null)
     {
         _dashboard = dashboard;
         _apache = apache;
         _logs = logs;
         _php = php;
+        _database = database;
         _sites = sites;
         _settings = settingsPage;
         Mode = settings.Mode;
@@ -65,6 +67,7 @@ public sealed partial class ShellViewModel : ObservableObject
         AppPage.Dashboard when _dashboard is not null => _dashboard,
         AppPage.Apache when _apache is not null => _apache,
         AppPage.Php when _php is not null => _php,
+        AppPage.Database when _database is not null => _database,
         AppPage.Sites when _sites is not null => _sites,
         AppPage.Settings when _settings is not null => _settings,
         AppPage.Logs when _logs is not null => _logs,
