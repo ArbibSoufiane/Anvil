@@ -4,6 +4,7 @@ using ArbiPache.App.ViewModels;
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
@@ -42,6 +43,20 @@ public sealed class ApacheViewModelTests
         Assert.NotNull(_api.Saved);
         Assert.Equal(["expires", "http2", "status"], _api.Saved.OptionalModules.Order());
         Assert.All(ApacheModules.Required, m => Assert.DoesNotContain(m, _api.Saved.OptionalModules));
+    }
+
+    [Fact]
+    public async Task Request_timeout_shows_the_users_profile_value()
+    {
+        _api.Profiles[0] = BuiltInProfiles.Development with
+        {
+            Apache = new Dictionary<string, string>(BuiltInProfiles.Development.Apache) { ["Timeout"] = "120" },
+        };
+        var vm = Make();
+
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("120", vm.RequestTimeout);
     }
 
     [Fact]

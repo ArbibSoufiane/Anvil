@@ -946,13 +946,18 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     /// The settings' mode profile: built-in values with the user's edits from data\profiles, and Xdebug kept in
     /// Production when the switch asked for it.
     /// </summary>
-    private ModeProfile Profile(AppSettings s)
+    private ModeProfile Profile(AppSettings s) => WithXdebugChoice(s, Profile(s.Mode));
+
+    private ModeProfile Profile(ServerMode mode)
     {
         var profiles = new ProfileStore(paths);
-        var profile = profiles.Get(s.Mode);
+        var profile = profiles.Get(mode);
         if (profiles.LastLoadWarning is { } warning) Log.Warning("{Warning}", warning);
-        return s.Mode == ServerMode.Production && s.XdebugInProduction ? profile with { Xdebug = true } : profile;
+        return profile;
     }
+
+    private static ModeProfile WithXdebugChoice(AppSettings s, ModeProfile p) =>
+        s.Mode == ServerMode.Production && s.XdebugInProduction ? p with { Xdebug = true } : p;
 
     /// <summary>Writes conf.d\99-arbipache-mode.ini for a PHP version; untouched when it already says the same.</summary>
     private void WritePhpMode(string version, ModeProfile profile)

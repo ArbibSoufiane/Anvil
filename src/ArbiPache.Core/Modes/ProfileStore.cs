@@ -27,10 +27,39 @@ public sealed class ProfileStore(AppPaths paths)
     public ModeProfile Get(ServerMode m)
     {
         LastLoadWarning = null;
-        var builtIn = BuiltInProfiles.For(m);
-        if (Load(m) is not { } o) return builtIn;
+        if (Load(m) is not { } o) return BuiltInProfiles.For(m);
         var ignored = new List<string>();
-        var profile = builtIn with
+        var profile = Merge(m, o, ignored);
+        if (ignored.Count > 0)
+            LastLoadWarning = $"{Path.GetFileName(FileFor(m))}: {string.Join(", ", ignored)} {(ignored.Count == 1 ? "contains a line break and was" : "contain line breaks and were")} ignored.";
+        return profile;
+    }
+
+    /// <summary>The profile <see cref="Get"/> returns once these overrides are saved.</summary>
+    /// <exception cref="ArgumentException">A key or value contains a line break.</exception>
+    public static ModeProfile With(ServerMode m, ModeProfileOverrides o)
+    {
+        Validate(o);
+        return Merge(m, o, []);
+    }
+
+    public void SaveOverrides(ServerMode m, ModeProfileOverrides o)
+    {
+        Validate(o);
+        Directory.CreateDirectory(paths.Profiles);
+        JsonFiles.Write(FileFor(m), o);
+    }
+
+    private static void Validate(ModeProfileOverrides o)
+    {
+        foreach (var (key, value) in new[] { o.Php, o.Apache, o.Database }.SelectMany(part => part ?? new Dictionary<string, string>()))
+            if (HasLineBreak(key, value)) throw new ArgumentException($"{key} cannot contain line breaks.");
+    }
+
+    private static ModeProfile Merge(ServerMode m, ModeProfileOverrides o, List<string> ignored)
+    {
+        var builtIn = BuiltInProfiles.For(m);
+        return builtIn with
         {
             // Each part keys the way its config reads it: php.ini as written, Apache directives
             // without case, MariaDB/MySQL options with - and _ alike.
@@ -41,17 +70,6 @@ public sealed class ProfileStore(AppPaths paths)
             SecurityHeaders = o.SecurityHeaders ?? builtIn.SecurityHeaders,
             DirectoryListing = o.DirectoryListing ?? builtIn.DirectoryListing,
         };
-        if (ignored.Count > 0)
-            LastLoadWarning = $"{Path.GetFileName(FileFor(m))}: {string.Join(", ", ignored)} {(ignored.Count == 1 ? "contains a line break and was" : "contain line breaks and were")} ignored.";
-        return profile;
-    }
-
-    public void SaveOverrides(ServerMode m, ModeProfileOverrides o)
-    {
-        foreach (var (key, value) in new[] { o.Php, o.Apache, o.Database }.SelectMany(part => part ?? new Dictionary<string, string>()))
-            if (HasLineBreak(key, value)) throw new ArgumentException($"{key} cannot contain line breaks.");
-        Directory.CreateDirectory(paths.Profiles);
-        JsonFiles.Write(FileFor(m), o);
     }
 
     public void Reset(ServerMode m) => File.Delete(FileFor(m));

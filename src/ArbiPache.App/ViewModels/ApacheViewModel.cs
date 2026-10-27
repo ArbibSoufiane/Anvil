@@ -58,6 +58,7 @@ public sealed partial class ApacheViewModel : ObservableObject
     private readonly EditorLauncher _editor;
     private readonly Action<Action> _ui;
     private AppSettings _settings = new();
+    private IReadOnlyList<ModeProfile> _profiles = [];
     private bool _apacheRunning;
 
     public ApacheViewModel(IAgentApi api, AppPaths paths, EditorLauncher editor, Action<Action>? ui = null)
@@ -117,6 +118,7 @@ public sealed partial class ApacheViewModel : ObservableObject
     {
         _settings = await _api.GetSettingsAsync(ct);
         _apacheRunning = IsRunning(await _api.GetStatusAsync(ct));
+        _profiles = await _api.GetModeProfilesAsync(ct);
         ApplySettings();
         await RefreshVersionsAsync(ct);
     }
@@ -254,7 +256,8 @@ public sealed partial class ApacheViewModel : ObservableObject
         ThreadsPerChild = s.Apache.ThreadsPerChild;
         MaxConnectionsPerChild = s.Apache.MaxConnectionsPerChild;
         KeepAliveTimeout = s.Apache.KeepAliveTimeout;
-        var profile = BuiltInProfiles.For(s.Mode);
+        // The user's edits from the Dev / Production page, once the Agent has answered.
+        var profile = _profiles.FirstOrDefault(p => p.Mode == s.Mode) ?? BuiltInProfiles.For(s.Mode);
         RequestTimeout = profile.Apache.TryGetValue("Timeout", out var timeout) ? timeout : "";
         RequestTimeoutHint = $"Set by {s.Mode} profile";
 

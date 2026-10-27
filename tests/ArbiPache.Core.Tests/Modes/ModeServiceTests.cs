@@ -114,6 +114,82 @@ public sealed class ModeServiceTests : IDisposable
         Assert.Contains("max_statement_time = 0", File.ReadAllText(DbModeCnf), StringComparison.Ordinal);
     }
 
+    private static ModeProfileOverrides PhpOverride(string key, string value) =>
+        new(Php: new Dictionary<string, string> { [key] = value }, Apache: null, Database: null, Xdebug: null, SecurityHeaders: null, DirectoryListing: null);
+
+    [Fact]
+    public async Task Profiles_list_both_modes_with_the_users_values()
+    {
+        var orchestrator = await RunningAsync();
+        new ProfileStore(_paths).SaveOverrides(ServerMode.Production, PhpOverride("memory_limit", "512M"));
+
+        var profiles = await orchestrator.GetModeProfilesAsync(Ct);
+
+        Assert.Equal([ServerMode.Development, ServerMode.Production], profiles.Select(p => p.Mode));
+        Assert.Equal("1G", profiles[0].Php["memory_limit"]);
+        Assert.Equal("512M", profiles[1].Php["memory_limit"]);
+    }
+
+    [Fact]
+    public async Task Saving_the_other_modes_profile_only_stores_it()
+    {
+        var orchestrator = await RunningAsync();
+        var before = Generated();
+
+        var result = await orchestrator.SaveModeProfileAsync(ServerMode.Production, PhpOverride("memory_limit", "512M"), Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("512M", new ProfileStore(_paths).Get(ServerMode.Production).Php["memory_limit"]);
+        Assert.Equal(before, Generated());
+        Assert.Empty(_events);
+    }
+
+    [Fact]
+    public async Task Saving_the_active_profile_rewrites_its_files_and_restarts_what_changed()
+    {
+        var orchestrator = await RunningAsync();
+
+        var result = await orchestrator.SaveModeProfileAsync(ServerMode.Development, PhpOverride("memory_limit", "2G"), Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Null(result.RequiredFirewall);
+        Assert.Contains("memory_limit = 2G", File.ReadAllText(PhpModeIni), StringComparison.Ordinal);
+        Assert.Equal(["php85"], _pools.Restarted);
+        Assert.Equal(0, _apache.Restarts);
+        Assert.DoesNotContain(_events, e => e.StartsWith("db ", StringComparison.Ordinal));
+        var snapshot = Assert.Single(new BackupService(_paths, TimeProvider.System).List());
+        Assert.Contains("development.json", File.ReadAllText(Path.Combine(snapshot, "manifest.json")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_rejected_profile_edit_puts_the_old_values_back()
+    {
+        var orchestrator = await RunningAsync();
+        var before = Generated();
+        _tester.Next = new ConfigTestResult(false, "AH00526: Syntax error on line 2 of mode.conf");
+        var overrides = new ModeProfileOverrides(null, new Dictionary<string, string> { ["Timeout"] = "ten" }, null, null, null, null);
+
+        var result = await orchestrator.SaveModeProfileAsync(ServerMode.Development, overrides, Ct);
+
+        Assert.False(result.Ok);
+        Assert.Equal("Apache rejected the configuration. The Development profile keeps its values, and its files were put back.", result.Error);
+        Assert.False(File.Exists(new ProfileStore(_paths).FileFor(ServerMode.Development)));
+        Assert.Equal(before, Generated());
+        Assert.Empty(_events);
+    }
+
+    [Fact]
+    public async Task A_profile_value_with_a_line_break_is_refused()
+    {
+        var orchestrator = await RunningAsync();
+
+        var result = await orchestrator.SaveModeProfileAsync(ServerMode.Production, PhpOverride("memory_limit", "1G\nauto_prepend_file = x"), Ct);
+
+        Assert.False(result.Ok);
+        Assert.Equal("memory_limit cannot contain line breaks.", result.Error);
+        Assert.False(File.Exists(new ProfileStore(_paths).FileFor(ServerMode.Production)));
+    }
+
     [Fact]
     public async Task Stopped_services_get_the_new_files_and_no_restart()
     {

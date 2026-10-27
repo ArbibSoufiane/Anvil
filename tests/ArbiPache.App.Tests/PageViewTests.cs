@@ -7,9 +7,11 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
+using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
+using ArbiPache.Core.Settings;
 using ArbiPache.Core.Sites;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
@@ -284,5 +286,72 @@ public sealed class PageViewTests
         Assert.Contains(Named<Border>(window, "CaStatus").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Not trusted");
         Assert.Equal("80", Named<TextBox>(window, "HttpPort").Text);
         Assert.True(Named<TextBox>(window, "AcmeEmail").IsEffectivelyVisible);
+    }
+
+    private (MainWindow Window, ShellViewModel Shell, ModeViewModel Mode) ShowModePage()
+    {
+        _api.ModePreview = new ModeChangeSet(ServerMode.Development, ServerMode.Production,
+            [new SettingChange("PHP", @"php\8.5.12\conf.d\99-arbipache-mode.ini", "display_errors", "On", "Off")],
+            [ServiceId.Php], Path.Combine(Paths.Backups, "2026-10-27-140209"));
+        var mode = new ModeViewModel(_api, ui: a => a());
+        mode.LoadAsync().GetAwaiter().GetResult();
+        var shell = new ShellViewModel(_api.Settings, mode: mode,
+            modeSwitch: (from, to) => new ModeSwitchViewModel(_api, new ElevationFollowUp(new FakeElevator()), Paths, from, to));
+        var window = new MainWindow(shell);
+        window.Show();
+        window.UpdateLayout();
+        return (window, shell, mode);
+    }
+
+    [AvaloniaFact]
+    public void Mode_view_shows_the_mode_cards_and_both_profiles()
+    {
+        var (window, shell, _) = ShowModePage();
+
+        shell.NavigateCommand.Execute(AppPage.Mode);
+        window.UpdateLayout();
+
+        Assert.IsType<ModeView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
+        Assert.Contains("selected", Named<Button>(window, "CardDev").Classes);
+        Assert.DoesNotContain("selected", Named<Button>(window, "CardProd").Classes);
+        var rows = Named<ItemsControl>(window, "ModeRows").GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+        Assert.Contains("display_errors", rows);
+        Assert.Contains("Not loaded", rows);
+        Assert.Contains("selected", Named<Button>(window, "ModeDev").Classes);
+    }
+
+    [AvaloniaFact]
+    public async Task Header_switch_shows_the_dialog_with_the_changes()
+    {
+        var (window, shell, _) = ShowModePage();
+
+        await shell.RequestModeCommand.ExecuteAsync(ServerMode.Production);
+        window.UpdateLayout();
+
+        var dialog = Named<ModeSwitchDialog>(window, "ModeSwitch");
+        Assert.True(dialog.IsEffectivelyVisible);
+        var texts = dialog.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+        Assert.Contains("Switch to Production mode?", texts);
+        Assert.Contains("display_errors", texts);
+        Assert.Contains(@"php\8.5.12\conf.d\99-arbipache-mode.ini", texts);
+        Assert.Equal(@"Current files are backed up to data\backups\2026-10-27-140209. Switch back any time and you get them exactly as they were.",
+            Named<TextBlock>(window, "BackupNote").Inlines!.Text);
+        Assert.True(Named<Button>(window, "ApplySwitch").IsEffectivelyVisible);
+        Assert.Contains(dialog.GetVisualDescendants().OfType<CheckBox>(), c => c.Content as string == "Keep Xdebug loaded" && c.IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void Profile_editor_lists_values_next_to_built_in_ones()
+    {
+        var (window, shell, mode) = ShowModePage();
+        shell.NavigateCommand.Execute(AppPage.Mode);
+
+        mode.EditProfileCommand.Execute(ServerMode.Production);
+        window.UpdateLayout();
+
+        Assert.True(Named<Border>(window, "ProfileEditor").IsEffectivelyVisible);
+        var boxes = Named<ItemsControl>(window, "ProfileValues").GetVisualDescendants().OfType<TextBox>().ToList();
+        Assert.Contains(boxes, b => b.Text == "256M");
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Save" && b.IsEffectivelyVisible);
     }
 }

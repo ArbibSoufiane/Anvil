@@ -1,0 +1,89 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ArbiPache.App.ViewModels"
+             x:Class="ArbiPache.App.Views.ModeSwitchDialog"
+             x:DataType="vm:ModeSwitchViewModel">
+  <Border Classes="dialog" Width="640" MaxHeight="700" Margin="16,24" Padding="0" HorizontalAlignment="Center" VerticalAlignment="Center">
+    <DockPanel>
+      <!-- What happens -->
+      <Border DockPanel.Dock="Top" Padding="24,22,24,16" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,0,0,1">
+        <StackPanel Spacing="6">
+          <Border Classes="modeChip" Classes.prod="{Binding ToProduction}" HorizontalAlignment="Left" Margin="0">
+            <TextBlock Text="{Binding Chip}" />
+          </Border>
+          <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding Title}" />
+          <TextBlock Classes="dim" FontSize="13" TextWrapping="Wrap" Text="{Binding Note}" />
+        </StackPanel>
+      </Border>
+
+      <!-- Keep Xdebug, Cancel, Apply -->
+      <Border DockPanel.Dock="Bottom" Padding="24,16" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,1,0,0">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10">
+            <Button Classes="secondary" Content="{Binding CancelLabel}" Command="{Binding CancelCommand}" />
+            <Button x:Name="ApplySwitch" Classes="primary" Content="Apply and restart" Command="{Binding ApplyCommand}"
+                    IsVisible="{Binding ShowsApply}" />
+          </StackPanel>
+          <CheckBox Content="Keep Xdebug loaded" IsChecked="{Binding KeepXdebug}" IsVisible="{Binding ShowsKeepXdebug}"
+                    VerticalAlignment="Center" />
+        </DockPanel>
+      </Border>
+
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,16" Spacing="14">
+          <ItemsControl x:Name="ModeChanges" ItemsSource="{Binding Groups}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="14" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ModeChangeGroup">
+                <StackPanel Spacing="6">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock FontWeight="SemiBold" FontSize="13" Text="{Binding Name}" />
+                    <TextBlock Classes="mono dim" FontSize="12" VerticalAlignment="Center" Text="{Binding File}" IsVisible="{Binding HasFile}" />
+                  </StackPanel>
+                  <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Spacing="4" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ModeChangeRow">
+                        <Border Classes="changeRow">
+                          <Grid ColumnDefinitions="1.4*,*,*" ColumnSpacing="12">
+                            <TextBlock Foreground="#C9CFD6" Text="{Binding Key}" />
+                            <TextBlock Grid.Column="1" Classes="dim" TextDecorations="Strikethrough" Text="{Binding From}" />
+                            <TextBlock Grid.Column="2" Classes="to"
+                                       Classes.prod="{Binding $parent[UserControl].((vm:ModeSwitchViewModel)DataContext).ToProduction}"
+                                       Text="{Binding To}" />
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <Border Classes="backupNote" IsVisible="{Binding HasBackupPath}">
+            <DockPanel>
+              <Viewbox DockPanel.Dock="Left" Width="18" Height="18" Margin="0,0,10,0" VerticalAlignment="Top">
+                <Canvas Width="24" Height="24">
+                  <Path Classes="icon" Stroke="{StaticResource DevTextBrush}" Data="M12 3 L20 6 V12 C20 16.5 16.5 20 12 21 C7.5 20 4 16.5 4 12 V6 Z" />
+                </Canvas>
+              </Viewbox>
+              <!-- The runs share one line: a line break between them would show as a space. -->
+              <TextBlock x:Name="BackupNote"><Run Text="Current files are backed up to " /><Run FontFamily="{StaticResource MonoFont}" Text="{Binding BackupPath}" /><Run Text=". Switch back any time and you get them exactly as they were." /></TextBlock>
+            </DockPanel>
+          </Border>
+
+          <TextBlock x:Name="SwitchMessage" Classes="error" TextWrapping="Wrap" Text="{Binding Message}" IsVisible="{Binding HasMessage}" />
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
+  </Border>
+</UserControl>

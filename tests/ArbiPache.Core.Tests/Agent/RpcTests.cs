@@ -137,6 +137,9 @@ public sealed class RpcTests
 
         var preview = await client.Api.PreviewModeAsync(ServerMode.Production, ct);
         var applied = await client.Api.ApplyModeAsync(ServerMode.Production, new ModeOptions(KeepXdebug: true), ct);
+        var profiles = await client.Api.GetModeProfilesAsync(ct);
+        var saved = await client.Api.SaveModeProfileAsync(ServerMode.Production,
+            new ModeProfileOverrides(new Dictionary<string, string> { ["memory_limit"] = "512M" }, null, null, null, true, null), ct);
 
         Assert.Equal((ServerMode.Development, ServerMode.Production), (preview.From, preview.To));
         Assert.Equal(new SettingChange("PHP", @"php\8.5.12\conf.d\99-arbipache-mode.ini", "display_errors", "On", "Off"), Assert.Single(preview.Changes));
@@ -144,6 +147,14 @@ public sealed class RpcTests
         Assert.Equal(@"D:\ArbiPache\data\backups\2026-10-27-120000", preview.BackupPreviewPath);
         Assert.Equal(FirewallScope.Internet, applied.RequiredFirewall);
         Assert.Equal((ServerMode.Production, new ModeOptions(KeepXdebug: true)), fake.ModeApplied);
+        Assert.Equal([ServerMode.Development, ServerMode.Production], profiles.Select(p => p.Mode));
+        Assert.Equal(BuiltInProfiles.Production.Php.ToList(), profiles[1].Php.ToList());
+        Assert.False(profiles[1].DirectoryListing);
+        Assert.True(saved.Ok);
+        Assert.Equal(ServerMode.Production, fake.ProfileSaved!.Value.Mode);
+        Assert.Equal("512M", fake.ProfileSaved.Value.Overrides.Php!["memory_limit"]);
+        Assert.Null(fake.ProfileSaved.Value.Overrides.Apache);
+        Assert.True(fake.ProfileSaved.Value.Overrides.SecurityHeaders);
     }
 
     [Fact]
@@ -370,6 +381,17 @@ public sealed class RpcTests
         {
             ModeApplied = (target, options);
             return Task.FromResult(ApplyResult.Success() with { RequiredFirewall = FirewallScope.Internet });
+        }
+
+        public (ServerMode Mode, ModeProfileOverrides Overrides)? ProfileSaved { get; private set; }
+
+        public Task<IReadOnlyList<ModeProfile>> GetModeProfilesAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<ModeProfile>>([BuiltInProfiles.Development, BuiltInProfiles.Production]);
+
+        public Task<ApplyResult> SaveModeProfileAsync(ServerMode mode, ModeProfileOverrides overrides, CancellationToken ct = default)
+        {
+            ProfileSaved = (mode, overrides);
+            return Task.FromResult(ApplyResult.Success());
         }
 
         public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>

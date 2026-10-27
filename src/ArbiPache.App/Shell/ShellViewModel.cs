@@ -28,10 +28,16 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly DatabaseViewModel? _database;
     private readonly SitesViewModel? _sites;
     private readonly SettingsViewModel? _settings;
+    private readonly ModeViewModel? _mode;
+    private readonly Func<ServerMode, ServerMode, ModeSwitchViewModel>? _modeSwitch;
 
     public ShellViewModel(AppSettings settings, DashboardViewModel? dashboard = null, ApacheViewModel? apache = null, LogsViewModel? logs = null,
-        PhpViewModel? php = null, SitesViewModel? sites = null, SettingsViewModel? settingsPage = null, DatabaseViewModel? database = null)
+        PhpViewModel? php = null, SitesViewModel? sites = null, SettingsViewModel? settingsPage = null, DatabaseViewModel? database = null,
+        ModeViewModel? mode = null, Func<ServerMode, ServerMode, ModeSwitchViewModel>? modeSwitch = null)
     {
+        _mode = mode;
+        _modeSwitch = modeSwitch;
+        if (mode is not null) mode.SwitchRequested += (_, target) => _ = RequestModeCommand.ExecuteAsync(target);
         _dashboard = dashboard;
         _apache = apache;
         _logs = logs;
@@ -71,6 +77,7 @@ public sealed partial class ShellViewModel : ObservableObject
         AppPage.Sites when _sites is not null => _sites,
         AppPage.Settings when _settings is not null => _settings,
         AppPage.Logs when _logs is not null => _logs,
+        AppPage.Mode when _mode is not null => _mode,
         _ => Current,
     };
 
@@ -81,8 +88,15 @@ public sealed partial class ShellViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ModeLabel), nameof(IsProduction))]
+    [NotifyPropertyChangedFor(nameof(ModeLabel), nameof(IsProduction), nameof(IsDevelopment))]
     public partial ServerMode Mode { get; set; }
+
+    /// <summary>The switch dialog while it is open.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasModeSwitch))]
+    public partial ModeSwitchViewModel? ModeSwitch { get; set; }
+
+    public bool HasModeSwitch => ModeSwitch is not null;
 
     public bool CloseToTray { get; set; }
 
@@ -91,6 +105,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public string Version { get; } = BuildInfo.Version;
     public string ModeLabel => IsProduction ? "Production mode" : "Development mode";
     public bool IsProduction => Mode == ServerMode.Production;
+    public bool IsDevelopment => !IsProduction;
 
     /// <summary>Raised when another launch or the tray asks for the window.</summary>
     public event EventHandler? ActivationRequested;
@@ -100,6 +115,21 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [RelayCommand]
     private void Navigate(AppPage page) => Select(page);
+
+    /// <summary>The header's Development / Production control and the Mode page's cards: opens the switch dialog for the other mode.</summary>
+    [RelayCommand]
+    private async Task RequestModeAsync(ServerMode target)
+    {
+        if (target == Mode || ModeSwitch is not null || _modeSwitch is null) return;
+        var dialog = _modeSwitch(Mode, target);
+        dialog.Closed += (_, switched) =>
+        {
+            ModeSwitch = null;
+            if (switched) Mode = target;
+        };
+        ModeSwitch = dialog;
+        await dialog.LoadAsync();
+    }
 
     private void Select(AppPage page)
     {

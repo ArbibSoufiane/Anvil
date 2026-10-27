@@ -227,6 +227,12 @@ public sealed class AgentConnection : IAsyncDisposable
         public async Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default) =>
             await (await Remote()).ApplyModeAsync(target, options, ct);
 
+        public async Task<IReadOnlyList<ModeProfile>> GetModeProfilesAsync(CancellationToken ct = default) =>
+            await (await Remote()).GetModeProfilesAsync(ct);
+
+        public async Task<ApplyResult> SaveModeProfileAsync(ServerMode mode, ModeProfileOverrides overrides, CancellationToken ct = default) =>
+            await (await Remote()).SaveModeProfileAsync(mode, overrides, ct);
+
         public async Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => await (await Remote()).ShutdownAsync(stopServices, ct);
     }
 }

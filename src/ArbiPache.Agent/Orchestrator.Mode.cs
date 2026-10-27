@@ -1,6 +1,7 @@
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Database;
 using ArbiPache.Core.Elevation;
 using ArbiPache.Core.IO;
 using ArbiPache.Core.Modes;
@@ -10,9 +11,9 @@ using Serilog;
 namespace ArbiPache.Agent;
 
 /// <summary>
-/// Development/Production: a switch backs up every file it writes, writes the mode's PHP, Apache and database files,
-/// tests Apache's configuration and restarts only the running services whose files changed. Any failure puts the
-/// files and the previous mode back and restarts what had already restarted.
+/// Development/Production: a switch, or an edit of the active mode's profile, backs up every file it writes, writes the
+/// mode's PHP, Apache and database files, tests Apache's configuration and restarts only the running services whose
+/// files changed. Any failure puts the files, the profile and the previous mode back and restarts what had already restarted.
 /// </summary>
 public sealed partial class Orchestrator
 {
@@ -20,7 +21,8 @@ public sealed partial class Orchestrator
     {
         try
         {
-            return Task.FromResult(PlanMode(_settings, NextMode(target, new ModeOptions(KeepXdebug: false))).Set);
+            var next = NextMode(target, new ModeOptions(KeepXdebug: false));
+            return Task.FromResult(PlanMode(_settings, Profile(_settings), next, Profile(next)).Set);
         }
         catch (ArgumentException e)
         {
@@ -34,11 +36,61 @@ public sealed partial class Orchestrator
         var next = NextMode(target, options);
         if (next == previous) return ApplyResult.Success();
 
+        var result = await ChangeAsync(next, Profile(next), $"{previous.Mode} to {target}", [], () => Save(next),
+            $"{previous.Mode} mode stays, and its files were put back.",
+            failed => $"{failed} did not restart in {target} mode, so {previous.Mode} mode and its files were put back.", ct);
+        return result.Ok
+            ? result with { RequiredFirewall = target == ServerMode.Production ? FirewallScope.Internet : FirewallScope.LocalNetwork }
+            : result;
+    }, ct);
+
+    /// <summary>Development, then Production: the built-in values with the user's edits.</summary>
+    public Task<IReadOnlyList<ModeProfile>> GetModeProfilesAsync(CancellationToken ct) => Locked<IReadOnlyList<ModeProfile>>(() =>
+        Task.FromResult<IReadOnlyList<ModeProfile>>([Profile(ServerMode.Development), Profile(ServerMode.Production)]), ct);
+
+    /// <summary>Stores the user's edits to a profile; for the active mode, also rewrites its files and restarts what changed.</summary>
+    public Task<ApplyResult> SaveModeProfileAsync(ServerMode mode, ModeProfileOverrides overrides, CancellationToken ct) => Locked(async () =>
+    {
+        var profiles = new ProfileStore(paths);
+        ModeProfile edited;
+        try
+        {
+            edited = ProfileStore.With(mode, overrides);
+            // The database values are checked now, not at the next switch or database start.
+            DbModeRenderer.Values(edited, DbEngine.MariaDb);
+        }
+        catch (ArgumentException e)
+        {
+            return ApplyResult.Failure(e.Message);
+        }
+
+        if (mode != _settings.Mode)
+        {
+            profiles.SaveOverrides(mode, overrides);
+            return ApplyResult.Success();
+        }
+        return await ChangeAsync(_settings, WithXdebugChoice(_settings, edited), $"{mode} profile edited", [profiles.FileFor(mode)],
+            () => profiles.SaveOverrides(mode, overrides),
+            $"The {mode} profile keeps its values, and its files were put back.",
+            failed => $"{failed} did not restart with the edited {mode} profile, so its values and files were put back.", ct);
+    }, ct);
+
+    /// <summary>
+    /// Backs up every file the change may write (and <paramref name="alsoBackUp"/>), commits it, writes the mode files,
+    /// applies Apache's configuration and restarts the running services whose files changed.
+    /// </summary>
+    /// <param name="to">The profile the change leads to, as <see cref="Profile(AppSettings)"/> returns it once committed.</param>
+    /// <param name="rejected">Follows "Apache rejected the configuration." when the config test fails.</param>
+    /// <param name="notRestarted">The message for a service that did not restart, given the service's name.</param>
+    private async Task<ApplyResult> ChangeAsync(AppSettings next, ModeProfile to, string reason, IReadOnlyList<string> alsoBackUp, Action commit,
+        string rejected, Func<string, string> notRestarted, CancellationToken ct)
+    {
+        var previous = _settings;
         ModeChangeSet set;
         IReadOnlyList<string> files;
         try
         {
-            (set, files) = PlanMode(previous, next);
+            (set, files) = PlanMode(previous, Profile(previous), next, to);
         }
         catch (ArgumentException e)
         {
@@ -46,12 +98,12 @@ public sealed partial class Orchestrator
         }
 
         var backups = new BackupService(paths, _time);
-        var snapshot = backups.Snapshot(files, $"{previous.Mode} to {target}");
+        var snapshot = backups.Snapshot(files.Concat(alsoBackUp), reason);
         var restarted = new List<ServiceId>();
         try
         {
-            // Saved first: the pool restarts and database start below render their files from the current settings.
-            Save(next);
+            // Committed first: the pool restarts and database start below render their files from the current settings and profile.
+            commit();
             var profile = Profile(next);
             foreach (var phpVersion in PhpVersions(next)) WritePhpMode(phpVersion, profile);
             if (ActiveDb is { } a) WriteDbMode(a.Engine);
@@ -61,8 +113,7 @@ public sealed partial class Orchestrator
                 if (!applied.Ok)
                 {
                     await UndoModeAsync(backups, snapshot, previous, restarted, ct);
-                    return ApplyResult.Failure($"Apache rejected the configuration. {previous.Mode} mode stays, and its files were put back.",
-                        applied.TestOutput);
+                    return ApplyResult.Failure($"Apache rejected the configuration. {rejected}", applied.TestOutput);
                 }
             }
             foreach (var service in set.Restarts)
@@ -75,13 +126,10 @@ public sealed partial class Orchestrator
         {
             var failed = restarted.Count > 0 ? ServiceName(restarted[^1]) : "The switch";
             await UndoModeAsync(backups, snapshot, previous, restarted, ct);
-            return ApplyResult.Failure($"{failed} did not restart in {target} mode, so {previous.Mode} mode and its files were put back. {e.Message}");
+            return ApplyResult.Failure($"{notRestarted(failed)} {e.Message}");
         }
-        return ApplyResult.Success() with
-        {
-            RequiredFirewall = target == ServerMode.Production ? FirewallScope.Internet : FirewallScope.LocalNetwork,
-        };
-    }, ct);
+        return ApplyResult.Success();
+    }
 
     private AppSettings NextMode(ServerMode target, ModeOptions options) => _settings with
     {
@@ -89,12 +137,12 @@ public sealed partial class Orchestrator
         XdebugInProduction = target == ServerMode.Production ? options.KeepXdebug : _settings.XdebugInProduction,
     };
 
-    /// <summary>The change set from one settings to the other, and every file the switch may write.</summary>
-    private (ModeChangeSet Set, IReadOnlyList<string> Files) PlanMode(AppSettings from, AppSettings to)
+    /// <summary>The change set from one settings and profile to the other, and every file the change may write.</summary>
+    private (ModeChangeSet Set, IReadOnlyList<string> Files) PlanMode(AppSettings from, ModeProfile fromProfile, AppSettings to, ModeProfile toProfile)
     {
         var versions = PhpVersions(to);
         var xdebug = installer.Installed(ComponentKind.Xdebug);
-        var changes = ModePlanner.Changes(new ModePlanInput(Profile(from), Profile(to), versions,
+        var changes = ModePlanner.Changes(new ModePlanInput(fromProfile, toProfile, versions,
             v => PhpModeIniRenderer.XdebugDll(xdebug, v) is not null, ActiveDb?.Engine), paths);
 
         var restarts = new List<ServiceId>();

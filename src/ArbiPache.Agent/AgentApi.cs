@@ -109,6 +109,11 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
     public Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default) =>
         orchestrator.ApplyModeAsync(target, options, ct);
 
+    public Task<IReadOnlyList<ModeProfile>> GetModeProfilesAsync(CancellationToken ct = default) => orchestrator.GetModeProfilesAsync(ct);
+
+    public Task<ApplyResult> SaveModeProfileAsync(ServerMode mode, ModeProfileOverrides overrides, CancellationToken ct = default) =>
+        orchestrator.SaveModeProfileAsync(mode, overrides, ct);
+
     /// <summary>Returns at once so the reply reaches the caller before the pipe closes.</summary>
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)
     {

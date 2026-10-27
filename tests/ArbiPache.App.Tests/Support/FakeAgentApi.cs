@@ -40,7 +40,10 @@ public sealed class FakeAgentApi : IAgentApi
     public IReadOnlyDictionary<string, string?>? DbSaved { get; private set; }
     public Exception? BackupError { get; set; }
     public ModeChangeSet? ModePreview { get; set; }
+    public Exception? PreviewError { get; set; }
     public (ServerMode Target, ModeOptions Options)? ModeApplied { get; private set; }
+    public List<ModeProfile> Profiles { get; } = [BuiltInProfiles.Development, BuiltInProfiles.Production];
+    public (ServerMode Mode, ModeProfileOverrides Overrides)? ProfileSaved { get; private set; }
     public string BackupFile { get; set; } = @"D:\ArbiPache\data\backups\db\2026-10-27-120000.sql.gz";
 
     public event EventHandler<AgentStatus>? StatusChanged;
@@ -200,6 +203,7 @@ public sealed class FakeAgentApi : IAgentApi
     public Task<ModeChangeSet> PreviewModeAsync(ServerMode target, CancellationToken ct = default)
     {
         Calls.Add($"preview mode {target}");
+        if (PreviewError is { } error) return Task.FromException<ModeChangeSet>(error);
         return Task.FromResult(ModePreview ?? new ModeChangeSet(Status.Mode, target, [], [], @"D:\ArbiPache\data\backups\2026-10-27-120000"));
     }
 
@@ -207,6 +211,15 @@ public sealed class FakeAgentApi : IAgentApi
     {
         ModeApplied = (target, options);
         return Record($"apply mode {target}");
+    }
+
+    public Task<IReadOnlyList<ModeProfile>> GetModeProfilesAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ModeProfile>>(Profiles.ToList());
+
+    public Task<ApplyResult> SaveModeProfileAsync(ServerMode mode, ModeProfileOverrides overrides, CancellationToken ct = default)
+    {
+        ProfileSaved = (mode, overrides);
+        return Record($"save profile {mode}");
     }
 
     private Task<SiteCertificate> Issue(string siteId, CertSource source)
