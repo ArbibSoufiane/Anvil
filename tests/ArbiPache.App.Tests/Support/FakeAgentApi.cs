@@ -1,5 +1,6 @@
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
+using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Processes;
@@ -30,6 +31,9 @@ public sealed class FakeAgentApi : IAgentApi
     public List<(SiteDefinition Site, SiteSecrets? Secrets)> SavedSites { get; } = [];
     public Detected? Detected { get; set; }
     public ImportReport Import { get; set; } = new([], [], []);
+    public Dictionary<string, SiteCertificate> Certificates { get; } = [];
+    public List<string> Resolved { get; } = [];
+    public Exception? CertificateError { get; set; }
 
     public event EventHandler<AgentStatus>? StatusChanged;
 
@@ -140,6 +144,36 @@ public sealed class FakeAgentApi : IAgentApi
     }
 
     public Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default) => Record("reissue");
+
+    public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate>(Certificates));
+
+    public Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct = default)
+    {
+        Calls.Add($"import cert {siteId} {r.PfxPath ?? r.CertPath}");
+        return Issue(siteId, CertSource.Imported);
+    }
+
+    public Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct = default)
+    {
+        Calls.Add($"issue {siteId}{(staging ? " staging" : "")}");
+        return Issue(siteId, CertSource.LetsEncrypt);
+    }
+
+    public Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default)
+    {
+        Calls.Add($"resolve {name}");
+        return Task.FromResult<IReadOnlyList<string>>(Resolved.ToList());
+    }
+
+    private Task<SiteCertificate> Issue(string siteId, CertSource source)
+    {
+        if (CertificateError is { } error) return Task.FromException<SiteCertificate>(error);
+        var cert = new SiteCertificate(source, [siteId], DateTimeOffset.UtcNow.AddDays(90), $@"D:\ArbiPache\data\certs\{siteId}\cert.pem",
+            $@"D:\ArbiPache\data\certs\{siteId}\key.pem", null);
+        Certificates[siteId] = cert;
+        return Task.FromResult(cert);
+    }
 
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)
     {

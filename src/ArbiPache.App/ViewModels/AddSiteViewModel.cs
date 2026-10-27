@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using ArbiPache.App.Services;
 using ArbiPache.Core.Agent;
+using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
 using ArbiPache.Core.Sites;
@@ -15,7 +16,11 @@ namespace ArbiPache.App.ViewModels;
 /// <param name="Addresses">This PC's IPv4 addresses, offered to IP sites.</param>
 /// <param name="LanIp">The address other devices use to open htdocs, or null.</param>
 public sealed record SiteFormContext(IReadOnlyList<PhpVersionInfo> Php, IReadOnlyList<string> Addresses, AppSettings Settings, string HtdocsDir,
-    string? LanIp);
+    string? LanIp)
+{
+    /// <summary>Each saved site's certificate, by site id.</summary>
+    public IReadOnlyDictionary<string, SiteCertificate> Certificates { get; init; } = new Dictionary<string, SiteCertificate>();
+}
 
 /// <summary>One entry of the PHP list: a version (null follows the default), no PHP, or forwarding to another server.</summary>
 public sealed record PhpChoice(string Label, SiteType Type, string? Version);
@@ -91,7 +96,8 @@ public sealed partial class AddSiteViewModel : ObservableObject
     private readonly SiteFormContext _context;
     private readonly Func<SiteDefinition?, ApplyResult, Task> _done;
     private readonly Action _cancel;
-    private readonly SiteDefinition? _editing;
+    private SiteDefinition? _editing;
+    private (SiteDefinition Site, ApplyResult Result)? _saved;
     private Detected? _detected;
     private string? _detectedFor;
 
@@ -207,7 +213,7 @@ public sealed partial class AddSiteViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLetsEncrypt), nameof(IsImported), nameof(IsLoadBalancer), nameof(IsLocalDev), nameof(IsHttpOnly),
-        nameof(PreviewUrls), nameof(Footnote))]
+        nameof(PreviewUrls), nameof(Footnote), nameof(CurrentCertificateText))]
     public partial CertSource Cert { get; set; }
 
     public bool LetsEncryptEnabled => Kind == SiteKind.Domain;
@@ -221,6 +227,36 @@ public sealed partial class AddSiteViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string TrustedProxies { get; set; } = "";
+
+    /// <summary>The client's certificate: a .pfx/.p12 file, or a PEM/DER certificate that needs <see cref="KeyFile"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPfx), nameof(ShowKeyFiles))]
+    public partial string CertFile { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string CertPassword { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string KeyFile { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string ChainFile { get; set; } = "";
+
+    public bool IsPfx => Path.GetExtension(CertFile.Trim()).ToLowerInvariant() is ".pfx" or ".p12";
+    public bool ShowKeyFiles => CertFile.Trim().Length > 0 && !IsPfx;
+
+    public string? CurrentCertificateText =>
+        _editing is { } e && Current(e.Id) is { } c ? $"Current certificate: {string.Join(", ", c.Names)}, expires {c.NotAfter:yyyy-MM-dd}." : null;
+
+    /// <summary>Where the domain points, checked before Let's Encrypt is asked.</summary>
+    [ObservableProperty]
+    public partial string? DnsText { get; set; }
+
+    [ObservableProperty]
+    public partial bool Busy { get; set; }
+
+    /// <summary>Once the site is saved, leaving the form keeps it: the button says Close.</summary>
+    public string CancelLabel => _saved is null ? "Cancel" : "Close";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowAllowedIps), nameof(PreviewUrls))]
@@ -403,13 +439,44 @@ public sealed partial class AddSiteViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Cancel() => _cancel();
+    private async Task CancelAsync()
+    {
+        if (_saved is { } saved) await _done(saved.Site, saved.Result);
+        else _cancel();
+    }
+
+    [RelayCommand]
+    private async Task ChooseCertFileAsync()
+    {
+        if (await _picker.PickFileAsync("Choose the certificate the client sent", "Certificates", ["*.pfx", "*.p12", "*.crt", "*.cer", "*.pem"]) is { } file)
+            CertFile = file;
+    }
+
+    [RelayCommand]
+    private async Task ChooseKeyFileAsync()
+    {
+        if (await _picker.PickFileAsync("Choose the private key", "Private keys", ["*.key", "*.pem"]) is { } file) KeyFile = file;
+    }
+
+    [RelayCommand]
+    private async Task ChooseChainFileAsync()
+    {
+        if (await _picker.PickFileAsync("Choose the intermediate certificates", "Certificates", ["*.crt", "*.pem", "*.ca-bundle"]) is { } file)
+            ChainFile = file;
+    }
 
     [RelayCommand]
     private async Task SaveAsync()
     {
         ClearErrors();
+        DnsText = null;
         var site = Build();
+        if (MissingCertificateFiles(site) is { } missing)
+        {
+            CertError = missing;
+            return;
+        }
+
         try
         {
             var errors = await _api.ValidateSiteAsync(site);
@@ -444,6 +511,9 @@ public sealed partial class AddSiteViewModel : ObservableObject
                 GeneralError = Describe(result);
                 return;
             }
+
+            KeepEditing(site, result);
+            if (!await GetCertificateAsync(site)) return;
             await _done(site, result);
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -451,6 +521,91 @@ public sealed partial class AddSiteViewModel : ObservableObject
             Log.Warning(e, "Saving a site failed");
             GeneralError = $"The ArbiPache Agent did not answer: {e.Message}";
         }
+    }
+
+    /// <summary>A new client certificate needs its file, and a PEM certificate its key; editing may keep the current one.</summary>
+    private string? MissingCertificateFiles(SiteDefinition site)
+    {
+        if (site.Cert != CertSource.Imported) return null;
+        if (CertFile.Trim().Length == 0)
+            return Current(site.Id) is null ? "Choose the certificate file the client sent." : null;
+        return !IsPfx && KeyFile.Trim().Length == 0 ? "Choose the private key file that goes with the certificate." : null;
+    }
+
+    /// <summary>
+    /// After the site is saved: imports the chosen certificate, or asks Let's Encrypt when every name resolves and the
+    /// current certificate does not cover them. False keeps the form open with the reason; the site stays saved.
+    /// </summary>
+    private async Task<bool> GetCertificateAsync(SiteDefinition site)
+    {
+        if (site.Cert == CertSource.Imported && CertFile.Trim().Length > 0)
+        {
+            try
+            {
+                await _api.ImportCertificateAsync(site.Id, ImportRequest());
+                CertFile = KeyFile = ChainFile = CertPassword = "";
+                return true;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                CertError = CertificateMessages.For(e);
+                return false;
+            }
+        }
+
+        if (site.Cert != CertSource.LetsEncrypt || Covered(site)) return true;
+        var lines = new List<string>();
+        var unresolved = new List<string>();
+        foreach (var name in site.Aliases.Prepend(site.Name))
+        {
+            var addresses = await _api.ResolveAsync(name);
+            if (addresses.Count == 0) unresolved.Add(name);
+            else lines.Add($"{name} points to {string.Join(", ", addresses)}.");
+        }
+
+        if (unresolved.Count > 0)
+            lines.Add($"{string.Join(", ", unresolved)} {(unresolved.Count == 1 ? "does" : "do")} not point to any address yet. " +
+                "Point the domain at this server; ArbiPache asks Let's Encrypt every night until the certificate is issued.");
+        DnsText = string.Join("\n", lines);
+        if (unresolved.Count > 0) return false;
+
+        Busy = true;
+        try
+        {
+            await _api.IssueLetsEncryptAsync(site.Id, _context.Settings.AcmeStaging);
+            return true;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            CertError = $"Let's Encrypt did not issue the certificate. {e.Message} ArbiPache tries again every night.";
+            return false;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    private CertImportRequest ImportRequest() => IsPfx
+        ? new CertImportRequest(CertFile.Trim(), CertPassword, null, null, null)
+        : new CertImportRequest(null, null, CertFile.Trim(), KeyFile.Trim(), ChainFile.Trim() is { Length: > 0 } chain ? chain : null);
+
+    private SiteCertificate? Current(string siteId) =>
+        _context.Certificates.TryGetValue(siteId, out var c) && c.Source == Cert ? c : null;
+
+    private bool Covered(SiteDefinition site) =>
+        Current(site.Id) is { } c && site.Aliases.Prepend(site.Name).All(n => NameMatch.Covers(c.Names, n));
+
+    /// <summary>The site is saved: from here the form edits it, and leaving reports it to the sites page.</summary>
+    private void KeepEditing(SiteDefinition site, ApplyResult result)
+    {
+        _editing = site;
+        _saved = (site, result);
+        OnPropertyChanged(nameof(IsEditing));
+        OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(SaveLabel));
+        OnPropertyChanged(nameof(CancelLabel));
+        OnPropertyChanged(nameof(ShowCopyChoice));
     }
 
     private SiteDefinition Build()

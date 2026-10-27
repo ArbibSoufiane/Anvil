@@ -195,6 +195,21 @@ public sealed class PageViewTests
     }
 
     [AvaloniaFact]
+    public async Task Client_certificate_choice_shows_its_file_fields()
+    {
+        var (window, shell, sites, _) = ShowSitePages();
+        shell.NavigateCommand.Execute(AppPage.Sites);
+        await sites.AddCommand.ExecuteAsync(null);
+        window.UpdateLayout();
+        Assert.False(Named<StackPanel>(window, "ImportFiles").IsEffectivelyVisible);
+
+        sites.Editor!.Cert = CertSource.Imported;
+        window.UpdateLayout();
+
+        Assert.True(Named<StackPanel>(window, "ImportFiles").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
     public void Settings_view_shows_folders_and_ca_status()
     {
         var (window, shell, _, _) = ShowSitePages();
@@ -205,5 +220,6 @@ public sealed class PageViewTests
         Assert.IsType<SettingsView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
         Assert.Contains(Named<Border>(window, "CaStatus").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Not trusted");
         Assert.Equal("80", Named<TextBox>(window, "HttpPort").Text);
+        Assert.True(Named<TextBox>(window, "AcmeEmail").IsEffectivelyVisible);
     }
 }

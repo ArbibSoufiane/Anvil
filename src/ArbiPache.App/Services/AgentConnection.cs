@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
+using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
@@ -193,6 +194,17 @@ public sealed class AgentConnection : IAsyncDisposable
 
         public async Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default) =>
             await (await Remote()).ReissueLocalCertificatesAsync(ct);
+
+        public async Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
+            await (await Remote()).GetCertificatesAsync(ct);
+
+        public async Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct = default) =>
+            await (await Remote()).ImportCertificateAsync(siteId, r, ct);
+
+        public async Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct = default) =>
+            await (await Remote()).IssueLetsEncryptAsync(siteId, staging, ct);
+
+        public async Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default) => await (await Remote()).ResolveAsync(name, ct);
 
         public async Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => await (await Remote()).ShutdownAsync(stopServices, ct);
     }

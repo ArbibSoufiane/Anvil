@@ -1,5 +1,6 @@
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
+using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Sites;
@@ -77,6 +78,17 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
     public Task<ImportReport> ImportLegacyAsync(CancellationToken ct = default) => orchestrator.ImportLegacyAsync(ct);
 
     public Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default) => orchestrator.ReissueLocalCertificatesAsync(ct);
+
+    public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
+        Task.FromResult(orchestrator.GetCertificates());
+
+    public Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct = default) =>
+        AgentErrors.CertificateCall(() => orchestrator.ImportCertificateAsync(siteId, r, ct));
+
+    public Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct = default) =>
+        orchestrator.IssueLetsEncryptAsync(siteId, staging, ct);
+
+    public Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default) => DnsCheck.ResolveAsync(name, ct);
 
     /// <summary>Returns at once so the reply reaches the caller before the pipe closes.</summary>
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)

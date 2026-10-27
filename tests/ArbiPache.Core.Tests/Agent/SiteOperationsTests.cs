@@ -519,4 +519,74 @@ public sealed class SiteOperationsTests : IDisposable
         Assert.Null(new CertificateStore(_paths).Get("shop.example.com"));
         Assert.Equal(restarts, _apache.Restarts);
     }
+
+    private CertImportRequest PemFiles(string name, DateTimeOffset notAfter, string? keyFrom = null)
+    {
+        var (cert, key) = SelfSigned([name], notAfter);
+        if (keyFrom is not null) key = SelfSigned([keyFrom], notAfter).Key;
+        var dir = Path.Combine(_paths.Root, "inbox");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "site.crt"), cert);
+        File.WriteAllText(Path.Combine(dir, "site.key"), key);
+        return new CertImportRequest(null, null, Path.Combine(dir, "site.crt"), Path.Combine(dir, "site.key"), null);
+    }
+
+    [Fact]
+    public async Task Imported_certificate_is_applied_to_the_site()
+    {
+        var orchestrator = await StartedAsync();
+        await orchestrator.StartAsync(null, Ct);
+        await orchestrator.SaveSiteAsync(Site("portal.clientco.com") with { Cert = CertSource.Imported }, null, Ct);
+        Assert.DoesNotContain("SSLCertificateFile", File.ReadAllText(SiteVhost("portal.clientco.com")));
+        var restarts = _apache.Restarts;
+
+        var saved = await orchestrator.ImportCertificateAsync("portal.clientco.com", PemFiles("portal.clientco.com", DateTimeOffset.UtcNow.AddDays(200)), Ct);
+
+        Assert.Equal(CertSource.Imported, saved.Source);
+        Assert.Contains("SSLCertificateFile", File.ReadAllText(SiteVhost("portal.clientco.com")));
+        Assert.Equal(restarts + 1, _apache.Restarts);
+    }
+
+    [Fact]
+    public async Task Import_with_the_wrong_key_keeps_the_site_as_it_was()
+    {
+        var orchestrator = await StartedAsync();
+        await orchestrator.SaveSiteAsync(Site("portal.clientco.com") with { Cert = CertSource.Imported }, null, Ct);
+        var vhost = File.ReadAllText(SiteVhost("portal.clientco.com"));
+
+        var error = await Assert.ThrowsAsync<CertificateImportException>(() => orchestrator.ImportCertificateAsync("portal.clientco.com",
+            PemFiles("portal.clientco.com", DateTimeOffset.UtcNow.AddDays(200), keyFrom: "other.example.com"), Ct));
+
+        Assert.Equal("key-mismatch", error.Code);
+        Assert.Null(new CertificateStore(_paths).Get("portal.clientco.com"));
+        Assert.Equal(vhost, File.ReadAllText(SiteVhost("portal.clientco.com")));
+    }
+
+    [Fact]
+    public async Task Certificate_for_a_missing_site_is_refused()
+    {
+        var orchestrator = await StartedAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            orchestrator.ImportCertificateAsync("nope.example.com", PemFiles("nope.example.com", DateTimeOffset.UtcNow.AddDays(200)), Ct));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.IssueLetsEncryptAsync("nope.example.com", staging: false, Ct));
+    }
+
+    [Fact]
+    public async Task Lets_encrypt_certificate_is_issued_on_request()
+    {
+        var acme = new FakeAcme();
+        var orchestrator = await StartedAsync(acme.For);
+        await orchestrator.StartAsync(null, Ct);
+        await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Cert = CertSource.LetsEncrypt }, null, Ct);
+        var restarts = _apache.Restarts;
+
+        var saved = await orchestrator.IssueLetsEncryptAsync("shop.example.com", staging: true, Ct);
+
+        Assert.Equal(CertSource.LetsEncrypt, saved.Source);
+        Assert.Equal([true], acme.Staging);
+        Assert.Contains("SSLCertificateFile", File.ReadAllText(SiteVhost("shop.example.com")));
+        Assert.Equal(restarts + 1, _apache.Restarts);
+        Assert.Equal(CertSource.LetsEncrypt, orchestrator.GetCertificates()["shop.example.com"].Source);
+    }
 }

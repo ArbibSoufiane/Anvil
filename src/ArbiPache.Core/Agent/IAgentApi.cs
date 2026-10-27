@@ -1,4 +1,5 @@
 using ArbiPache.Core.Apache;
+using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
@@ -66,6 +67,21 @@ public partial interface IAgentApi
 
     /// <summary>Issues every local development certificate again from the local CA and reloads Apache.</summary>
     Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default);
+
+    /// <summary>Each site's certificate on disk, by site id.</summary>
+    Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Checks the client's certificate against the saved site, stores it and reloads Apache. A certificate problem fails
+    /// with a <see cref="CertificateImportException"/> whose code <see cref="AgentErrors.CertificateCode"/> reads on the GUI side.
+    /// </summary>
+    Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct = default);
+
+    /// <summary>Orders the saved site's certificate from Let's Encrypt over HTTP-01 and reloads Apache.</summary>
+    Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct = default);
+
+    /// <summary>The addresses a domain resolves to from this server; empty when it does not resolve.</summary>
+    Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default);
 
     /// <summary>Ends the Agent. With stopServices false, its processes still end with it (they live in its job).</summary>
     Task ShutdownAsync(bool stopServices, CancellationToken ct = default);

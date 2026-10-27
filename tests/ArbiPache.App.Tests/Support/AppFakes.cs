@@ -28,9 +28,11 @@ public sealed class FakeFolderPicker : IFolderPicker
 {
     public string? Folder { get; set; }
     public string? Program { get; set; }
+    public string? File { get; set; }
 
     public Task<string?> PickFolderAsync(string title) => Task.FromResult(Folder);
     public Task<string?> PickProgramAsync(string title) => Task.FromResult(Program);
+    public Task<string?> PickFileAsync(string title, string filterName, IReadOnlyList<string> patterns) => Task.FromResult(File);
 }
 
 public sealed class FakeCa : ILocalCaTrust

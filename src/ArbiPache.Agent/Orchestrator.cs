@@ -472,6 +472,44 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
         }, "Ask the client for the renewed certificate and import it in the site's settings.");
 
 
+    public IReadOnlyDictionary<string, SiteCertificate> GetCertificates() => new CertificateStore(paths).All();
+
+    /// <summary>Stores the certificate a client sent for a saved site and reloads Apache. A refused certificate changes nothing.</summary>
+    public Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct) => Locked(() =>
+        ReplaceCertificateAsync(siteId, CertSource.Imported, (site, certs) =>
+            Task.FromResult(new CertImporter(certs, _time).Import(site.Id, CertNames(site), r)), ct), ct);
+
+    /// <summary>Orders the saved site's certificate from Let's Encrypt and reloads Apache. A failed order changes nothing.</summary>
+    public Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct) => Locked(() =>
+        ReplaceCertificateAsync(siteId, CertSource.LetsEncrypt, (site, certs) =>
+            new AcmeService(Acme, certs, paths).IssueAsync(site.Id, CertNames(site), staging, ct), ct), ct);
+
+    private async Task<SiteCertificate> ReplaceCertificateAsync(string siteId, CertSource source,
+        Func<SiteDefinition, CertificateStore, Task<SiteCertificate>> obtain, CancellationToken ct)
+    {
+        var site = new SiteStore(paths).All().FirstOrDefault(s => s.Id == siteId)
+            ?? throw new InvalidOperationException($"There is no site {siteId}. Save the site first.");
+        if (site.Cert != source) throw new InvalidOperationException($"{site.Name} does not take this kind of certificate.");
+
+        var undo = new List<Action>();
+        RememberFolder(CertDir(site.Id), undo);
+        SiteCertificate saved;
+        try
+        {
+            saved = await obtain(site, new CertificateStore(paths));
+        }
+        catch
+        {
+            Undo(undo);
+            throw;
+        }
+
+        var (applied, result) = await ApplySitesAsync(undo, "The previous certificate stays in use.", ct);
+        if (!applied) throw new InvalidOperationException(string.Join("\n", new[] { result.Error, result.ConfigTestOutput }.Where(t => !string.IsNullOrWhiteSpace(t))));
+        RaiseStatus();
+        return saved;
+    }
+
     public Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct) => Locked(async () =>
     {
         var undo = new List<Action>();
