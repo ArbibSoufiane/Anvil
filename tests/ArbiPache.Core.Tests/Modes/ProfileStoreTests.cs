@@ -94,6 +94,34 @@ public sealed class ProfileStoreTests : IDisposable
     }
 
     [Fact]
+    public void Saved_values_cannot_hold_line_breaks()
+    {
+        var store = new ProfileStore(_paths);
+
+        var e = Assert.Throws<ArgumentException>(() => store.SaveOverrides(ServerMode.Production, new ModeProfileOverrides(
+            Php: null, Apache: new Dictionary<string, string> { ["Timeout"] = "60\r\nInclude C:/evil.conf" }, Database: null,
+            Xdebug: null, SecurityHeaders: null, DirectoryListing: null)));
+
+        Assert.Equal("Timeout cannot contain line breaks.", e.Message);
+        Assert.False(File.Exists(Path.Combine(_paths.Profiles, "production.json")));
+    }
+
+    [Fact]
+    public void Hand_edited_value_with_a_line_break_is_ignored_with_a_warning()
+    {
+        Directory.CreateDirectory(_paths.Profiles);
+        File.WriteAllText(Path.Combine(_paths.Profiles, "production.json"),
+            "{ \"apache\": { \"Timeout\": \"60\\nInclude C:/evil.conf\", \"LogLevel\": \"error\" } }");
+        var store = new ProfileStore(_paths);
+
+        var p = store.Get(ServerMode.Production);
+
+        Assert.Equal("60", p.Apache["Timeout"]);
+        Assert.Equal("error", p.Apache["LogLevel"]);
+        Assert.Equal("production.json: Timeout contains a line break and was ignored.", store.LastLoadWarning);
+    }
+
+    [Fact]
     public void Unreadable_file_is_moved_aside_and_builtin_used()
     {
         Directory.CreateDirectory(_paths.Profiles);

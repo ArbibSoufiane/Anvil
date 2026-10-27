@@ -1,0 +1,23 @@
+; Written by ArbiPache for Development mode (PHP 8.5.12). Loaded after php.ini, so these values win.
+; Change them on the Dev / Production page: this file is rewritten.
+[PHP]
+display_errors = On
+display_startup_errors = On
+error_reporting = E_ALL
+log_errors = On
+max_execution_time = 300
+max_input_time = 300
+memory_limit = 1G
+upload_max_filesize = 512M
+post_max_size = 512M
+opcache.validate_timestamps = 1
+opcache.revalidate_freq = 0
+expose_php = On
+disable_functions =
+session.use_strict_mode = 0
+session.cookie_httponly = 0
+
+[xdebug]
+zend_extension="D:/ArbiPache/runtime/xdebug/3.5.3-php8.5/php_xdebug-3.5.3-8.5-nts-vs17-x86_64.dll"
+xdebug.mode = debug,develop
+xdebug.start_with_request = trigger

@@ -51,7 +51,7 @@ public sealed class PhpPoolTests : IAsyncDisposable
         }
     }
 
-    private async Task StartAsync()
+    private async Task StartAsync(ModeProfile? profile = null)
     {
         var ct = TestContext.Current.CancellationToken;
         var apache = await Runtimes.InstallAsync(_paths, ComponentKind.Apache, ct);
@@ -60,9 +60,12 @@ public sealed class PhpPoolTests : IAsyncDisposable
         new HttpdConfBootstrap(_paths).EnsureUserConf(apache);
         File.WriteAllText(_paths.HttpdConf, File.ReadAllText(_paths.HttpdConf).Replace("\nListen 80\r", $"\nListen 127.0.0.1:{Port}\r"));
         new PhpIniBootstrap(_paths).EnsureIni(php.Version);
+        if (profile is not null) File.WriteAllText(PhpModeIniRenderer.FilePath(_paths, php.Version), PhpModeIniRenderer.Render(profile, php.Version, null));
 
         File.WriteAllText(Path.Combine(_paths.Htdocs, "info.php"),
             "<?php echo $_SERVER['SCRIPT_FILENAME'], '|', $_SERVER['PATH_INFO'] ?? '', '|', $_SERVER['SCRIPT_NAME'];");
+        File.WriteAllText(Path.Combine(_paths.Htdocs, "ini.php"),
+            "<?php echo ini_get('memory_limit'), '|', ini_get('max_execution_time'), '|', error_reporting(), '|', function_exists('exec') ? 'exec' : 'no exec';");
         File.WriteAllText(Path.Combine(_paths.Htdocs, "sleep.php"), "<?php usleep(200000); echo getmypid();");
         File.WriteAllText(Path.Combine(_paths.Htdocs, "busy.php"),
             "<?php file_put_contents(__DIR__ . '/busy.pid', getmypid()); sleep(20); echo 'finished';");
@@ -107,6 +110,17 @@ public sealed class PhpPoolTests : IAsyncDisposable
         Assert.Equal(AppPaths.ForApache(Path.Combine(_paths.Htdocs, "info.php")), parts[0], ignoreCase: true);
         Assert.Equal("/foo/bar", parts[1]);
         Assert.Equal("/info.php", parts[2]);
+    }
+
+    [Fact]
+    public async Task Mode_file_values_win_over_php_ini()
+    {
+        await StartAsync(BuiltInProfiles.Production);
+
+        var body = await (await GetAsync("/ini.php")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // php.ini comes from php.ini-development (128M, E_ALL); Production's values come from conf.d. 22527 is E_ALL & ~E_DEPRECATED on PHP 8.4+.
+        Assert.Equal("256M|30|22527|no exec", body);
     }
 
     [Fact]

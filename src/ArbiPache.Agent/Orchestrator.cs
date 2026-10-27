@@ -8,6 +8,7 @@ using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
 using ArbiPache.Core.Hosts;
+using ArbiPache.Core.IO;
 using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
@@ -860,7 +861,12 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private async Task StartPoolsAsync(IReadOnlyList<PhpPool> pools, CancellationToken ct)
     {
         var ini = new PhpIniBootstrap(paths);
-        foreach (var pool in pools) ini.EnsureIni(pool.Version);
+        var profile = Profile(_settings.Mode);
+        foreach (var pool in pools)
+        {
+            ini.EnsureIni(pool.Version);
+            WritePhpMode(pool.Version, profile);
+        }
         try
         {
             await php.ApplyAsync(pools, ct);
@@ -877,9 +883,11 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private async Task RestartPoolsAsync(CancellationToken ct)
     {
         var ini = new PhpIniBootstrap(paths);
+        var profile = Profile(_settings.Mode);
         foreach (var pool in php.Running)
         {
             ini.EnsureIni(pool.Version);
+            WritePhpMode(pool.Version, profile);
             await php.RestartAsync(pool.Key, ct);
         }
     }
@@ -909,7 +917,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             {
                 Settings = s,
                 Stock = StockConfScanner.Scan(await File.ReadAllTextAsync(paths.HttpdConf, ct)),
-                Profile = BuiltInProfiles.For(s.Mode),
+                Profile = Profile(s.Mode),
                 ApacheVersion = version,
                 Pools = pools,
                 Sites = sites,
@@ -925,6 +933,23 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         {
             _apacheUnderTest = null;
         }
+    }
+
+    /// <summary>The mode's profile: built-in values with the user's edits from data\profiles.</summary>
+    private ModeProfile Profile(ServerMode mode)
+    {
+        var profiles = new ProfileStore(paths);
+        var profile = profiles.Get(mode);
+        if (profiles.LastLoadWarning is { } warning) Log.Warning("{Warning}", warning);
+        return profile;
+    }
+
+    /// <summary>Writes conf.d\99-arbipache-mode.ini for a PHP version; untouched when it already says the same.</summary>
+    private void WritePhpMode(string version, ModeProfile profile)
+    {
+        var text = PhpModeIniRenderer.Render(profile, version, PhpModeIniRenderer.XdebugDll(installer.Installed(ComponentKind.Xdebug), version));
+        var file = PhpModeIniRenderer.FilePath(paths, version);
+        if (!File.Exists(file) || File.ReadAllText(file) != text) AtomicFile.WriteAllText(file, text);
     }
 
     private static async Task<ApplyResult> Guard(Func<Task> action, ApplyOutcome? applied = null)

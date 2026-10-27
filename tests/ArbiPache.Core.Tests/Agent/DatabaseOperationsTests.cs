@@ -190,6 +190,41 @@ public sealed class DatabaseOperationsTests : IDisposable
     }
 
     [Fact]
+    public async Task Database_start_writes_the_mode_file_for_its_engine()
+    {
+        var orchestrator = await InstalledAsync();
+
+        var cnf = File.ReadAllText(_ini.ModeFile).ReplaceLineEndings("\n");
+        Assert.Contains("max_statement_time = 0\n", cnf, StringComparison.Ordinal);
+        Assert.Contains("wait_timeout = 28800\n", cnf, StringComparison.Ordinal);
+        var rows = (await orchestrator.GetDbSettingsAsync(Ct)).ToDictionary(r => r.Key);
+        Assert.True(rows["wait_timeout"].SetByMode);
+        Assert.Equal("28800", rows["wait_timeout"].Current);
+
+        File.WriteAllText(_ini.ModeFile, "[mysqld]\n");
+        await orchestrator.StopAsync(ServiceId.Database, Ct);
+        await orchestrator.StartAsync(ServiceId.Database, Ct);
+        Assert.Contains("general_log = ON", File.ReadAllText(_ini.ModeFile), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_statement_timeout_that_is_not_seconds_stops_the_start_with_a_reason()
+    {
+        var orchestrator = await InstalledAsync();
+        await orchestrator.StopAsync(ServiceId.Database, Ct);
+        new Core.Modes.ProfileStore(_paths).SaveOverrides(ServerMode.Development, new Core.Modes.ModeProfileOverrides(
+            Php: null, Apache: null, Database: new Dictionary<string, string> { ["statement_timeout"] = "soon" },
+            Xdebug: null, SecurityHeaders: null, DirectoryListing: null));
+        _events.Clear();
+
+        var result = await orchestrator.StartAsync(ServiceId.Database, Ct);
+
+        Assert.False(result.Ok);
+        Assert.Equal("MariaDB did not start. The Development profile's statement_timeout must be a number of seconds, not \"soon\".", result.Error);
+        Assert.Empty(_events);
+    }
+
+    [Fact]
     public async Task Mode_init_only_and_unknown_keys_are_refused()
     {
         var orchestrator = await InstalledAsync();

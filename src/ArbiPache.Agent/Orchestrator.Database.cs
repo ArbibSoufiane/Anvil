@@ -3,6 +3,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
 using ArbiPache.Core.IO;
+using ArbiPache.Core.Modes;
 using ArbiPache.Core.Processes;
 
 namespace ArbiPache.Agent;
@@ -59,6 +60,7 @@ public sealed partial class Orchestrator
         {
             if (previous is { } old && !same && DbRunning) await db.StopAsync(old.Engine, old.Version, ct);
             MyIni.EnsureCreated(e, _settings.DbPort);
+            WriteDbMode(e);
             if (!db.Initialized(e))
             {
                 await db.InitializeAsync(e, version, rootPassword, ct);
@@ -168,6 +170,7 @@ public sealed partial class Orchestrator
         try
         {
             MyIni.EnsureCreated(a.Engine, _settings.DbPort);
+            WriteDbMode(a.Engine);
             await db!.StartAsync(a.Engine, a.Version, ct);
             return ApplyResult.Success();
         }
@@ -182,6 +185,13 @@ public sealed partial class Orchestrator
         if (ActiveDb is not { } a) return ApplyResult.Failure(NoDatabase);
         await db!.StopAsync(a.Engine, a.Version, ct);
         return ApplyResult.Success();
+    }
+
+    /// <summary>Writes data\conf\db-mode.cnf for the engine from the mode's profile; untouched when it already says the same.</summary>
+    private void WriteDbMode(DbEngine e)
+    {
+        var text = DbModeRenderer.Render(Profile(_settings.Mode), e);
+        if (!File.Exists(MyIni.ModeFile) || File.ReadAllText(MyIni.ModeFile) != text) AtomicFile.WriteAllText(MyIni.ModeFile, text);
     }
 
     private Dictionary<string, string> ModeValues()

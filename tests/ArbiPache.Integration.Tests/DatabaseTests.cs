@@ -1,5 +1,6 @@
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
+using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Processes;
 using ArbiPache.Integration.Tests.Support;
@@ -60,11 +61,15 @@ public sealed class DatabaseTests : IAsyncDisposable
     {
         var s = await InstallAsync(DbEngine.MariaDb, 13306);
         await s.Manager.InitializeAsync(s.Engine, s.Version, Password, Ct);
+        File.WriteAllText(s.Ini.ModeFile, DbModeRenderer.Render(BuiltInProfiles.Production, DbEngine.MariaDb));
         await StartAsync(s);
 
         Assert.StartsWith("11.8.", await ScalarAsync(s, Password, "SELECT VERSION()"), StringComparison.Ordinal);
         var runtime = await s.Manager.RuntimeValuesAsync(s.Engine, Ct);
         Assert.Equal("127.0.0.1", runtime["bind_address"]);
+        Assert.Equal("60.000000", runtime["max_statement_time"]);
+        Assert.Equal("600", runtime["wait_timeout"]);
+        Assert.Equal("5.000000", runtime["long_query_time"]);
         Assert.Equal("utf8mb4", runtime["character-set-server"]);
         Assert.Equal("0", await ScalarAsync(s, Password, "SELECT COUNT(*) FROM mysql.user WHERE User = 'root' AND Host = '%'"));
 
@@ -81,10 +86,15 @@ public sealed class DatabaseTests : IAsyncDisposable
     {
         var s = await InstallAsync(DbEngine.MySql, 13307);
         await s.Manager.InitializeAsync(s.Engine, s.Version, Password, Ct);
+        File.WriteAllText(s.Ini.ModeFile, DbModeRenderer.Render(BuiltInProfiles.Production, DbEngine.MySql));
         await StartAsync(s);
 
         Assert.StartsWith("8.4.", await ScalarAsync(s, Password, "SELECT VERSION()"), StringComparison.Ordinal);
-        Assert.Equal("127.0.0.1", (await s.Manager.RuntimeValuesAsync(s.Engine, Ct))["bind_address"]);
+        var runtime = await s.Manager.RuntimeValuesAsync(s.Engine, Ct);
+        Assert.Equal("127.0.0.1", runtime["bind_address"]);
+        Assert.Equal("60000", runtime["max_execution_time"]);
+        Assert.Equal("600", runtime["wait_timeout"]);
+        Assert.Equal("OFF", runtime["general_log"]);
 
         await s.Manager.StopAsync(s.Engine, s.Version, Ct);
     }

@@ -18,10 +18,13 @@ public sealed class PhpExtensionManager(AppPaths paths)
         var ext = Path.Combine(paths.PhpRuntime(version), "ext");
         if (!Directory.Exists(ext)) return [];
         var ini = Load(version);
-        return Directory.GetFiles(ext, "php_*.dll")
-            .Select(f => Path.GetFileNameWithoutExtension(f)["php_".Length..].ToLowerInvariant())
+        // Xdebug lives in runtime\xdebug and the mode file loads it, so it shows even without a DLL in ext.
+        var modeXdebug = ModeLoadsXdebug(version);
+        var names = Directory.GetFiles(ext, "php_*.dll").Select(f => Path.GetFileNameWithoutExtension(f)["php_".Length..].ToLowerInvariant());
+        return (modeXdebug ? names.Append(Xdebug).Distinct() : names)
             .Order(StringComparer.Ordinal)
-            .Select(name => new PhpExtension(name, Enabled(ini, name), Available: true, ZendExtensions.Contains(name), ManagedByMode: name == Xdebug))
+            .Select(name => new PhpExtension(name, Enabled(ini, name) || (name == Xdebug && modeXdebug), Available: true, ZendExtensions.Contains(name),
+                ManagedByMode: name == Xdebug))
             .ToList();
     }
 
@@ -43,6 +46,13 @@ public sealed class PhpExtensionManager(AppPaths paths)
     }
 
     private string IniFile(string version) => Path.Combine(paths.PhpConfigDir(version), "php.ini");
+
+    private bool ModeLoadsXdebug(string version)
+    {
+        var file = Path.Combine(paths.PhpConfigDir(version), "conf.d", "99-arbipache-mode.ini");
+        return File.Exists(file) && IniDocument.Parse(File.ReadAllText(file)).GetAll("xdebug", "zend_extension")
+            .Any(v => Normalize(v).StartsWith(Xdebug, StringComparison.Ordinal));
+    }
 
     private IniDocument? Load(string version) =>
         File.Exists(IniFile(version)) ? IniDocument.Parse(File.ReadAllText(IniFile(version))) : null;

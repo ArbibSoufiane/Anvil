@@ -7,6 +7,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.IO;
+using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Preflight;
@@ -183,6 +184,27 @@ public sealed class OrchestratorTests : IDisposable
         Assert.Equal(pool.Port, new SettingsStore(_paths).Load().PhpPoolPorts["php85"]);
         Assert.True(File.Exists(Path.Combine(_paths.PhpConfigDir("8.5.12"), "php.ini")));
         Assert.Equal(ProcessState.Running, orchestrator.Status().Services.Single(s => s.Id == ServiceId.Php).State);
+    }
+
+    [Fact]
+    public async Task Start_renders_php_and_apache_from_the_edited_profile()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        InstallPhp("8.5.12");
+        UsePhp("8.5.12");
+        new ProfileStore(_paths).SaveOverrides(ServerMode.Development, new ModeProfileOverrides(
+            Php: new Dictionary<string, string> { ["memory_limit"] = "2G" }, Apache: new Dictionary<string, string> { ["Timeout"] = "120" },
+            Database: null, Xdebug: null, SecurityHeaders: null, DirectoryListing: null));
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+
+        var result = await orchestrator.StartAsync(null, ct);
+
+        Assert.True(result.Ok, result.Error);
+        var ini = File.ReadAllText(Path.Combine(_paths.PhpConfigDir("8.5.12"), "conf.d", "99-arbipache-mode.ini"));
+        Assert.Contains("memory_limit = 2G", ini, StringComparison.Ordinal);
+        Assert.Contains("display_errors = On", ini, StringComparison.Ordinal);
+        Assert.Contains("Timeout 120", File.ReadAllText(Path.Combine(_paths.Conf, "mode.conf")), StringComparison.Ordinal);
     }
 
     [Fact]

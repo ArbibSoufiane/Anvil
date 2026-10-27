@@ -67,6 +67,31 @@ public sealed class PhpExtensionManagerTests : IDisposable
     }
 
     [Fact]
+    public void Xdebug_loaded_by_the_mode_file_is_reported_on()
+    {
+        var confD = Path.Combine(_paths.PhpConfigDir(Version), "conf.d");
+        Directory.CreateDirectory(confD);
+        File.WriteAllText(Path.Combine(confD, "99-arbipache-mode.ini"),
+            "[PHP]\r\ndisplay_errors = On\r\n\r\n[xdebug]\r\nzend_extension=\"D:/ArbiPache/runtime/xdebug/3.5.3-php8.4/php_xdebug-3.5.3-8.4-nts-vs17-x86_64.dll\"\r\n");
+        File.Delete(Path.Combine(_paths.PhpRuntime(Version), "ext", "php_xdebug.dll"));
+
+        var list = new PhpExtensionManager(_paths).List(Version);
+
+        Assert.Equal(["curl", "gd", "opcache", "xdebug"], list.Select(e => e.Name));
+        Assert.Equal(new PhpExtension("xdebug", Enabled: true, Available: true, IsZend: true, ManagedByMode: true), list[3]);
+    }
+
+    [Fact]
+    public void Xdebug_off_when_the_mode_file_does_not_load_it()
+    {
+        var confD = Path.Combine(_paths.PhpConfigDir(Version), "conf.d");
+        Directory.CreateDirectory(confD);
+        File.WriteAllText(Path.Combine(confD, "99-arbipache-mode.ini"), "[PHP]\r\ndisplay_errors = Off\r\n");
+
+        Assert.False(new PhpExtensionManager(_paths).List(Version).Single(e => e.Name == "xdebug").Enabled);
+    }
+
+    [Fact]
     public void Xdebug_reported_as_managed_by_mode()
     {
         var manager = new PhpExtensionManager(_paths);
