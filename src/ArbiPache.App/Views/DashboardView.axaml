@@ -25,7 +25,7 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
-      <!-- Service cards; PHP and database cards join in Phases 2 and 5 -->
+      <!-- Service cards; the database card joins in Phase 5 -->
       <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
         <Border Classes="card" x:Name="ApacheCard">
           <StackPanel Spacing="14">
@@ -58,6 +58,35 @@
               <Button Classes="secondary" Content="{Binding StartStopLabel}" Command="{Binding StartStopApacheCommand}" />
               <Button Classes="secondary" Content="Restart" Command="{Binding RestartApacheCommand}" IsEnabled="{Binding ApacheRunning}" />
               <Button Classes="ghost" Content="httpd.conf" Command="{Binding OpenHttpdConfCommand}" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card" x:Name="PhpCard" Grid.Column="1">
+          <StackPanel Spacing="14">
+            <DockPanel>
+              <Viewbox Width="20" Height="20" DockPanel.Dock="Left">
+                <Canvas Width="24" Height="24">
+                  <Path Classes="icon" Stroke="{StaticResource AccentBrush}" Data="M8 7 L3 12 L8 17 M16 7 L21 12 L16 17 M14 4 L10 20" />
+                </Canvas>
+              </Viewbox>
+              <Border Classes="pill" Classes.ok="{Binding PhpRunning}" Classes.bad="{Binding PhpFailed}" DockPanel.Dock="Right">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Ellipse />
+                  <TextBlock x:Name="PhpState" Text="{Binding PhpStateText}" />
+                </StackPanel>
+              </Border>
+              <TextBlock Classes="h2" Text="PHP worker pools" Margin="10,0,0,0" />
+            </DockPanel>
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="6">
+              <TextBlock Classes="dt" Text="Default" />
+              <TextBlock Classes="dd" x:Name="PhpDefault" Grid.Column="1" Text="{Binding PhpDefault}" />
+              <TextBlock Classes="dt" Grid.Row="1" Text="Pools" />
+              <TextBlock Classes="dd" x:Name="PhpPools" Grid.Row="1" Grid.Column="1" Text="{Binding PhpPools}" />
+            </Grid>
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <Button Classes="secondary" Content="Restart pools" Command="{Binding RestartPhpCommand}" IsEnabled="{Binding PhpRunning}" />
+              <Button Classes="ghost" Content="php.ini" Command="{Binding OpenPhpIniCommand}" />
             </WrapPanel>
           </StackPanel>
         </Border>

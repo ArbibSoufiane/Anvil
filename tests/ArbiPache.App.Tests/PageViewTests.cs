@@ -5,6 +5,7 @@ using ArbiPache.App.ViewModels;
 using ArbiPache.App.Views;
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
+using ArbiPache.Core.Components;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
@@ -24,9 +25,11 @@ public sealed class PageViewTests
         var editor = new EditorLauncher(() => "auto", new NoRegistry(), _ => false, "");
         var dashboard = new DashboardViewModel(_api, Paths, editor, ui: a => a());
         var apache = new ApacheViewModel(_api, Paths, editor, ui: a => a());
+        var php = new PhpViewModel(_api, Paths, editor, ui: a => a());
         dashboard.LoadAsync().GetAwaiter().GetResult();
         apache.LoadAsync().GetAwaiter().GetResult();
-        var shell = new ShellViewModel(_api.Settings, dashboard, apache);
+        php.LoadAsync().GetAwaiter().GetResult();
+        var shell = new ShellViewModel(_api.Settings, dashboard, apache, php: php);
         var window = new MainWindow(shell);
         window.Show();
         window.UpdateLayout();
@@ -52,6 +55,49 @@ public sealed class PageViewTests
         var findings = Named<ItemsControl>(window, "Findings");
         Assert.True(findings.IsVisible);
         Assert.Contains(findings.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Install it.");
+    }
+
+    [AvaloniaFact]
+    public void Dashboard_view_shows_php_card()
+    {
+        _api.Status = _api.Status with
+        {
+            Services =
+            [
+                new ServiceStatus(ServiceId.Apache, ProcessState.Running, "2.4.69", null),
+                new ServiceStatus(ServiceId.Php, ProcessState.Running, "8.5.12", "8.5 ×4"),
+            ],
+        };
+
+        var (window, _) = Show();
+
+        Assert.Equal("Running", Named<TextBlock>(window, "PhpState").Text);
+        Assert.Equal("PHP 8.5.12 NTS x64", Named<TextBlock>(window, "PhpDefault").Text);
+        Assert.Equal("8.5 ×4", Named<TextBlock>(window, "PhpPools").Text);
+    }
+
+    [AvaloniaFact]
+    public void Php_view_lists_versions_with_tags_and_locks_xdebug()
+    {
+        _api.Php.Add(new PhpVersionInfo("8.5.12", "vs17", 4, 1000, 9100, ["htdocs"], ProcessState.Running, IsDefault: true, EndOfLife: false));
+        _api.Php.Add(new PhpVersionInfo("7.4.33", "vc15", 2, 1000, 0, [], ProcessState.Stopped, IsDefault: false, EndOfLife: true));
+        _api.Extensions["8.5.12"] = [new("intl", true, true, false, false)];
+        _api.Installed.Add(new InstalledComponent(ComponentKind.Xdebug, "3.5.3", @"D:\ArbiPache\runtime\xdebug\3.5.3-php8.5", new string('b', 64),
+            DateTimeOffset.Now, AppliesTo: "8.5"));
+        var (window, shell) = Show();
+
+        shell.NavigateCommand.Execute(AppPage.Php);
+        window.UpdateLayout();
+
+        Assert.IsType<PhpView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
+        var texts = Named<ItemsControl>(window, "PhpVersions").GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+        Assert.Contains("PHP 8.5.12", texts);
+        Assert.Contains("Default", texts);
+        Assert.Contains("End of life", texts);
+        var chips = Named<ItemsControl>(window, "Extensions").GetVisualDescendants().OfType<Button>().ToList();
+        Assert.False(chips.Single(b => (string?)b.Content == "xdebug").IsEffectivelyEnabled);
+        Assert.True(chips.Single(b => (string?)b.Content == "intl").IsEffectivelyEnabled);
+        Assert.Equal("4", Named<TextBox>(window, "Workers").Text);
     }
 
     [AvaloniaFact]

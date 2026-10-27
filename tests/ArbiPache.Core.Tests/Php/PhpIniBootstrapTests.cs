@@ -150,4 +150,11 @@ public sealed class PhpIniBootstrapTests : IDisposable
         Assert.True(PhpSupport.HasBuiltInOpcache("8.5.12"));
         Assert.False(PhpSupport.HasBuiltInOpcache("8.4.27"));
     }
+
+    [Fact]
+    public void Minor_drops_the_patch_release()
+    {
+        Assert.Equal("8.5", PhpSupport.Minor("8.5.12"));
+        Assert.Equal("7.4", PhpSupport.Minor("7.4.33"));
+    }
 }

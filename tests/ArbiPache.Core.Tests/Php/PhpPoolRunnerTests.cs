@@ -133,6 +133,39 @@ public sealed class PhpPoolRunnerTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Restart_replaces_every_worker_and_keeps_the_socket()
+    {
+        var port = FreePort();
+        await _runner.ApplyAsync([Pool(port, 2)], TestContext.Current.CancellationToken);
+        var before = _supervisor.Snapshot().Select(s => s.Pid).ToHashSet();
+
+        await _runner.RestartAsync("php85", TestContext.Current.CancellationToken);
+
+        Assert.All(_supervisor.Snapshot(), s =>
+        {
+            Assert.Equal(ProcessState.Running, s.State);
+            Assert.DoesNotContain(s.Pid, before);
+        });
+        Assert.StartsWith("hello from", await AskAsync(port), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task State_reports_running_pools_and_stopped_unknown_ones()
+    {
+        var port = FreePort();
+        await _runner.ApplyAsync([Pool(port, 2)], TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProcessState.Running, _runner.StateOf("php85"));
+        Assert.Equal(ProcessState.Stopped, _runner.StateOf("php84"));
+        Assert.Equal(["php85"], _runner.Running.Select(p => p.Key));
+
+        await _runner.ApplyAsync([], TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProcessState.Stopped, _runner.StateOf("php85"));
+        Assert.Empty(_runner.Running);
+    }
+
+    [Fact]
     public async Task Port_change_moves_the_pool()
     {
         var oldPort = FreePort();

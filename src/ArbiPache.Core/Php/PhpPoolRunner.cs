@@ -11,15 +11,15 @@ namespace ArbiPache.Core.Php;
 /// worker accept()s on it. A worker that recycles or crashes leaves the socket open, so requests wait
 /// in its backlog for the next free worker instead of failing.
 /// </summary>
-public sealed class PhpPoolRunner(ProcessSupervisor sup, AppPaths paths) : IAsyncDisposable
+public sealed class PhpPoolRunner(ProcessSupervisor sup, AppPaths paths) : IPhpPools, IAsyncDisposable
 {
     public static readonly IPAddress BindAddress = IPAddress.Loopback;
     private const int Backlog = 511;
 
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly Dictionary<string, Running> _running = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Live> _running = new(StringComparer.OrdinalIgnoreCase);
 
-    private sealed record Running(PhpPool Pool, Socket Socket);
+    private sealed record Live(PhpPool Pool, Socket Socket);
 
     public static IReadOnlyList<ProcessSpec> WorkerSpecs(PhpPool pool, Socket socket, AppPaths paths)
     {
@@ -37,10 +37,49 @@ public sealed class PhpPoolRunner(ProcessSupervisor sup, AppPaths paths) : IAsyn
             .ToList();
     }
 
+    public IReadOnlyList<PhpPool> Running
+    {
+        get { lock (_running) return _running.Values.Select(r => r.Pool).ToList(); }
+    }
+
     /// <summary>True when one of the running pools listens on <paramref name="port"/>.</summary>
     public bool Owns(int port)
     {
         lock (_running) return _running.Values.Any(r => r.Pool.Port == port);
+    }
+
+    /// <summary>Running while any worker serves; Failed when none does and one gave up; Stopped for a pool that is not running.</summary>
+    public ProcessState StateOf(string key)
+    {
+        PhpPool? pool;
+        lock (_running) pool = _running.TryGetValue(key, out var live) ? live.Pool : null;
+        if (pool is null) return ProcessState.Stopped;
+        var names = Enumerable.Range(1, pool.Workers).Select(n => WorkerName(key, n)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var states = sup.Snapshot().Where(s => names.Contains(s.Name)).Select(s => s.State).ToList();
+        if (states.Contains(ProcessState.Running)) return ProcessState.Running;
+        if (states.Contains(ProcessState.Failed)) return ProcessState.Failed;
+        return states.FirstOrDefault(ProcessState.Stopped);
+    }
+
+    /// <summary>Restarts a pool's workers one at a time, so the rest keep serving and php.ini changes take effect.</summary>
+    public async Task RestartAsync(string key, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            Live? live;
+            lock (_running) _running.TryGetValue(key, out live);
+            if (live is null) return;
+            foreach (var spec in WorkerSpecs(live.Pool, live.Socket, paths))
+            {
+                await sup.StopAsync(spec.Name, TimeSpan.Zero);
+                sup.Start(spec);
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>Starts, resizes, restarts and removes pools so that exactly <paramref name="pools"/> run.</summary>
@@ -56,7 +95,7 @@ public sealed class PhpPoolRunner(ProcessSupervisor sup, AppPaths paths) : IAsyn
 
             foreach (var pool in pools)
             {
-                Running? current;
+                Live? current;
                 lock (_running) _running.TryGetValue(pool.Key, out current);
                 if (current is null) Add(pool);
                 else await ReshapeAsync(current, pool);
@@ -81,12 +120,12 @@ public sealed class PhpPoolRunner(ProcessSupervisor sup, AppPaths paths) : IAsyn
             socket.Dispose();
             throw;
         }
-        lock (_running) _running[pool.Key] = new Running(pool, socket);
+        lock (_running) _running[pool.Key] = new Live(pool, socket);
         foreach (var spec in WorkerSpecs(pool, socket, paths)) sup.Start(spec);
     }
 
     // Same port: keep the socket. Restart workers one at a time when their settings changed, so the rest keep serving.
-    private async Task ReshapeAsync(Running current, PhpPool pool)
+    private async Task ReshapeAsync(Live current, PhpPool pool)
     {
         var changed = current.Pool with { Workers = pool.Workers } != pool;
         var specs = WorkerSpecs(pool, current.Socket, paths);
@@ -104,7 +143,7 @@ public sealed class PhpPoolRunner(ProcessSupervisor sup, AppPaths paths) : IAsyn
         lock (_running) _running[pool.Key] = current with { Pool = pool };
     }
 
-    private async Task RemoveAsync(Running running)
+    private async Task RemoveAsync(Live running)
     {
         for (var n = 1; n <= running.Pool.Workers; n++)
             await sup.StopAsync(WorkerName(running.Pool.Key, n), TimeSpan.Zero);
@@ -112,7 +151,7 @@ public sealed class PhpPoolRunner(ProcessSupervisor sup, AppPaths paths) : IAsyn
         lock (_running) _running.Remove(running.Pool.Key);
     }
 
-    private List<KeyValuePair<string, Running>> Snapshot()
+    private List<KeyValuePair<string, Live>> Snapshot()
     {
         lock (_running) return _running.ToList();
     }

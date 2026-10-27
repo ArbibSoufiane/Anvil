@@ -1,6 +1,7 @@
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
 
 namespace ArbiPache.Agent;
@@ -38,6 +39,19 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
 
     public Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct = default) =>
         orchestrator.ActivateAsync(k, version, ct);
+
+    public Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.GetPhp());
+
+    public Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default) =>
+        orchestrator.SetPhpPoolAsync(version, settings, ct);
+
+    public Task<ApplyResult> SetDefaultPhpAsync(string version, CancellationToken ct = default) => orchestrator.SetDefaultPhpAsync(version, ct);
+
+    public Task<IReadOnlyList<PhpExtension>> GetExtensionsAsync(string version, CancellationToken ct = default) =>
+        Task.FromResult(orchestrator.GetExtensions(version));
+
+    public Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default) =>
+        orchestrator.SetExtensionAsync(version, name, enabled, ct);
 
     /// <summary>Returns at once so the reply reaches the caller before the pipe closes.</summary>
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)

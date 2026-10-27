@@ -42,8 +42,9 @@ public partial class App : Application
             var editor = new EditorLauncher(() => settings.Editor, new WindowsRegistryReader(), File.Exists);
             var dashboard = new DashboardViewModel(_agent.Api, paths, editor);
             var apache = new ApacheViewModel(_agent.Api, paths, editor);
+            var php = new PhpViewModel(_agent.Api, paths, editor);
             var logs = new LogsViewModel(paths, editor);
-            var vm = new ShellViewModel(settings, dashboard, apache, logs);
+            var vm = new ShellViewModel(settings, dashboard, apache, logs, php);
             dashboard.CompareProfilesRequested += (_, _) => vm.NavigateCommand.Execute(AppPage.Mode);
             _agent.Api.StatusChanged += (_, s) => Dispatcher.UIThread.Post(() => vm.Mode = s.Mode);
 
@@ -64,20 +65,20 @@ public partial class App : Application
             Program.Activated = _ => vm.ShowAndActivate();
 
             if (!(desktop.Args ?? []).Contains("--minimized")) window.Show();
-            _agent.Reconnected += (_, _) => Dispatcher.UIThread.Post(() => _ = LoadPagesAsync(dashboard, apache));
-            _ = ConnectAsync(dashboard, apache);
+            _agent.Reconnected += (_, _) => Dispatcher.UIThread.Post(() => _ = LoadPagesAsync(dashboard, apache, php));
+            _ = ConnectAsync(dashboard, apache, php);
         }
         base.OnFrameworkInitializationCompleted();
     }
 
-    private async Task ConnectAsync(DashboardViewModel dashboard, ApacheViewModel apache)
+    private async Task ConnectAsync(DashboardViewModel dashboard, ApacheViewModel apache, PhpViewModel php)
     {
         try
         {
             var api = await _agent!.ConnectAsync(CancellationToken.None);
             _agentReady = true;
             _tray?.Attach(api);
-            await LoadPagesAsync(dashboard, apache);
+            await LoadPagesAsync(dashboard, apache, php);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -86,12 +87,13 @@ public partial class App : Application
         }
     }
 
-    private static async Task LoadPagesAsync(DashboardViewModel dashboard, ApacheViewModel apache)
+    private static async Task LoadPagesAsync(DashboardViewModel dashboard, ApacheViewModel apache, PhpViewModel php)
     {
         try
         {
             await dashboard.LoadAsync();
             await apache.LoadAsync();
+            await php.LoadAsync();
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

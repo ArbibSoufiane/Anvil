@@ -6,6 +6,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Paths;
+using ArbiPache.Core.Php;
 using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
@@ -45,6 +46,27 @@ public sealed class RpcTests
         Assert.Equal([(ServiceId?)null], fake.Started);
         Assert.True(started.Ok);
         Assert.Equal(new ConfigTestResult(true, "Syntax OK"), test);
+    }
+
+    [Fact]
+    public async Task Php_calls_round_trip_over_pipe()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fake = new FakeApi();
+        var name = UniquePipe();
+        await using var server = new PipeServer(name, fake, []);
+        server.Start();
+        await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
+
+        var php = await client.Api.GetPhpAsync(ct);
+        var extensions = await client.Api.GetExtensionsAsync("8.5.12", ct);
+        var pool = await client.Api.SetPhpPoolAsync("8.5.12", new PhpPoolSettings(3, 50), ct);
+
+        Assert.Equal(FakeApi.Php, Assert.Single(php) with { UsedBy = FakeApi.Php.UsedBy });
+        Assert.Equal(["htdocs"], php[0].UsedBy);
+        Assert.Equal(FakeApi.Intl, Assert.Single(extensions));
+        Assert.True(pool.Ok);
+        Assert.Equal(("8.5.12", new PhpPoolSettings(3, 50)), fake.Pool);
     }
 
     [Fact]
@@ -121,8 +143,12 @@ public sealed class RpcTests
             [new PreflightFinding("port-443", Severity.Blocking, "Port 443 is used by Skype (PID 7).", "Close Skype.")],
             "4.0.0-test", RunningAsService: false);
 
+        public static readonly PhpVersionInfo Php = new("8.5.12", "vs17", 4, 1000, 9100, ["htdocs"], ProcessState.Running, true, false);
+        public static readonly PhpExtension Intl = new("intl", true, true, false, false);
+
         public AppSettings? Saved { get; private set; }
         public List<ServiceId?> Started { get; } = [];
+        public (string, PhpPoolSettings)? Pool { get; private set; }
 
         public event EventHandler<AgentStatus>? StatusChanged;
 
@@ -151,6 +177,17 @@ public sealed class RpcTests
         public Task<IReadOnlyList<InstalledComponent>> GetInstalledAsync(ComponentKind k, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<InstalledComponent> InstallAsync(ComponentRelease r, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<PhpVersionInfo>>([Php]);
+
+        public Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default)
+        {
+            Pool = (version, settings);
+            return Task.FromResult(ApplyResult.Success());
+        }
+
+        public Task<ApplyResult> SetDefaultPhpAsync(string version, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<PhpExtension>> GetExtensionsAsync(string version, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<PhpExtension>>([Intl]);
+        public Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();
         public Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => Task.CompletedTask;
     }
 }

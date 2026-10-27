@@ -29,13 +29,17 @@ public sealed class PhpPoolPlanner(AppPaths paths)
             var key = crowded.Contains(PhpVersionKey.Of(version)) ? PhpVersionKey.Exact(version) : PhpVersionKey.Of(version);
             var port = PortAllocator.Allocate(key, ports, isFree);
             ports[key] = port;
-            var tuning = s.PhpPools.TryGetValue(version, out var t) ? t : new PhpPoolSettings(Suggest.PhpWorkers(Environment.ProcessorCount), DefaultMaxRequests);
+            var tuning = TuningFor(s, version);
             var iniDir = paths.PhpConfigDir(version);
             pools.Add(new PhpPool(version, key, port, tuning.Workers, tuning.MaxRequests,
                 Path.Combine(installed.Path, "php-cgi.exe"), iniDir, Path.Combine(iniDir, "conf.d")));
         }
         return pools;
     }
+
+    /// <summary>The saved pool settings for <paramref name="version"/>, or half the cores and <see cref="DefaultMaxRequests"/>.</summary>
+    public static PhpPoolSettings TuningFor(AppSettings s, string version) =>
+        s.PhpPools.TryGetValue(version, out var t) ? t : new PhpPoolSettings(Suggest.PhpWorkers(Environment.ProcessorCount), DefaultMaxRequests);
 
     /// <summary>What to persist as <see cref="AppSettings.PhpPoolPorts"/>.</summary>
     public static IReadOnlyDictionary<string, int> Allocations(IEnumerable<PhpPool> pools) => pools.ToDictionary(p => p.Key, p => p.Port);

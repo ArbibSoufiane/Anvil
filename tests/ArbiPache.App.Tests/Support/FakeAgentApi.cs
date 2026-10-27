@@ -1,6 +1,7 @@
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Php;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
 
@@ -20,6 +21,8 @@ public sealed class FakeAgentApi : IAgentApi
     public List<ComponentRelease> Available { get; } = [];
     public List<InstalledComponent> Installed { get; } = [];
     public List<string> Calls { get; } = [];
+    public List<PhpVersionInfo> Php { get; } = [];
+    public Dictionary<string, List<PhpExtension>> Extensions { get; } = [];
 
     public event EventHandler<AgentStatus>? StatusChanged;
 
@@ -53,7 +56,8 @@ public sealed class FakeAgentApi : IAgentApi
     public Task<InstalledComponent> InstallAsync(ComponentRelease r, CancellationToken ct = default)
     {
         Calls.Add($"install {r.Version}");
-        var installed = new InstalledComponent(r.Kind, r.Version, $@"D:\ArbiPache\runtime\apache\{r.Version}", r.Sha256, DateTimeOffset.Now);
+        var installed = new InstalledComponent(r.Kind, r.Version, $@"D:\ArbiPache\runtime\{r.Kind.ToString().ToLowerInvariant()}\{r.Version}", r.Sha256,
+            DateTimeOffset.Now, r.Toolset, r.AppliesTo);
         Installed.Add(installed);
         return Task.FromResult(installed);
     }
@@ -62,6 +66,29 @@ public sealed class FakeAgentApi : IAgentApi
     {
         Settings = Settings with { ActiveApache = version };
         return Record($"activate {version}");
+    }
+
+    public Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<PhpVersionInfo>>(Php.ToList());
+
+    public Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default) =>
+        Record($"pool {version} {settings.Workers} {settings.MaxRequests}");
+
+    public Task<ApplyResult> SetDefaultPhpAsync(string version, CancellationToken ct = default)
+    {
+        for (var i = 0; i < Php.Count; i++) Php[i] = Php[i] with { IsDefault = Php[i].Version == version };
+        return Record($"default {version}");
+    }
+
+    public Task<IReadOnlyList<PhpExtension>> GetExtensionsAsync(string version, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<PhpExtension>>(Extensions.TryGetValue(version, out var list) ? list.ToList() : []);
+
+    public Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default)
+    {
+        if (NextResult.Ok && Extensions.TryGetValue(version, out var list))
+            for (var i = 0; i < list.Count; i++)
+                if (list[i].Name == name) list[i] = list[i] with { Enabled = enabled };
+        return Record($"extension {version} {name} {(enabled ? "on" : "off")}");
     }
 
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)

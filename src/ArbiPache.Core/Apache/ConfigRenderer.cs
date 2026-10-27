@@ -86,8 +86,8 @@ public sealed class ConfigRenderer(AppPaths paths)
 
     /// <summary>Sends existing .php files under one vhost or mount to <paramref name="pool"/>, indented to sit inside its block.</summary>
     public static string PhpHandler(PhpPool pool, string indent) =>
-        string.Join('\n', Templates.Render("_php-handler.sbn", new { port = pool.Port })
-            .TrimEnd('\n').Split('\n').Select(line => indent + line));
+        string.Join(Environment.NewLine, Templates.Render("_php-handler.sbn", new { port = pool.Port })
+            .ReplaceLineEndings("\n").TrimEnd('\n').Split('\n').Select(line => indent + line));
 
     private static class Templates
     {

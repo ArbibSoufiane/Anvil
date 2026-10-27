@@ -60,7 +60,7 @@ public sealed class ComponentInstaller(AppPaths paths, Downloader dl, Func<Compo
             throw;
         }
 
-        var entry = new InstalledComponent(r.Kind, r.Version, target, r.Sha256.ToLowerInvariant(), DateTimeOffset.UtcNow);
+        var entry = new InstalledComponent(r.Kind, r.Version, target, r.Sha256.ToLowerInvariant(), DateTimeOffset.UtcNow, r.Toolset, r.AppliesTo);
         lock (RegistryLock)
         {
             var all = Load();

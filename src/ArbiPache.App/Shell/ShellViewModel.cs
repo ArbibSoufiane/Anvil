@@ -24,12 +24,15 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly DashboardViewModel? _dashboard;
     private readonly ApacheViewModel? _apache;
     private readonly LogsViewModel? _logs;
+    private readonly PhpViewModel? _php;
 
-    public ShellViewModel(AppSettings settings, DashboardViewModel? dashboard = null, ApacheViewModel? apache = null, LogsViewModel? logs = null)
+    public ShellViewModel(AppSettings settings, DashboardViewModel? dashboard = null, ApacheViewModel? apache = null, LogsViewModel? logs = null,
+        PhpViewModel? php = null)
     {
         _dashboard = dashboard;
         _apache = apache;
         _logs = logs;
+        _php = php;
         Mode = settings.Mode;
         CloseToTray = settings.CloseToTray;
         NavItems =
@@ -57,6 +60,7 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         AppPage.Dashboard when _dashboard is not null => _dashboard,
         AppPage.Apache when _apache is not null => _apache,
+        AppPage.Php when _php is not null => _php,
         AppPage.Logs when _logs is not null => _logs,
         _ => Current,
     };

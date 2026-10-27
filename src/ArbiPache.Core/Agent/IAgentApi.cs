@@ -1,5 +1,6 @@
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
+using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
 using StreamJsonRpc;
 
@@ -28,6 +29,16 @@ public partial interface IAgentApi
     Task<IReadOnlyList<InstalledComponent>> GetInstalledAsync(ComponentKind k, CancellationToken ct = default);
     Task<InstalledComponent> InstallAsync(ComponentRelease r, CancellationToken ct = default);
     Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct = default);
+
+    /// <summary>Installed PHP versions, newest first.</summary>
+    Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default);
+
+    Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default);
+    Task<ApplyResult> SetDefaultPhpAsync(string version, CancellationToken ct = default);
+    Task<IReadOnlyList<PhpExtension>> GetExtensionsAsync(string version, CancellationToken ct = default);
+
+    /// <summary>Restarts that version's pool only.</summary>
+    Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default);
 
     /// <summary>Ends the Agent. With stopServices false, its processes still end with it (they live in its job).</summary>
     Task ShutdownAsync(bool stopServices, CancellationToken ct = default);

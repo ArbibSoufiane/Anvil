@@ -35,6 +35,52 @@ public sealed class DashboardViewModelTests
     }
 
     [Fact]
+    public async Task Php_card_shows_default_version_and_pools()
+    {
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("Not installed", vm.PhpStateText);
+        Assert.Equal("Install PHP on the PHP page", vm.PhpDefault);
+
+        _api.Raise(_api.Status with
+        {
+            Services =
+            [
+                new ServiceStatus(ServiceId.Apache, ProcessState.Running, "2.4.69", null),
+                new ServiceStatus(ServiceId.Php, ProcessState.Running, "8.5.12", "8.5 ×4"),
+            ],
+        });
+
+        Assert.Equal("Running", vm.PhpStateText);
+        Assert.True(vm.PhpRunning);
+        Assert.Equal("PHP 8.5.12 NTS x64", vm.PhpDefault);
+        Assert.Equal("8.5 ×4", vm.PhpPools);
+    }
+
+    [Fact]
+    public async Task Stopped_php_pools_say_when_they_start()
+    {
+        _api.Status = _api.Status with { Services = [new ServiceStatus(ServiceId.Php, ProcessState.Stopped, "8.5.12", null)] };
+        var vm = Make();
+
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("Stopped", vm.PhpStateText);
+        Assert.Equal("Start with Apache", vm.PhpPools);
+    }
+
+    [Fact]
+    public async Task Restart_pools_restarts_php_only()
+    {
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        await vm.RestartPhpCommand.ExecuteAsync(null);
+
+        Assert.Equal(["restart Php"], _api.Calls);
+    }
+
+    [Fact]
     public async Task Dashboard_shows_port_conflict_finding()
     {
         _api.Status = _api.Status with

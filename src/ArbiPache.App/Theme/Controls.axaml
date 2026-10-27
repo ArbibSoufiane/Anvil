@@ -186,6 +186,42 @@
     <Setter Property="Opacity" Value="0.45" />
   </Style>
 
+  <!-- Version tags: Default (warm), End of life (red) -->
+  <Style Selector="Border.tag">
+    <Setter Property="Padding" Value="7,1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Background" Value="{StaticResource WarnBgBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.tag TextBlock">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Foreground" Value="{StaticResource WarnTextBrush}" />
+  </Style>
+  <Style Selector="Border.tag.eol">
+    <Setter Property="Background" Value="{StaticResource BadBgBrush}" />
+  </Style>
+  <Style Selector="Border.tag.eol TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource BadTextBrush}" />
+  </Style>
+
+  <!-- A table row that selects what the cards below edit -->
+  <Style Selector="Button.rowSelect">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="8,6" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+  </Style>
+  <Style Selector="Button.rowSelect:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource RaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+  </Style>
+  <Style Selector="Button.rowSelect.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource SelectedBrush}" />
+  </Style>
+
   <!-- Module chips: on, off; required ones are disabled but keep the on look -->
   <Style Selector="Button.chip">
     <Setter Property="MinHeight" Value="32" />

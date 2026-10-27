@@ -3,6 +3,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Paths;
+using ArbiPache.Core.Php;
 using ArbiPache.Core.Settings;
 using Serilog;
 
@@ -152,6 +153,20 @@ public sealed class AgentConnection : IAsyncDisposable
 
         public async Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct = default) =>
             await (await Remote()).ActivateAsync(k, version, ct);
+
+        public async Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default) => await (await Remote()).GetPhpAsync(ct);
+
+        public async Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default) =>
+            await (await Remote()).SetPhpPoolAsync(version, settings, ct);
+
+        public async Task<ApplyResult> SetDefaultPhpAsync(string version, CancellationToken ct = default) =>
+            await (await Remote()).SetDefaultPhpAsync(version, ct);
+
+        public async Task<IReadOnlyList<PhpExtension>> GetExtensionsAsync(string version, CancellationToken ct = default) =>
+            await (await Remote()).GetExtensionsAsync(version, ct);
+
+        public async Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default) =>
+            await (await Remote()).SetExtensionAsync(version, name, enabled, ct);
 
         public async Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => await (await Remote()).ShutdownAsync(stopServices, ct);
     }

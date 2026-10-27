@@ -38,7 +38,7 @@ public sealed class InstallerTests : IDisposable
     public async Task Install_creates_folder_and_registry_entry()
     {
         var body = Zip("Apache24/bin/httpd.exe", "Apache24/conf/httpd.conf");
-        var release = Release(ComponentKind.Apache, "2.4.69", "httpd.zip", body, "Apache24");
+        var release = Release(ComponentKind.Apache, "2.4.69", "httpd.zip", body, "Apache24") with { Toolset = "VS18" };
 
         var installed = await Installer(body).InstallAsync(release, null, TestContext.Current.CancellationToken);
 
@@ -47,7 +47,21 @@ public sealed class InstallerTests : IDisposable
         var entry = Assert.Single(Installer(body).Installed(ComponentKind.Apache));
         Assert.Equal("2.4.69", entry.Version);
         Assert.Equal(release.Sha256, entry.Sha256);
+        Assert.Equal("VS18", entry.Toolset);
         Assert.True(File.Exists(Path.Combine(_paths.Runtime, "installed.json")));
+    }
+
+    [Fact]
+    public async Task Xdebug_entry_records_its_php_minor()
+    {
+        var body = Encoding.ASCII.GetBytes("MZ");
+        var release = Release(ComponentKind.Xdebug, "3.5.3", "php_xdebug-3.5.3-8.5-nts-vs17-x86_64.dll", body) with { AppliesTo = "8.5" };
+
+        await Installer(body).InstallAsync(release, null, TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(Installer(body).Installed(ComponentKind.Xdebug));
+        Assert.Equal("8.5", entry.AppliesTo);
+        Assert.True(File.Exists(Path.Combine(entry.Path, "php_xdebug-3.5.3-8.5-nts-vs17-x86_64.dll")));
     }
 
     [Fact]

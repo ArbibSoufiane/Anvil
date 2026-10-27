@@ -26,6 +26,13 @@ public static class PhpSupport
     /// <summary>OPcache is compiled into PHP from 8.5; older versions load it as a zend_extension.</summary>
     public static bool HasBuiltInOpcache(string version) => Branch(version).CompareTo((8, 5)) >= 0;
 
+    /// <summary>"8.5.12" is "8.5": what Xdebug builds and the pool summary go by.</summary>
+    public static string Minor(string version)
+    {
+        var (major, minor) = Branch(version);
+        return $"{major}.{minor}";
+    }
+
     private static (int Major, int Minor) Branch(string version)
     {
         var parts = version.Split('.');

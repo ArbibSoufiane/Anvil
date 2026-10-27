@@ -10,7 +10,7 @@ public sealed class PageViewLocator : IDataTemplate
 {
     private readonly Dictionary<AppPage, Control> _views = [];
 
-    public bool Match(object? data) => data is AppPage or DashboardViewModel or ApacheViewModel or LogsViewModel;
+    public bool Match(object? data) => data is AppPage or DashboardViewModel or ApacheViewModel or PhpViewModel or LogsViewModel;
 
     public Control Build(object? param)
     {
@@ -18,6 +18,7 @@ public sealed class PageViewLocator : IDataTemplate
         {
             DashboardViewModel => AppPage.Dashboard,
             ApacheViewModel => AppPage.Apache,
+            PhpViewModel => AppPage.Php,
             LogsViewModel => AppPage.Logs,
             _ => (AppPage)param!,
         };

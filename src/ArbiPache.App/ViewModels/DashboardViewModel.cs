@@ -14,7 +14,7 @@ namespace ArbiPache.App.ViewModels;
 
 public sealed record FindingItem(string Message, string? Fix, bool IsBlocking);
 
-/// <summary>The Dashboard: the Apache card, problems found before start, where to open the sites, and the mode.</summary>
+/// <summary>The Dashboard: the Apache and PHP cards, problems found before start, where to open the sites, and the mode.</summary>
 public sealed partial class DashboardViewModel : ObservableObject
 {
     // Copy from the mockup's "Current mode" card.
@@ -74,6 +74,23 @@ public sealed partial class DashboardViewModel : ObservableObject
     [ObservableProperty]
     public partial string ApachePorts { get; set; } = "";
 
+    [ObservableProperty]
+    public partial string PhpStateText { get; set; } = "Not installed";
+
+    [ObservableProperty]
+    public partial bool PhpRunning { get; set; }
+
+    [ObservableProperty]
+    public partial bool PhpFailed { get; set; }
+
+    [ObservableProperty]
+    public partial string PhpDefault { get; set; } = "Install PHP on the PHP page";
+
+    [ObservableProperty]
+    public partial string PhpPools { get; set; } = "";
+
+    private string? _defaultPhp;
+
     /// <summary>The last error from a Start/Stop/Restart, or Apache's last error after it failed.</summary>
     [ObservableProperty]
     public partial string? ApacheMessage { get; set; }
@@ -124,7 +141,16 @@ public sealed partial class DashboardViewModel : ObservableObject
     private Task RestartApacheAsync() => RunAsync(() => _api.RestartAsync(ServiceId.Apache));
 
     [RelayCommand]
+    private Task RestartPhpAsync() => RunAsync(() => _api.RestartAsync(ServiceId.Php));
+
+    [RelayCommand]
     private void OpenHttpdConf() => _editor.Open(_paths.HttpdConf);
+
+    [RelayCommand]
+    private void OpenPhpIni()
+    {
+        if (_defaultPhp is { } version) _editor.Open(Path.Combine(_paths.PhpConfigDir(version), "php.ini"));
+    }
 
     [RelayCommand]
     private void OpenUrl(string url) => EditorLauncher.OpenUrl(url);
@@ -184,6 +210,15 @@ public sealed partial class DashboardViewModel : ObservableObject
         ApacheVersion = apache?.Version ?? "Not installed";
         ApacheStateText = apache?.Version is null ? "Not installed" : state.ToString();
         if (ApacheFailed && apache?.Detail is { } detail) ApacheMessage = detail;
+
+        var php = status.Services.FirstOrDefault(s => s.Id == ServiceId.Php);
+        var phpState = php?.State ?? ProcessState.Stopped;
+        _defaultPhp = php?.Version;
+        PhpRunning = phpState is ProcessState.Starting or ProcessState.Running or ProcessState.Restarting;
+        PhpFailed = phpState == ProcessState.Failed;
+        PhpStateText = _defaultPhp is null ? "Not installed" : phpState.ToString();
+        PhpDefault = _defaultPhp is null ? "Install PHP on the PHP page" : $"PHP {_defaultPhp} NTS x64";
+        PhpPools = php?.Detail ?? (_defaultPhp is null ? "" : "Start with Apache");
 
         ModeName = status.Mode.ToString();
         ModeIsProduction = status.Mode == ServerMode.Production;
