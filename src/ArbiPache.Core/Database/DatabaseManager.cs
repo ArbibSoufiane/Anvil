@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Net.Sockets;
-using ArbiPache.Core.IO;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Processes;
 using MySqlConnector;
@@ -158,13 +157,10 @@ public sealed class DatabaseManager(AppPaths paths, ProcessSupervisor sup, DbSec
 
     private async Task AdminShutdownAsync(DbEngine e, string version, string password, CancellationToken ct)
     {
-        var options = Path.Combine(paths.Tmp, $"db-admin-{Guid.NewGuid():N}.cnf");
+        string? options = null;
         try
         {
-            Directory.CreateDirectory(paths.Tmp);
-            File.WriteAllText(options, "");
-            PrivateAcl.RestrictFile(options);
-            File.WriteAllText(options, $"[client]\nuser=root\npassword=\"{Escape(password)}\"\nhost=127.0.0.1\nport={Port(e)}\n");
+            options = DbClientOptions.Write(paths, password, Port(e));
             // --defaults-file (not -extra-file) so option files elsewhere on the machine cannot change where this goes.
             await RunToolAsync(Path.Combine(Bin(e, version), AdminExe(e)), [$"--defaults-file={options}", "shutdown"], ct);
         }
@@ -175,12 +171,9 @@ public sealed class DatabaseManager(AppPaths paths, ProcessSupervisor sup, DbSec
         }
         finally
         {
-            File.Delete(options);
+            if (options is not null) File.Delete(options);
         }
     }
-
-    // Option-file strings treat backslash as an escape character.
-    private static string Escape(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
 
     private static async Task RunToolAsync(string exe, IReadOnlyList<string> args, CancellationToken ct)
     {

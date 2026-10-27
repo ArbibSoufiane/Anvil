@@ -90,6 +90,28 @@ public sealed class DatabaseTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Backup_dumps_every_database()
+    {
+        var s = await InstallAsync(DbEngine.MariaDb, 13309);
+        await s.Manager.InitializeAsync(s.Engine, s.Version, Password, Ct);
+        await StartAsync(s);
+        await ScalarAsync(s, Password, "CREATE DATABASE shop; CREATE TABLE shop.orders (id INT PRIMARY KEY, total DECIMAL(9,2)); " +
+            "INSERT INTO shop.orders VALUES (7, 19.90); SELECT 1");
+
+        var file = await new DbBackup(s.Paths, s.Secrets, TimeProvider.System).BackupAllAsync(s.Engine, s.Version, Ct);
+        await s.Manager.StopAsync(s.Engine, s.Version, Ct);
+
+        Assert.Matches(@"\\db\\\d{4}-\d{2}-\d{2}-\d{6}\.sql\.gz$", file);
+        await using var gzip = new System.IO.Compression.GZipStream(File.OpenRead(file), System.IO.Compression.CompressionMode.Decompress);
+        var sql = await new StreamReader(gzip).ReadToEndAsync(Ct);
+        Assert.Contains("CREATE DATABASE /*!32312 IF NOT EXISTS*/ `shop`", sql, StringComparison.Ordinal);
+        Assert.Contains("INSERT INTO `orders` VALUES", sql, StringComparison.Ordinal);
+        Assert.Contains("(7,19.90)", sql, StringComparison.Ordinal);
+        Assert.Empty(Directory.GetFiles(s.Paths.Tmp, "db-client-*"));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(file)!, "*.partial"));
+    }
+
+    [Fact]
     public async Task Stop_is_clean()
     {
         var s = await InstallAsync(DbEngine.MariaDb, 13308);
@@ -103,6 +125,6 @@ public sealed class DatabaseTests : IAsyncDisposable
         Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(30));
         Assert.Equal(ProcessState.Stopped, _supervisor.Snapshot().Single(p => p.Name == "mariadb").State);
         Assert.Contains("Shutdown complete", await File.ReadAllTextAsync(s.Ini.ErrorLog, Ct), StringComparison.Ordinal);
-        Assert.Empty(Directory.GetFiles(s.Paths.Tmp, "db-admin-*"));
+        Assert.Empty(Directory.GetFiles(s.Paths.Tmp, "db-client-*"));
     }
 }
