@@ -1,3 +1,4 @@
+using ArbiPache.App.ViewModels;
 using ArbiPache.Core;
 using ArbiPache.Core.Settings;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -20,8 +21,13 @@ public sealed partial class ShellViewModel : ObservableObject
         [AppPage.Settings] = ("Settings", "Startup, network access, folders and certificates"),
     };
 
-    public ShellViewModel(AppSettings settings)
+    private readonly DashboardViewModel? _dashboard;
+    private readonly ApacheViewModel? _apache;
+
+    public ShellViewModel(AppSettings settings, DashboardViewModel? dashboard = null, ApacheViewModel? apache = null)
     {
+        _dashboard = dashboard;
+        _apache = apache;
         Mode = settings.Mode;
         CloseToTray = settings.CloseToTray;
         NavItems =
@@ -41,8 +47,16 @@ public sealed partial class ShellViewModel : ObservableObject
     public IReadOnlyList<NavItem> NavItems { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Title), nameof(Subtitle))]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(Subtitle), nameof(CurrentPage))]
     public partial AppPage Current { get; set; }
+
+    /// <summary>What the content area shows: the page's view model, or the page itself while it has none yet.</summary>
+    public object CurrentPage => Current switch
+    {
+        AppPage.Dashboard when _dashboard is not null => _dashboard,
+        AppPage.Apache when _apache is not null => _apache,
+        _ => Current,
+    };
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModeLabel), nameof(IsProduction))]

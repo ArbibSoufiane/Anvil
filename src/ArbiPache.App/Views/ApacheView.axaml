@@ -1,7 +1,119 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="ArbiPache.App.Views.ApacheView">
-  <Border Classes="card" VerticalAlignment="Top">
-    <TextBlock Classes="dim" Text="This page is not built yet." />
-  </Border>
+             xmlns:vm="using:ArbiPache.App.ViewModels"
+             x:Class="ArbiPache.App.Views.ApacheView"
+             x:DataType="vm:ApacheViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16">
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h2" Text="Versions" />
+          <ItemsControl x:Name="Versions" ItemsSource="{Binding Versions}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:VersionRow">
+                <Border Classes="row">
+                  <DockPanel>
+                    <Border Classes="pill ok" DockPanel.Dock="Right" IsVisible="{Binding IsActive}">
+                      <TextBlock Text="Active" />
+                    </Border>
+                    <Button Classes="secondary" DockPanel.Dock="Right" VerticalAlignment="Center"
+                            IsVisible="{Binding !IsActive}"
+                            Content="{Binding ActionLabel}" Command="{Binding ActionCommand}" />
+                    <StackPanel Spacing="2">
+                      <TextBlock Classes="dd" FontWeight="Medium" Text="{Binding Title}" />
+                      <TextBlock Classes="note" Text="{Binding Note}" />
+                    </StackPanel>
+                  </DockPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Classes="result" Text="{Binding VersionsMessage}"
+                     IsVisible="{Binding VersionsMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <TextBlock Classes="note" Text="Downloads are SHA-256 verified. The old version stays until you remove it." />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <TextBlock Classes="h2" Text="Performance" />
+          <TextBlock Classes="para"
+                     Text="Apache on Windows uses the WinNT MPM: one process, many threads, spread across every core. Event MPM does not exist on Windows; this is its equivalent." />
+          <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="16">
+            <StackPanel Spacing="4">
+              <TextBlock Classes="fieldLabel" Text="Threads per child" />
+              <TextBox Classes="field" x:Name="Threads" Text="{Binding ThreadsPerChild}" />
+              <TextBlock Classes="note" Text="{Binding ThreadsHint}" />
+            </StackPanel>
+            <StackPanel Spacing="4" Grid.Column="1">
+              <TextBlock Classes="fieldLabel" Text="Max connections per child" />
+              <TextBox Classes="field" Text="{Binding MaxConnectionsPerChild}" />
+              <TextBlock Classes="note" Text="0 = never recycle" />
+            </StackPanel>
+            <StackPanel Spacing="4" Grid.Column="2">
+              <TextBlock Classes="fieldLabel" Text="KeepAlive timeout (s)" />
+              <TextBox Classes="field" Text="{Binding KeepAliveTimeout}" />
+            </StackPanel>
+            <StackPanel Spacing="4" Grid.Column="3">
+              <TextBlock Classes="fieldLabel" Text="Request timeout (s)" />
+              <TextBox Classes="field" Text="{Binding RequestTimeout}" IsReadOnly="True" />
+              <TextBlock Classes="note" Text="{Binding RequestTimeoutHint}" />
+            </StackPanel>
+          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Classes="primary" Content="Apply and restart" Command="{Binding ApplyCommand}" />
+          </StackPanel>
+          <TextBlock Classes="result" Classes.ok="{Binding ResultOk}" Text="{Binding ResultText}"
+                     IsVisible="{Binding ResultText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h2" Text="Modules" />
+          <ItemsControl x:Name="Modules" ItemsSource="{Binding Modules}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel ItemSpacing="8" LineSpacing="8" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ModuleChip">
+                <Button Classes="chip" Classes.on="{Binding IsOn}" Content="{Binding Name}" Command="{Binding ToggleCommand}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Classes="note" Text="Modules ArbiPache needs (ssl, proxy_fcgi, rewrite and the rest shown on) cannot be turned off. Changes apply with Apply and restart." />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h2" Text="Configuration files" />
+          <ItemsControl ItemsSource="{Binding ConfigFiles}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ConfigFileRow">
+                <Border Classes="row">
+                  <DockPanel>
+                    <Button Classes="ghost" DockPanel.Dock="Right" VerticalAlignment="Center" Content="{Binding ActionLabel}"
+                            Command="{Binding $parent[UserControl].((vm:ApacheViewModel)DataContext).OpenConfigFileCommand}"
+                            CommandParameter="{Binding}" />
+                    <StackPanel Spacing="2">
+                      <TextBlock Classes="dd mono" Text="{Binding Name}" />
+                      <TextBlock Classes="note" Text="{Binding Note}" />
+                    </StackPanel>
+                  </DockPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Classes="secondary" Content="Test configuration" Command="{Binding TestConfigCommand}" />
+            <TextBlock Classes="result" Classes.ok="{Binding TestOk}" Text="{Binding TestText}" VerticalAlignment="Center" MaxWidth="800" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>

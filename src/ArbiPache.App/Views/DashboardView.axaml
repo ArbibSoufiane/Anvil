@@ -1,7 +1,121 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="ArbiPache.App.Views.DashboardView">
-  <Border Classes="card" VerticalAlignment="Top">
-    <TextBlock Classes="dim" Text="This page is not built yet." />
-  </Border>
+             xmlns:vm="using:ArbiPache.App.ViewModels"
+             x:Class="ArbiPache.App.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16">
+
+      <!-- Problems found before start -->
+      <ItemsControl x:Name="Findings" ItemsSource="{Binding Findings}" IsVisible="{Binding HasFindings}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Spacing="8" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:FindingItem">
+            <Border Classes="banner" Classes.blocking="{Binding IsBlocking}">
+              <StackPanel Spacing="2">
+                <TextBlock Text="{Binding Message}" FontWeight="Medium" />
+                <TextBlock Text="{Binding Fix}" IsVisible="{Binding Fix, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- Service cards; PHP and database cards join in Phases 2 and 5 -->
+      <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
+        <Border Classes="card" x:Name="ApacheCard">
+          <StackPanel Spacing="14">
+            <DockPanel>
+              <Viewbox Width="20" Height="20" DockPanel.Dock="Left">
+                <Canvas Width="24" Height="24">
+                  <Path Classes="icon" Stroke="{StaticResource AccentBrush}"
+                        Data="M4.5 4 H19.5 Q21 4 21 5.5 V9.5 Q21 11 19.5 11 H4.5 Q3 11 3 9.5 V5.5 Q3 4 4.5 4 Z M4.5 13 H19.5 Q21 13 21 14.5 V18.5 Q21 20 19.5 20 H4.5 Q3 20 3 18.5 V14.5 Q3 13 4.5 13 Z" />
+                </Canvas>
+              </Viewbox>
+              <Border Classes="pill" Classes.ok="{Binding ApacheRunning}" Classes.bad="{Binding ApacheFailed}" DockPanel.Dock="Right">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Ellipse />
+                  <TextBlock x:Name="ApacheState" Text="{Binding ApacheStateText}" />
+                </StackPanel>
+              </Border>
+              <TextBlock Classes="h2" Text="Apache" Margin="10,0,0,0" />
+            </DockPanel>
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="16" RowSpacing="6">
+              <TextBlock Classes="dt" Text="Version" />
+              <TextBlock Classes="dd" Grid.Column="1" Text="{Binding ApacheVersion}" />
+              <TextBlock Classes="dt" Grid.Row="1" Text="Workers" />
+              <TextBlock Classes="dd" Grid.Row="1" Grid.Column="1" Text="{Binding ApacheWorkers}" />
+              <TextBlock Classes="dt" Grid.Row="2" Text="Ports" />
+              <TextBlock Classes="dd" Grid.Row="2" Grid.Column="1" Text="{Binding ApachePorts}" />
+            </Grid>
+            <TextBlock Classes="result" Text="{Binding ApacheMessage}"
+                       IsVisible="{Binding ApacheMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <Button Classes="secondary" Content="{Binding StartStopLabel}" Command="{Binding StartStopApacheCommand}" />
+              <Button Classes="secondary" Content="Restart" Command="{Binding RestartApacheCommand}" IsEnabled="{Binding ApacheRunning}" />
+              <Button Classes="ghost" Content="httpd.conf" Command="{Binding OpenHttpdConfCommand}" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <Grid ColumnDefinitions="2*,*" ColumnSpacing="16">
+        <Border Classes="card">
+          <StackPanel Spacing="12">
+            <TextBlock Classes="h2" Text="Open in browser" />
+            <Border Classes="row">
+              <DockPanel>
+                <Button Classes="secondary" Content="Open" DockPanel.Dock="Right" VerticalAlignment="Center"
+                        Command="{Binding OpenUrlCommand}" CommandParameter="{Binding LocalUrl}" />
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="url" Text="{Binding LocalUrl}" />
+                  <TextBlock Classes="note" Text="{Binding LocalNote}" />
+                </StackPanel>
+              </DockPanel>
+            </Border>
+            <Border Classes="row" IsVisible="{Binding NetworkUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+              <DockPanel>
+                <Button Classes="secondary" Content="Copy" DockPanel.Dock="Right" VerticalAlignment="Center" Click="OnCopyNetworkUrl" />
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="url" Text="{Binding NetworkUrl}" />
+                  <TextBlock Classes="note" Text="{Binding NetworkNote}" />
+                </StackPanel>
+              </DockPanel>
+            </Border>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card" Grid.Column="1">
+          <StackPanel Spacing="12">
+            <DockPanel>
+              <Border Classes="modeChip" Classes.prod="{Binding ModeIsProduction}" DockPanel.Dock="Right">
+                <TextBlock Text="{Binding ModeName}" />
+              </Border>
+              <TextBlock Classes="h2" Text="Current mode" />
+            </DockPanel>
+            <ItemsControl ItemsSource="{Binding ModeLines}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="6" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <DockPanel>
+                    <Ellipse Width="4" Height="4" Fill="{StaticResource TextDimBrush}" Margin="2,7,10,0" VerticalAlignment="Top" DockPanel.Dock="Left" />
+                    <TextBlock Classes="para" Text="{Binding}" />
+                  </DockPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Classes="ghost" Content="Compare profiles" Command="{Binding CompareProfilesCommand}" />
+          </StackPanel>
+        </Border>
+      </Grid>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>

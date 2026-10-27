@@ -8,13 +8,6 @@ namespace ArbiPache.Core.Apache;
 /// <summary>Renders data\conf: the global include, the mode profile and the default htdocs virtual hosts.</summary>
 public sealed class ConfigRenderer(AppPaths paths)
 {
-    private static readonly string[] RequiredModules =
-    [
-        "ssl", "socache_shmcb", "rewrite", "headers", "remoteip", "reqtimeout", "proxy", "proxy_http", "proxy_wstunnel",
-        "proxy_fcgi", "proxy_balancer", "lbmethod_bybusyness", "slotmem_shm", "autoindex", "auth_basic", "authn_file",
-        "authn_core", "authz_user",
-    ];
-
     /// <summary>Loopback, RFC 1918, IPv6 unique-local and link-local.</summary>
     public const string PrivateRanges = "127.0.0.0/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7 fe80::/10";
 
@@ -25,7 +18,7 @@ public sealed class ConfigRenderer(AppPaths paths)
         var htdocs = AppPaths.ForApache(s.HtdocsPath ?? paths.Htdocs);
         var options = profile.DirectoryListing ? "Indexes FollowSymLinks" : "FollowSymLinks";
 
-        var modules = RequiredModules.Concat(s.OptionalModules)
+        var modules = ApacheModules.Required.Concat(s.OptionalModules)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(m => !input.Stock.LoadedModules.Contains(m))
             .ToList();

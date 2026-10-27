@@ -17,6 +17,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ArbiPache.Core\ArbiPache.Core.csproj" />
+    <!-- Puts ArbiPache.Agent.exe next to ArbiPache.exe, so both resolve the same portable root. -->
+    <ProjectReference Include="..\ArbiPache.Agent\ArbiPache.Agent.csproj" />
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />

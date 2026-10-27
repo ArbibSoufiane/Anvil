@@ -91,6 +91,208 @@
     <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="12" />
-    <Setter Property="Padding" Value="16" />
+    <Setter Property="Padding" Value="20" />
+  </Style>
+
+  <!-- Card text -->
+  <Style Selector="TextBlock.h2">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.dt">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
+  </Style>
+  <Style Selector="TextBlock.dd">
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+  <Style Selector="TextBlock.note">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.para">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.url">
+    <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{StaticResource LinkBrush}" />
+  </Style>
+  <Style Selector="TextBlock.result">
+    <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{StaticResource BadTextBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.result.ok">
+    <Setter Property="Foreground" Value="{StaticResource OkTextBrush}" />
+  </Style>
+  <Style Selector="TextBlock.fieldLabel">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+  </Style>
+
+  <!-- List rows inside a card -->
+  <Style Selector="Border.row">
+    <Setter Property="Padding" Value="0,10" />
+    <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+  </Style>
+
+  <!-- Buttons: secondary (raised), ghost (outline), primary (accent) -->
+  <Style Selector="Button.secondary, Button.ghost, Button.primary">
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="Padding" Value="14,0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.secondary">
+    <Setter Property="Background" Value="{StaticResource RaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+  </Style>
+  <Style Selector="Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource SelectedBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextStrongBrush}" />
+  </Style>
+  <Style Selector="Button.ghost">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+  </Style>
+  <Style Selector="Button.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource RaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}" />
+    <Setter Property="Opacity" Value="0.9" />
+  </Style>
+  <Style Selector="Button.secondary:disabled, Button.ghost:disabled, Button.primary:disabled">
+    <Setter Property="Opacity" Value="0.45" />
+  </Style>
+
+  <!-- Module chips: on, off; required ones are disabled but keep the on look -->
+  <Style Selector="Button.chip">
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.chip:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource RaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+  </Style>
+  <Style Selector="Button.chip.on">
+    <Setter Property="Background" Value="{StaticResource ChipOnBgBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource ChipOnBorderBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource DevTextBrush}" />
+  </Style>
+  <Style Selector="Button.chip.on:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.chip.on:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource ChipOnBgBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource ChipOnBorderBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource DevTextBrush}" />
+  </Style>
+
+  <!-- Status pill: neutral, ok (running), bad (failed) -->
+  <Style Selector="Border.pill">
+    <Setter Property="Padding" Value="10,3" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Background" Value="{StaticResource RaisedBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.pill TextBlock">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+  </Style>
+  <Style Selector="Border.pill Ellipse">
+    <Setter Property="Width" Value="6" />
+    <Setter Property="Height" Value="6" />
+    <Setter Property="Fill" Value="{StaticResource TextDimBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.pill.ok">
+    <Setter Property="Background" Value="{StaticResource OkBgBrush}" />
+  </Style>
+  <Style Selector="Border.pill.ok TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource OkTextBrush}" />
+  </Style>
+  <Style Selector="Border.pill.ok Ellipse">
+    <Setter Property="Fill" Value="{StaticResource OkDotBrush}" />
+  </Style>
+  <Style Selector="Border.pill.bad">
+    <Setter Property="Background" Value="{StaticResource BadBgBrush}" />
+  </Style>
+  <Style Selector="Border.pill.bad TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource BadTextBrush}" />
+  </Style>
+  <Style Selector="Border.pill.bad Ellipse">
+    <Setter Property="Fill" Value="{StaticResource BadTextBrush}" />
+  </Style>
+
+  <!-- Preflight banners: warning, or blocking (Apache cannot start) -->
+  <Style Selector="Border.banner">
+    <Setter Property="Padding" Value="14,12" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="{StaticResource WarnBgBrush}" />
+  </Style>
+  <Style Selector="Border.banner TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource WarnTextBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+  <Style Selector="Border.banner.blocking">
+    <Setter Property="Background" Value="{StaticResource BadBgBrush}" />
+  </Style>
+  <Style Selector="Border.banner.blocking TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource BadTextBrush}" />
+  </Style>
+
+  <!-- Text inputs -->
+  <Style Selector="TextBox.field">
+    <Setter Property="MinHeight" Value="38" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
+    <Setter Property="Background" Value="{StaticResource InputBgBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBox.field:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource InputBgBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
+  </Style>
+  <Style Selector="TextBox.field:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource InputBgBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+  </Style>
+  <Style Selector="TextBox.field:pointerover, TextBox.field:focus">
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+  </Style>
+  <Style Selector="TextBox.field:readonly /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="Transparent" />
   </Style>
 </Styles>

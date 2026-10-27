@@ -24,6 +24,15 @@
   <Color x:Key="ProdText">#FFD2AD</Color>
   <Color x:Key="Link">#8CC4FF</Color>
 
+  <Color x:Key="OkDot">#4CC38A</Color>
+  <Color x:Key="BadBg">#3A1A1A</Color>
+  <Color x:Key="BadText">#FFB4B4</Color>
+  <Color x:Key="WarnBg">#3A2614</Color>
+  <Color x:Key="WarnText">#FFD2AD</Color>
+  <Color x:Key="ChipOnBorder">#2D4A66</Color>
+  <Color x:Key="ChipOnBg">#13202E</Color>
+  <Color x:Key="InputBg">#0F1318</Color>
+
   <SolidColorBrush x:Key="GroundBrush" Color="{StaticResource Ground}" />
   <SolidColorBrush x:Key="TitleBarBrush" Color="{StaticResource TitleBar}" />
   <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource Sidebar}" />
@@ -47,6 +56,14 @@
   <SolidColorBrush x:Key="ProdTextBrush" Color="{StaticResource ProdText}" />
   <SolidColorBrush x:Key="LinkBrush" Color="{StaticResource Link}" />
 
+  <SolidColorBrush x:Key="OkDotBrush" Color="{StaticResource OkDot}" />
+  <SolidColorBrush x:Key="BadBgBrush" Color="{StaticResource BadBg}" />
+  <SolidColorBrush x:Key="BadTextBrush" Color="{StaticResource BadText}" />
+  <SolidColorBrush x:Key="WarnBgBrush" Color="{StaticResource WarnBg}" />
+  <SolidColorBrush x:Key="WarnTextBrush" Color="{StaticResource WarnText}" />
+  <SolidColorBrush x:Key="ChipOnBorderBrush" Color="{StaticResource ChipOnBorder}" />
+  <SolidColorBrush x:Key="ChipOnBgBrush" Color="{StaticResource ChipOnBg}" />
+  <SolidColorBrush x:Key="InputBgBrush" Color="{StaticResource InputBg}" />
   <FontFamily x:Key="SansFont">avares://ArbiPache/Assets/Fonts#IBM Plex Sans</FontFamily>
   <FontFamily x:Key="MonoFont">avares://ArbiPache/Assets/Fonts#IBM Plex Mono</FontFamily>
 </ResourceDictionary>

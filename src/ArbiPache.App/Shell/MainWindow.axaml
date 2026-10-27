@@ -64,7 +64,7 @@
         <TextBlock Classes="sub" Text="{Binding Subtitle}" />
       </StackPanel>
       <ContentControl x:Name="PageHost" Grid.Row="1" Margin="0,20,0,0"
-                      Content="{Binding Current}"
+                      Content="{Binding CurrentPage}"
                       ContentTemplate="{StaticResource PageViews}" />
     </Grid>
   </DockPanel>
