@@ -1,0 +1,25 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using ArbiPache.Core.IO;
+
+namespace ArbiPache.Core.Elevation;
+
+/// <summary>One administrator action, handed to ArbiPache.Elevator.exe as JSON. The verb set is fixed.</summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "verb")]
+[JsonDerivedType(typeof(HostsSetRequest), "hosts-set")]
+public abstract record ElevatedRequest;
+
+/// <summary>Makes ArbiPache's hosts block map exactly these domains to this PC.</summary>
+public sealed record HostsSetRequest(IReadOnlyList<string> Domains) : ElevatedRequest;
+
+public sealed record ElevatedResult(bool Ok, string? Error);
+
+public static class ElevatedJson
+{
+    public static string Serialize(ElevatedRequest r) => JsonSerializer.Serialize(r, JsonFiles.Options);
+
+    public static string Serialize(ElevatedResult r) => JsonSerializer.Serialize(r, JsonFiles.Options);
+
+    /// <summary>Throws JsonException or NotSupportedException for malformed JSON or an unknown verb.</summary>
+    public static ElevatedRequest? Deserialize(string json) => JsonSerializer.Deserialize<ElevatedRequest>(json, JsonFiles.Options);
+}

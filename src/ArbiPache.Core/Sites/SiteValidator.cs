@@ -44,6 +44,9 @@ public static partial class SiteValidator
         return errors;
     }
 
+    /// <summary>True for a domain already in punycode and lower case, other than localhost.</summary>
+    public static bool IsDomain(string host) => host != "localhost" && SiteSet.NormalizeHost(host) == host && DomainName().IsMatch(host);
+
     private static string? NameError(SiteDefinition s, List<SiteDefinition> rest)
     {
         switch (s.Kind)
