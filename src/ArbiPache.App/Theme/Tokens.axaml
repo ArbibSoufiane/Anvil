@@ -32,6 +32,9 @@
   <Color x:Key="ChipOnBorder">#2D4A66</Color>
   <Color x:Key="ChipOnBg">#13202E</Color>
   <Color x:Key="InputBg">#0F1318</Color>
+  <Color x:Key="LogText">#D5DAE0</Color>
+  <Color x:Key="LogWarn">#F5C878</Color>
+  <Color x:Key="LogError">#FF9C9C</Color>
 
   <SolidColorBrush x:Key="GroundBrush" Color="{StaticResource Ground}" />
   <SolidColorBrush x:Key="TitleBarBrush" Color="{StaticResource TitleBar}" />
@@ -64,6 +67,9 @@
   <SolidColorBrush x:Key="ChipOnBorderBrush" Color="{StaticResource ChipOnBorder}" />
   <SolidColorBrush x:Key="ChipOnBgBrush" Color="{StaticResource ChipOnBg}" />
   <SolidColorBrush x:Key="InputBgBrush" Color="{StaticResource InputBg}" />
+  <SolidColorBrush x:Key="LogTextBrush" Color="{StaticResource LogText}" />
+  <SolidColorBrush x:Key="LogWarnBrush" Color="{StaticResource LogWarn}" />
+  <SolidColorBrush x:Key="LogErrorBrush" Color="{StaticResource LogError}" />
   <FontFamily x:Key="SansFont">avares://ArbiPache/Assets/Fonts#IBM Plex Sans</FontFamily>
   <FontFamily x:Key="MonoFont">avares://ArbiPache/Assets/Fonts#IBM Plex Mono</FontFamily>
 </ResourceDictionary>

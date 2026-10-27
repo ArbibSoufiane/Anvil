@@ -23,11 +23,13 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private readonly DashboardViewModel? _dashboard;
     private readonly ApacheViewModel? _apache;
+    private readonly LogsViewModel? _logs;
 
-    public ShellViewModel(AppSettings settings, DashboardViewModel? dashboard = null, ApacheViewModel? apache = null)
+    public ShellViewModel(AppSettings settings, DashboardViewModel? dashboard = null, ApacheViewModel? apache = null, LogsViewModel? logs = null)
     {
         _dashboard = dashboard;
         _apache = apache;
+        _logs = logs;
         Mode = settings.Mode;
         CloseToTray = settings.CloseToTray;
         NavItems =
@@ -55,8 +57,15 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         AppPage.Dashboard when _dashboard is not null => _dashboard,
         AppPage.Apache when _apache is not null => _apache,
+        AppPage.Logs when _logs is not null => _logs,
         _ => Current,
     };
+
+    // Each visit finds new logs (a site or PHP version added since) and shows the latest lines.
+    partial void OnCurrentChanged(AppPage value)
+    {
+        if (value == AppPage.Logs) _logs?.Refresh();
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModeLabel), nameof(IsProduction))]

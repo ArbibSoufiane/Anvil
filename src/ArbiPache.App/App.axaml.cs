@@ -42,7 +42,8 @@ public partial class App : Application
             var editor = new EditorLauncher(() => settings.Editor, new WindowsRegistryReader(), File.Exists);
             var dashboard = new DashboardViewModel(_agent.Api, paths, editor);
             var apache = new ApacheViewModel(_agent.Api, paths, editor);
-            var vm = new ShellViewModel(settings, dashboard, apache);
+            var logs = new LogsViewModel(paths, editor);
+            var vm = new ShellViewModel(settings, dashboard, apache, logs);
             dashboard.CompareProfilesRequested += (_, _) => vm.NavigateCommand.Execute(AppPage.Mode);
             _agent.Api.StatusChanged += (_, s) => Dispatcher.UIThread.Post(() => vm.Mode = s.Mode);
 
@@ -56,6 +57,7 @@ public partial class App : Application
             desktop.Exit += (_, _) =>
             {
                 _tray.Dispose();
+                logs.Dispose();
                 _agent.DisposeAsync().AsTask().GetAwaiter().GetResult();
                 Log.CloseAndFlush();
             };

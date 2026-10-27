@@ -295,4 +295,47 @@
   <Style Selector="TextBox.field:readonly /template/ Border#PART_BorderElement">
     <Setter Property="Background" Value="Transparent" />
   </Style>
+
+  <!-- Logs page: a dark console panel, one line per row -->
+  <Style Selector="Border.logPanel">
+    <Setter Property="Background" Value="{StaticResource TitleBarBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="6,8" />
+  </Style>
+  <Style Selector="ListBox.log">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ListBox.log ListBoxItem">
+    <Setter Property="Padding" Value="10,1" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <Style Selector="ListBox.log ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+  </Style>
+  <Style Selector="ListBox.log ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource RaisedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.logSource">
+    <Setter Property="Width" Value="96" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="LineHeight" Value="20" />
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="TextBlock.logText">
+    <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="LineHeight" Value="20" />
+    <Setter Property="Foreground" Value="{StaticResource LogTextBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.logText.warn">
+    <Setter Property="Foreground" Value="{StaticResource LogWarnBrush}" />
+  </Style>
+  <Style Selector="TextBlock.logText.error">
+    <Setter Property="Foreground" Value="{StaticResource LogErrorBrush}" />
+  </Style>
 </Styles>

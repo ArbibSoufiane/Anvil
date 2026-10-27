@@ -69,4 +69,34 @@ public sealed class PageViewTests
         Assert.True(chips.Single(b => (string?)b.Content == "status").IsEffectivelyEnabled);
         Assert.Equal("256", Named<TextBox>(window, "Threads").Text);
     }
+
+    [AvaloniaFact]
+    public void Logs_view_lists_sources_and_colours_errors()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ap-logsview-" + Guid.NewGuid().ToString("N"));
+        var paths = new AppPaths(root);
+        Directory.CreateDirectory(Path.Combine(paths.Logs, "apache"));
+        File.WriteAllText(Path.Combine(paths.Logs, "apache", "error.log"), "[core:error] AH00126: Invalid URI in request\n[mpm_winnt:notice] Child started\n");
+        var editor = new EditorLauncher(() => "auto", new NoRegistry(), _ => false, "");
+        using var logs = new LogsViewModel(paths, editor, ui: a => a()) { Follow = false };
+        try
+        {
+            var window = new MainWindow(new ShellViewModel(_api.Settings, logs: logs));
+            window.Show();
+
+            ((ShellViewModel)window.DataContext!).NavigateCommand.Execute(AppPage.Logs);
+            window.UpdateLayout();
+
+            Assert.IsType<LogsView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
+            var chips = Named<ItemsControl>(window, "Sources").GetVisualDescendants().OfType<Button>().Select(b => b.Content).ToList();
+            Assert.Equal(["All", "Apache"], chips);
+            var texts = Named<ListBox>(window, "LogList").GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("logText")).ToList();
+            Assert.Equal(2, texts.Count);
+            Assert.Contains("error", texts.Single(t => t.Text!.Contains("AH00126")).Classes);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { }
+        }
+    }
 }
