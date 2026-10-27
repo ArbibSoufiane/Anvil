@@ -24,6 +24,10 @@ internal static class Runtimes
             .OrderByDescending(r => r.Version, Comparer<string>.Create(SemVer.Compare))
             .First();
 
+    /// <summary>The newest build of one MariaDB series, e.g. "11.8", from the live downloads.mariadb.org API.</summary>
+    public static async Task<ComponentRelease> LatestMariaDbAsync(string series, CancellationToken ct) =>
+        (await new MariaDbCatalogProvider(Http).GetAsync(ct)).Single(r => r.Version.StartsWith(series + ".", StringComparison.Ordinal));
+
     public static async Task<string> InstallAsync(AppPaths paths, ComponentKind kind, CancellationToken ct) =>
         (await InstallAsync(paths, Pinned(kind), ct)).Version;
 
