@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>ArbiPache.Elevator</AssemblyName>
+    <RootNamespace>ArbiPache.Elevator</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ArbiPache.Core\ArbiPache.Core.csproj" />
+  </ItemGroup>
+</Project>

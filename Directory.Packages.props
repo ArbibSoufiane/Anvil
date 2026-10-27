@@ -1,0 +1,23 @@
+<Project>
+  <ItemGroup>
+    <PackageVersion Include="Avalonia" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.4" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.14" />
+    <PackageVersion Include="StreamJsonRpc" Version="2.26.150" />
+    <PackageVersion Include="Scriban" Version="7.5.3" />
+    <PackageVersion Include="Certes" Version="4.1.0" />
+    <PackageVersion Include="BCrypt.Net-Next" Version="4.2.1" />
+    <PackageVersion Include="MySqlConnector" Version="2.6.2" />
+    <PackageVersion Include="Serilog" Version="4.4.0" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageVersion Include="Microsoft.Windows.CsWin32" Version="0.3.367" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
+  </ItemGroup>
+</Project>

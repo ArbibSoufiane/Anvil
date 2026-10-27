@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <Version>4.0.0</Version>
+    <Product>ArbiPache</Product>
+    <Company>Soufiane Arbib</Company>
+    <Authors>Soufiane Arbib</Authors>
+    <Copyright>Copyright 2026 Soufiane Arbib</Copyright>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
