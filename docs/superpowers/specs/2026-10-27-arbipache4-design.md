@@ -71,6 +71,12 @@ Three executables, one shared library, all in the app folder:
   `service-install`, `service-uninstall`, `acl-grant`. Rejects anything else.
 - **ArbiPache.Core** (library): all logic, pure where possible, unit tested.
 
+httpd runs as a console process under the Agent, never as its own Windows service. `httpd -k restart`
+and `-k shutdown` only reach an installed service ("No installed service named Apache2.4"), so the
+Agent signals the console httpd through the named events `ap<pid>_restart` (graceful reload: the old
+child finishes its requests while a new one starts) and `ap<pid>_shutdown`. If the event is missing or
+httpd is not serving 10 s after a reload, the Agent stops and starts it. (Found in Phase 1, Task 1.10.)
+
 GUI ↔ Agent: JSON-RPC (StreamJsonRpc) over the named pipe `ArbiPache.Agent`, ACL = installing user +
 Administrators (+ the service SID). One Agent per machine (mutex `Global\ArbiPache.Agent`).
 
