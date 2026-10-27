@@ -3,6 +3,10 @@
     <RootNamespace>ArbiPache.Core</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="ArbiPache.Core.Tests" />
   </ItemGroup>
 </Project>
