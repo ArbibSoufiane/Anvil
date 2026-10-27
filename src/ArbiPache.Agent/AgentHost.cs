@@ -41,7 +41,7 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         var installer = new ComponentInstaller(paths, new Downloader(downloadHttp),
             k => k == ComponentKind.Apache ? orchestrator?.Settings.ActiveApache : null);
         orchestrator = new Orchestrator(paths, store, tester, new ApacheControl(supervisor, paths, tester, probeHttp), preflight.Run,
-            new ComponentCatalog([new PhpCatalogProvider(probeHttp)], new ShippedCatalogProvider(paths)), installer,
+            new ComponentCatalog([new PhpCatalogProvider(probeHttp), new MariaDbCatalogProvider(probeHttp)], new ShippedCatalogProvider(paths)), installer,
             pools, port => ports.HolderOf(port) is null, options.RunningAsService);
 
         var shutdown = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);

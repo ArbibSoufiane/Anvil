@@ -16,6 +16,14 @@
       "sha256": "796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe"
     },
     {
+      "kind": "MySql",
+      "version": "8.4.13",
+      "url": "https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.13-winx64.zip",
+      "sha256": "e9cd98b1d23f122987b1afca26ad942efec5891481103d48ae3cde237fa3ea54",
+      "stripRoot": "mysql-8.4.13-winx64",
+      "lts": true
+    },
+    {
       "kind": "Php",
       "version": "7.4.33",
       "url": "https://downloads.php.net/~windows/releases/archives/php-7.4.33-nts-Win32-vc15-x64.zip",
