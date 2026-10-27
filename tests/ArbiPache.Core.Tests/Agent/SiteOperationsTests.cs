@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using ArbiPache.Agent;
 using ArbiPache.Core.Agent;
@@ -6,8 +8,10 @@ using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Hosts;
 using ArbiPache.Core.Paths;
+using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Settings;
 using ArbiPache.Core.Sites;
+using Microsoft.Extensions.Time.Testing;
 
 namespace ArbiPache.Core.Tests.Agent;
 
@@ -42,12 +46,12 @@ public sealed class SiteOperationsTests : IDisposable
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private async Task<Orchestrator> StartedAsync()
+    private async Task<Orchestrator> StartedAsync(Func<bool, IAcmeProtocol>? acme = null, TimeProvider? time = null)
     {
         var orchestrator = new Orchestrator(_paths, new SettingsStore(_paths), _tester, _apache, _ => [],
             new ComponentCatalog([], new ShippedCatalogProvider(_paths)),
             new ComponentInstaller(_paths, new Downloader(new HttpClient()), _ => null), _pools, _ => true, hostsText: () => _hosts,
-            legacyHome: LegacyHome);
+            legacyHome: LegacyHome, acme: acme, time: time);
         await orchestrator.InitializeAsync(Ct);
         return orchestrator;
     }
@@ -380,5 +384,139 @@ public sealed class SiteOperationsTests : IDisposable
         Assert.NotEqual(before, File.ReadAllText(new CertificateStore(_paths).Get("shop.test")!.CertFile));
         Assert.Null(new CertificateStore(_paths).Get("plain.test"));
         Assert.Equal(restarts + 1, _apache.Restarts);
+    }
+
+    private sealed class FakeAcme
+    {
+        public List<bool> Staging { get; } = [];
+        public IReadOnlyList<string> Names { get; private set; } = [];
+        public bool Fails { get; init; }
+
+        public IAcmeProtocol For(bool staging)
+        {
+            Staging.Add(staging);
+            return new Protocol(this);
+        }
+
+        private sealed class Protocol(FakeAcme owner) : IAcmeProtocol, IAcmeOrder
+        {
+            public IReadOnlyList<(string Token, string KeyAuthorization)> Http01Challenges => [("tok", "tok.thumb")];
+
+            public Task<IAcmeOrder> NewOrderAsync(IReadOnlyList<string> names, CancellationToken ct)
+            {
+                owner.Names = names;
+                return Task.FromResult<IAcmeOrder>(this);
+            }
+
+            public Task ValidateAsync(CancellationToken ct) => owner.Fails
+                ? Task.FromException(new InvalidOperationException("Let's Encrypt could not verify shop.example.com: connection refused."))
+                : Task.CompletedTask;
+
+            public Task<(string CertPem, string ChainPem, string KeyPem)> FinalizeAsync(CancellationToken ct)
+            {
+                var (cert, key) = SelfSigned(owner.Names, DateTimeOffset.UtcNow.AddDays(90));
+                return Task.FromResult((cert, "", key));
+            }
+        }
+    }
+
+    private static (string Cert, string Key) SelfSigned(IReadOnlyList<string> names, DateTimeOffset notAfter)
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var request = new CertificateRequest($"CN={names[0]}", key, HashAlgorithmName.SHA256);
+        var san = new SubjectAlternativeNameBuilder();
+        foreach (var name in names) san.AddDnsName(name);
+        request.CertificateExtensions.Add(san.Build());
+        using var cert = request.CreateSelfSigned(notAfter.AddDays(-60), notAfter);
+        return (cert.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem());
+    }
+
+    [Fact]
+    public async Task Renewal_orders_missing_letsencrypt_certificate_and_restarts()
+    {
+        var acme = new FakeAcme();
+        var orchestrator = await StartedAsync(acme.For);
+        await orchestrator.StartAsync(null, Ct);
+        await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Cert = CertSource.LetsEncrypt, Aliases = ["www.shop.example.com"] }, null, Ct);
+        var restarts = _apache.Restarts;
+
+        var report = await orchestrator.RenewCertificatesAsync(Ct);
+
+        Assert.Equal(["shop.example.com"], report.Renewed);
+        Assert.Empty(report.Failed);
+        Assert.Equal([false], acme.Staging);
+        Assert.Equal(["shop.example.com", "www.shop.example.com"], acme.Names);
+        Assert.Equal(CertSource.LetsEncrypt, new CertificateStore(_paths).Get("shop.example.com")!.Source);
+        Assert.Contains("SSLCertificateFile", File.ReadAllText(SiteVhost("shop.example.com")));
+        Assert.Equal(restarts + 1, _apache.Restarts);
+    }
+
+    [Fact]
+    public async Task Renewal_reissues_local_dev_certificate_close_to_expiry()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var orchestrator = await StartedAsync(time: time);
+        await orchestrator.SaveSiteAsync(Site("shop.test") with { Cert = CertSource.LocalDev }, null, Ct);
+        var before = File.ReadAllText(new CertificateStore(_paths).Get("shop.test")!.CertFile);
+        Assert.Empty((await orchestrator.RenewCertificatesAsync(Ct)).Renewed);
+        time.Advance(TimeSpan.FromDays(815));
+
+        var report = await orchestrator.RenewCertificatesAsync(Ct);
+
+        Assert.Equal(["shop.test"], report.Renewed);
+        Assert.NotEqual(before, File.ReadAllText(new CertificateStore(_paths).Get("shop.test")!.CertFile));
+    }
+
+    [Fact]
+    public async Task Imported_certificate_near_expiry_becomes_a_finding()
+    {
+        var (cert, key) = SelfSigned(["portal.clientco.com"], DateTimeOffset.UtcNow.AddDays(5).AddHours(1));
+        new CertificateStore(_paths).Save("portal.clientco.com", cert, key, null, CertSource.Imported);
+        var orchestrator = await StartedAsync();
+        await orchestrator.SaveSiteAsync(Site("portal.clientco.com") with { Cert = CertSource.Imported }, null, Ct);
+
+        var report = await orchestrator.RenewCertificatesAsync(Ct);
+
+        Assert.Empty(report.Renewed);
+        var finding = Assert.Single(orchestrator.Status().Findings, f => f.Id == "cert-portal.clientco.com");
+        Assert.Equal(Severity.Warning, finding.Severity);
+        Assert.Contains("portal.clientco.com expires in 5 days", finding.Message);
+    }
+
+    [Fact]
+    public async Task Expiry_finding_clears_once_a_renewed_certificate_is_in_place()
+    {
+        var store = new CertificateStore(_paths);
+        var (cert, key) = SelfSigned(["portal.clientco.com"], DateTimeOffset.UtcNow.AddDays(5).AddHours(1));
+        store.Save("portal.clientco.com", cert, key, null, CertSource.Imported);
+        var orchestrator = await StartedAsync();
+        var site = Site("portal.clientco.com") with { Cert = CertSource.Imported };
+        await orchestrator.SaveSiteAsync(site, null, Ct);
+        Assert.Contains(orchestrator.Status().Findings, f => f.Id == "cert-portal.clientco.com");
+
+        (cert, key) = SelfSigned(["portal.clientco.com"], DateTimeOffset.UtcNow.AddDays(365));
+        store.Save("portal.clientco.com", cert, key, null, CertSource.Imported);
+        await orchestrator.SaveSiteAsync(site, null, Ct);
+
+        Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id == "cert-portal.clientco.com");
+    }
+
+    [Fact]
+    public async Task Failed_renewal_becomes_a_finding_and_restarts_nothing()
+    {
+        var acme = new FakeAcme { Fails = true };
+        var orchestrator = await StartedAsync(acme.For);
+        await orchestrator.StartAsync(null, Ct);
+        await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Cert = CertSource.LetsEncrypt }, null, Ct);
+        var restarts = _apache.Restarts;
+
+        var report = await orchestrator.RenewCertificatesAsync(Ct);
+
+        Assert.Equal(["shop.example.com"], report.Failed);
+        var finding = Assert.Single(orchestrator.Status().Findings, f => f.Id == "cert-shop.example.com");
+        Assert.Contains("connection refused", finding.Message);
+        Assert.Contains("6 hours", finding.Fix);
+        Assert.Null(new CertificateStore(_paths).Get("shop.example.com"));
+        Assert.Equal(restarts, _apache.Restarts);
     }
 }
