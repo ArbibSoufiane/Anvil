@@ -2,3 +2,10 @@ CreateJobObject
 SetInformationJobObject
 AssignProcessToJobObject
 JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+GetExtendedTcpTable
+MIB_TCPTABLE_OWNER_PID
+MIB_TCP6TABLE_OWNER_PID
+TCP_TABLE_CLASS
+OpenProcess
+QueryFullProcessImageName
+WIN32_ERROR
