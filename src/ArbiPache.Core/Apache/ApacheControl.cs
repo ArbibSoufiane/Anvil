@@ -5,15 +5,35 @@ using ArbiPache.Core.Processes;
 namespace ArbiPache.Core.Apache;
 
 /// <summary>Runs httpd under the supervisor. Every start and restart is preceded by a config test.</summary>
-public sealed class ApacheControl(ProcessSupervisor sup, AppPaths paths, IConfigTester tester, HttpClient http)
+public sealed class ApacheControl : IApacheControl
 {
     public const string ProcessName = "apache";
     private static readonly TimeSpan ServeWait = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan Probe = TimeSpan.FromSeconds(3);
 
+    private readonly ProcessSupervisor sup;
+    private readonly AppPaths paths;
+    private readonly IConfigTester tester;
+    private readonly HttpClient http;
     private string? _version;
     private int _port;
+
+    public ApacheControl(ProcessSupervisor sup, AppPaths paths, IConfigTester tester, HttpClient http)
+    {
+        this.sup = sup;
+        this.paths = paths;
+        this.tester = tester;
+        this.http = http;
+        sup.Changed += (_, s) =>
+        {
+            if (s.Name == ProcessName) StatusChanged?.Invoke(this, s);
+        };
+    }
+
+    public ProcessStatus? Status => sup.Snapshot().FirstOrDefault(s => s.Name == ProcessName);
+
+    public event EventHandler<ProcessStatus>? StatusChanged;
 
     public async Task StartAsync(string version, int httpPort, CancellationToken ct)
     {

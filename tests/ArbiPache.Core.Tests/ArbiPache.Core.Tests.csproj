@@ -12,6 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ArbiPache.Core\ArbiPache.Core.csproj" />
+    <ProjectReference Include="..\..\src\ArbiPache.Agent\ArbiPache.Agent.csproj" />
     <ProjectReference Include="..\ArbiPache.TestChild\ArbiPache.TestChild.csproj" />
   </ItemGroup>
   <ItemGroup>
