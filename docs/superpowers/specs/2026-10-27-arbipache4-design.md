@@ -51,10 +51,43 @@ It is used two ways:
 
 - **Apache Event MPM does not exist on Windows.** Windows has only the WinNT MPM: one process,
   many threads, all cores. ArbiPache exposes `ThreadsPerChild`, `MaxConnectionsPerChild`, KeepAlive.
-- **PHP-FPM does not exist on Windows.** ArbiPache runs the same model: a supervised pool of
-  `php-cgi.exe -b 127.0.0.1:<port>` workers per PHP version behind `mod_proxy_fcgi` +
-  `mod_proxy_balancer`, restarted on crash, recycled after N requests. Fallback if the Phase 2
-  spike fails: `mod_fcgid` (what v3 uses).
+- **PHP-FPM does not exist on Windows.** ArbiPache runs the same model as FPM: per PHP version,
+  the Agent owns one listening socket on `127.0.0.1:<port>`, and N supervised `php-cgi.exe`
+  workers inherit it and `accept()` on it, restarted on crash and recycled after N requests.
+  Apache reaches the pool with `mod_proxy_fcgi`; there is no `mod_proxy_balancer`.
+  Decided by the Phase 2 spike (Apache 2.4.69, PHP 8.5.12 NTS); the details follow.
+  - **Why one shared socket.** The first design, one `php-cgi -b <port>` per worker behind a
+    balancer, failed under load:
+    - Each recycle closed the worker's port, and the requests queued on it got 503.
+    - When a worker died mid-request, the balancer re-sent the request to another worker: one
+      POST ran twice and its client hung until the backend timeout.
+    - Turning failover off (`maxattempts=0`) stopped the replays, but 26 of 300 burst requests
+      still failed across 4 recycles.
+
+    With the shared socket, the backlog belongs to the Agent and survives worker restarts:
+    - Recycling every 5 requests under a 20-way POST burst gave 300 of 300 OK.
+    - A worker killed mid-request gives exactly that request a 503, in under 0.1 s. Nothing is
+      replayed and the next requests succeed.
+  - **Worker launch.** stdin is the inheritable listen socket, passed through
+    `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`. stdout and stderr must both be `INVALID_HANDLE_VALUE`:
+    php-cgi enters FastCGI mode only then. With stderr redirected it falls back to CGI and hangs.
+    Workers therefore write only to PHP's `error_log` file; nothing is captured from stderr.
+  - **Apache directives Windows needs:**
+    - The handler URL needs a trailing slash: `SetHandler "proxy:fcgi://127.0.0.1:<port>/"`.
+      Without it, Apache appends `C:/…` straight after the port, and the request fails with
+      "No protocol handler was valid".
+    - `ProxyFCGIBackendType GENERIC` plus
+      `ProxyFCGISetEnvIf "reqenv('SCRIPT_FILENAME') =~ m#^/([A-Za-z]:/.*)$#" SCRIPT_FILENAME "$1"`.
+      The default FPM type sends `proxy:fcgi://…/C:/…`, and GENERIC sends `/C:/…`. php-cgi rejects
+      both ("No input file specified").
+    - `<Proxy "fcgi://127.0.0.1:<port>/">` with `ProxySet timeout=<PhpBackendTimeout> retry=0`.
+      Without `retry=0`, one failed connection takes the pool out for 60 s.
+  - **Verified:** `SCRIPT_FILENAME`, `SCRIPT_NAME`, `PATH_INFO` (`/index.php/foo/bar`) and
+    `DOCUMENT_ROOT` are correct. Laravel's `public/.htaccess` front-controller rewrite works: `/`,
+    `/login`, 404 routes, and the trailing-slash 301. A 100 MB multipart upload works.
+    20 parallel `sleep(2)` requests spread over every worker.
+  - **Fallback:** `mod_fcgid` (what v3 uses) stays the fallback, used only if socket inheritance
+    fails in some environment. It is not shipped with the Apache build and is not implemented.
 
 ## Architecture
 
