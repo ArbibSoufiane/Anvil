@@ -7,6 +7,7 @@ using ArbiPache.Core.Elevation;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Platform;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Update;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -40,6 +41,9 @@ public partial class App : Application
             if (store.LastLoadWarning is { } warning) Log.Warning("{Warning}", warning);
 
             _agent = new AgentConnection(paths);
+            var http = new HttpClient();
+            CleanUpUpdate(new Updater(paths, http));
+            var appUpdate = AppUpdate.FromGitHub(paths, _agent.Api, _agent, http, () => Dispatcher.UIThread.Post(() => desktop.Shutdown()));
             var editor = new EditorLauncher(() => settings.Editor, new WindowsRegistryReader(), File.Exists);
             var dashboard = new DashboardViewModel(_agent.Api, paths, editor);
             var apache = new ApacheViewModel(_agent.Api, paths, editor);
@@ -59,7 +63,7 @@ public partial class App : Application
             {
                 settings = s;
                 vm.CloseToTray = s.CloseToTray;
-            }, () => _ = sites.LoadAsync(), service);
+            }, () => _ = sites.LoadAsync(), service, appUpdate);
             var mode = new ModeViewModel(_agent.Api);
             var followUp = new ElevationFollowUp(elevator);
             vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage, database, mode,
@@ -79,6 +83,7 @@ public partial class App : Application
                 _tray.Dispose();
                 logs.Dispose();
                 _agent.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                http.Dispose();
                 Log.CloseAndFlush();
             };
             Program.Activated = _ => vm.ShowAndActivate();
@@ -89,6 +94,19 @@ public partial class App : Application
             _ = ConnectAsync(pages);
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    // Leftovers of the last update: its download, staging folder and all but the newest previous version.
+    private static void CleanUpUpdate(Updater updater)
+    {
+        try
+        {
+            updater.CleanUp();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log.Warning(e, "Cleaning up after the last update failed");
+        }
     }
 
     private sealed record Pages(DashboardViewModel Dashboard, ApacheViewModel Apache, PhpViewModel Php, DatabaseViewModel Database, SitesViewModel Sites,

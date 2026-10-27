@@ -8,6 +8,7 @@ using ArbiPache.Core.Elevation;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Settings;
 using ArbiPache.Core.Sites;
+using ArbiPache.Core.Update;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
@@ -16,7 +17,7 @@ namespace ArbiPache.App.ViewModels;
 
 /// <summary>
 /// The Settings page: startup, network access, ports, folders, the local certificate authority and the import from
-/// ArbiPache 3. Every change goes through the Agent; a refused change puts the controls back as they were.
+/// ArbiPache 3, and ArbiPache's own update. Every change goes through the Agent; a refused change puts the controls back as they were.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
@@ -32,15 +33,19 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly Action? _sitesChanged;
     private readonly ElevationFollowUp _followUp;
     private readonly ServiceSwitch? _service;
+    private readonly IAppUpdate? _update;
     private AppSettings _settings = new();
 
     /// <param name="settingsChanged">Told about every saved change, so the rest of the window follows.</param>
     /// <param name="sitesChanged">Told when imported sites or a new htdocs folder change the Sites page.</param>
     /// <param name="service">Moves the Agent to and from the Windows service; null leaves the switch off.</param>
+    /// <param name="update">Checks for and installs a newer ArbiPache; null hides the update buttons.</param>
     public SettingsViewModel(IAgentApi api, IElevator elevator, IRunKey runKey, ILocalCaTrust ca, IFolderPicker picker, AppPaths paths,
-        Func<string?> lanIp, Action<AppSettings>? settingsChanged = null, Action? sitesChanged = null, ServiceSwitch? service = null)
+        Func<string?> lanIp, Action<AppSettings>? settingsChanged = null, Action? sitesChanged = null, ServiceSwitch? service = null,
+        IAppUpdate? update = null)
     {
         _service = service;
+        _update = update;
         _api = api;
         _runKey = runKey;
         _ca = ca;
@@ -131,6 +136,89 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
     private static partial Regex EmailAddress();
+
+    public bool CanUpdate => _update is not null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UpdateAvailable), nameof(InstallUpdateText))]
+    public partial Release? AvailableUpdate { get; set; }
+
+    public bool UpdateAvailable => AvailableUpdate is not null;
+    public string InstallUpdateText => $"Install {AvailableUpdate?.Version}";
+
+    [ObservableProperty]
+    public partial string? UpdateMessage { get; set; }
+
+    [ObservableProperty]
+    public partial bool UpdateOk { get; set; }
+
+    [ObservableProperty]
+    public partial string? UpdateNotes { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CheckForUpdatesCommand), nameof(InstallUpdateCommand))]
+    public partial bool UpdateBusy { get; set; }
+
+    private bool CanStartUpdate => !UpdateBusy;
+
+    /// <summary>Asks GitHub for a newer ArbiPache; only when the user clicks.</summary>
+    [RelayCommand(CanExecute = nameof(CanStartUpdate))]
+    private async Task CheckForUpdatesAsync()
+    {
+        if (_update is null) return;
+        if (_update.CannotUpdate is { } reason)
+        {
+            SayUpdate(reason, ok: false);
+            return;
+        }
+
+        UpdateBusy = true;
+        SayUpdate("Checking for updates…", ok: true);
+        try
+        {
+            AvailableUpdate = await _update.CheckAsync(CancellationToken.None);
+            UpdateNotes = string.IsNullOrWhiteSpace(AvailableUpdate?.Notes) ? null : AvailableUpdate.Notes.Trim();
+            if (AvailableUpdate is not { } next) SayUpdate($"ArbiPache {BuildInfo.Version} is the latest version.", ok: true);
+            else
+                SayUpdate($"ArbiPache {next.Version} is available. Installing it restarts ArbiPache: " + (_settings.StartServicesOnLaunch
+                    ? "sites stop for a moment and start again."
+                    : "sites stop and stay stopped until you start them, because \"Start services when ArbiPache opens\" is off."), ok: true);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Warning(e, "Checking for an ArbiPache update failed");
+            AvailableUpdate = null;
+            UpdateNotes = null;
+            SayUpdate($"ArbiPache could not check for updates: {e.Message}", ok: false);
+        }
+        finally
+        {
+            UpdateBusy = false;
+        }
+    }
+
+    /// <summary>Downloads the offered release and hands over to it; the window closes and the new version opens.</summary>
+    [RelayCommand(CanExecute = nameof(CanStartUpdate))]
+    private async Task InstallUpdateAsync()
+    {
+        if (_update is null || AvailableUpdate is not { } next) return;
+        UpdateBusy = true;
+        SayUpdate($"Downloading ArbiPache {next.Version}…", ok: true);
+        var progress = new Progress<long>(bytes =>
+        {
+            if (UpdateBusy) UpdateMessage = $"Downloading ArbiPache {next.Version}… {bytes / 1048576.0:0.0} MB";
+        });
+        var problem = await _update.InstallAsync(next, progress, CancellationToken.None);
+        UpdateBusy = false;
+        if (problem is null) SayUpdate($"Installing ArbiPache {next.Version}. It opens again in a moment.", ok: true);
+        else SayUpdate(problem, ok: false);
+    }
+
+    private void SayUpdate(string text, bool ok)
+    {
+        UpdateMessage = text;
+        UpdateOk = ok;
+    }
 
     private string RunCommand => $"\"{Path.Combine(_paths.Root, "ArbiPache.exe")}\" --minimized";
 

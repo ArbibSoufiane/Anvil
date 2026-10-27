@@ -13,6 +13,7 @@ using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
 using ArbiPache.Core.Sites;
+using ArbiPache.Core.Update;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -304,6 +305,35 @@ public sealed class PageViewTests
         Assert.Contains(Named<Border>(window, "CaStatus").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Not trusted");
         Assert.Equal("80", Named<TextBox>(window, "HttpPort").Text);
         Assert.True(Named<TextBox>(window, "AcmeEmail").IsEffectivelyVisible);
+        Assert.False(Named<Button>(window, "CheckForUpdates").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void Settings_view_offers_a_checked_update()
+    {
+        var update = new FakeAppUpdate
+        {
+            Available = new Release("4.1.0", new Uri("https://github.com/ArbibSoufiane/ArbiPache/releases/download/v4.1.0/ArbiPache-4.1.0-win64.zip"),
+                new Uri("https://github.com/ArbibSoufiane/ArbiPache/releases/download/v4.1.0/SHA256SUMS"), "Faster starts."),
+        };
+        var settings = new SettingsViewModel(_api, new FakeElevator(), new FakeRunKey(), new FakeCa(), new FakeFolderPicker(), Paths, () => "192.168.10.2",
+            update: update);
+        settings.LoadAsync().GetAwaiter().GetResult();
+        var shell = new ShellViewModel(_api.Settings, settingsPage: settings);
+        var window = new MainWindow(shell);
+        window.Show();
+        shell.NavigateCommand.Execute(AppPage.Settings);
+        window.UpdateLayout();
+        Assert.True(Named<Button>(window, "CheckForUpdates").IsEffectivelyVisible);
+        Assert.False(Named<Button>(window, "InstallUpdate").IsEffectivelyVisible);
+
+        settings.CheckForUpdatesCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        window.UpdateLayout();
+
+        Assert.True(Named<Button>(window, "InstallUpdate").IsEffectivelyVisible);
+        Assert.Equal("Install 4.1.0", Named<Button>(window, "InstallUpdate").Content);
+        Assert.Equal("Faster starts.", Named<TextBlock>(window, "UpdateNotes").Text);
+        Assert.StartsWith("ArbiPache 4.1.0 is available.", Named<TextBlock>(window, "UpdateMessage").Text);
     }
 
     private (MainWindow Window, ShellViewModel Shell, ModeViewModel Mode) ShowModePage()

@@ -1,5 +1,6 @@
 using ArbiPache.App.Services;
 using ArbiPache.Core.Elevation;
+using ArbiPache.Core.Update;
 
 namespace ArbiPache.App.Tests.Support;
 
@@ -116,4 +117,26 @@ public sealed class FakeCa : ILocalCaTrust
     }
 
     public void Untrust() => Trusted = false;
+}
+
+/// <summary>ArbiPache's own update without GitHub: answers what the test sets.</summary>
+public sealed class FakeAppUpdate : IAppUpdate
+{
+    public List<string> Calls { get; } = [];
+    public string? CannotUpdate { get; set; }
+    public Release? Available { get; set; }
+    public Exception? CheckFails { get; set; }
+    public string? InstallProblem { get; set; }
+
+    public Task<Release?> CheckAsync(CancellationToken ct)
+    {
+        Calls.Add("check");
+        return CheckFails is null ? Task.FromResult(Available) : Task.FromException<Release?>(CheckFails);
+    }
+
+    public Task<string?> InstallAsync(Release release, IProgress<long>? progress, CancellationToken ct)
+    {
+        Calls.Add($"install {release.Version}");
+        return Task.FromResult(InstallProblem);
+    }
 }

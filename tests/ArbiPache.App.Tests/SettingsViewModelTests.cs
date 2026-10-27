@@ -1,11 +1,13 @@
 using ArbiPache.App.Services;
 using ArbiPache.App.Tests.Support;
 using ArbiPache.App.ViewModels;
+using ArbiPache.Core;
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Elevation;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Settings;
 using ArbiPache.Core.Sites;
+using ArbiPache.Core.Update;
 
 namespace ArbiPache.App.Tests;
 
@@ -22,15 +24,124 @@ public sealed class SettingsViewModelTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private async Task<SettingsViewModel> LoadedAsync(ServiceSwitch? service = null)
+    private readonly FakeAppUpdate _update = new();
+
+    private static readonly Release Next = new("4.1.0", new Uri("https://github.com/ArbibSoufiane/ArbiPache/releases/download/v4.1.0/ArbiPache-4.1.0-win64.zip"),
+        new Uri("https://github.com/ArbibSoufiane/ArbiPache/releases/download/v4.1.0/SHA256SUMS"), "Faster starts.");
+
+    private async Task<SettingsViewModel> LoadedAsync(ServiceSwitch? service = null, IAppUpdate? update = null)
     {
-        var vm = new SettingsViewModel(_api, _elevator, _runKey, _ca, _picker, Paths, () => "192.168.10.2", _changed.Add, () => _sitesChanged++, service);
+        var vm = new SettingsViewModel(_api, _elevator, _runKey, _ca, _picker, Paths, () => "192.168.10.2", _changed.Add, () => _sitesChanged++, service,
+            update);
         await vm.LoadAsync(Ct);
         return vm;
     }
 
     private ServiceSwitch Service() => new(_api, new FakeAgentLink(_api.Calls), _elevator, new FakeAgentService(_api.Calls), Paths,
         "S-1-5-21-1004336348-1177238915-682003330-1001");
+
+    [Fact]
+    public async Task Check_for_updates_says_when_this_is_the_latest()
+    {
+        var vm = await LoadedAsync(update: _update);
+
+        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
+
+        Assert.True(vm.CanUpdate);
+        Assert.Equal($"ArbiPache {BuildInfo.Version} is the latest version.", vm.UpdateMessage);
+        Assert.False(vm.UpdateAvailable);
+    }
+
+    [Fact]
+    public async Task Check_for_updates_offers_a_newer_release()
+    {
+        _update.Available = Next;
+        var vm = await LoadedAsync(update: _update);
+
+        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
+
+        Assert.True(vm.UpdateAvailable);
+        Assert.Equal("Install 4.1.0", vm.InstallUpdateText);
+        Assert.Equal("ArbiPache 4.1.0 is available. Installing it restarts ArbiPache: sites stop for a moment and start again.", vm.UpdateMessage);
+        Assert.Equal("Faster starts.", vm.UpdateNotes);
+    }
+
+    [Fact]
+    public async Task The_offer_warns_when_sites_will_stay_stopped()
+    {
+        _api.Settings = _api.Settings with { StartServicesOnLaunch = false };
+        _update.Available = Next;
+        var vm = await LoadedAsync(update: _update);
+
+        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
+
+        Assert.Equal("ArbiPache 4.1.0 is available. Installing it restarts ArbiPache: sites stop and stay stopped until you start them, "
+            + "because \"Start services when ArbiPache opens\" is off.", vm.UpdateMessage);
+    }
+
+    [Fact]
+    public async Task A_failed_check_says_why()
+    {
+        _update.CheckFails = new HttpRequestException("No such host is known. (api.github.com:443)");
+        var vm = await LoadedAsync(update: _update);
+
+        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
+
+        Assert.Equal("ArbiPache could not check for updates: No such host is known. (api.github.com:443)", vm.UpdateMessage);
+        Assert.False(vm.UpdateOk);
+        Assert.False(vm.UpdateAvailable);
+    }
+
+    [Fact]
+    public async Task Install_hands_over_to_the_new_version()
+    {
+        _update.Available = Next;
+        var vm = await LoadedAsync(update: _update);
+        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
+
+        await vm.InstallUpdateCommand.ExecuteAsync(null);
+
+        Assert.Equal(["check", "install 4.1.0"], _update.Calls);
+        Assert.Equal("Installing ArbiPache 4.1.0. It opens again in a moment.", vm.UpdateMessage);
+        Assert.True(vm.UpdateOk);
+    }
+
+    [Fact]
+    public async Task A_failed_install_says_why_and_keeps_the_offer()
+    {
+        _update.Available = Next;
+        _update.InstallProblem = "ArbiPache 4.1.0 was not installed: The release's SHA256SUMS does not list ArbiPache-4.1.0-win64.zip, so the download cannot be checked.";
+        var vm = await LoadedAsync(update: _update);
+        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
+
+        await vm.InstallUpdateCommand.ExecuteAsync(null);
+
+        Assert.Equal(_update.InstallProblem, vm.UpdateMessage);
+        Assert.False(vm.UpdateOk);
+        Assert.True(vm.UpdateAvailable);
+    }
+
+    [Fact]
+    public async Task A_development_build_explains_instead_of_checking()
+    {
+        _update.CannotUpdate = "This copy of ArbiPache was built from source, so it does not update itself. Build the new version instead.";
+        var vm = await LoadedAsync(update: _update);
+
+        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
+
+        Assert.Empty(_update.Calls);
+        Assert.Equal(_update.CannotUpdate, vm.UpdateMessage);
+    }
+
+    [Fact]
+    public async Task Without_an_updater_there_is_nothing_to_check()
+    {
+        var vm = await LoadedAsync();
+
+        Assert.False(vm.CanUpdate);
+        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
+        Assert.Null(vm.UpdateMessage);
+    }
 
     [Fact]
     public async Task Turning_on_the_service_moves_the_agent()

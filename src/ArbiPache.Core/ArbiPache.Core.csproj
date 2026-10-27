@@ -19,6 +19,7 @@
   <ItemGroup>
     <AdditionalFiles Include="Processes\NativeMethods.txt" />
     <AdditionalFiles Include="Elevation\NativeMethods.txt" />
+    <AdditionalFiles Include="Update\NativeMethods.txt" />
     <EmbeddedResource Include="Apache\Templates\*.sbn" LogicalName="ArbiPache.Templates.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Database\Resources\db-settings.json" LogicalName="ArbiPache.Database.db-settings.json" />
   </ItemGroup>
