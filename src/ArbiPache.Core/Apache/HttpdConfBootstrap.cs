@@ -7,7 +7,8 @@ namespace ArbiPache.Core.Apache;
 /// <summary>
 /// data\apache\httpd.conf belongs to the user. ArbiPache touches only the <c>Define SRVROOT</c> value and one
 /// marked block at the end that includes the generated configuration. When it first copies the stock file, it turns
-/// off the stock access log, which would grow without end inside the Apache folder.
+/// off the stock access log, which would grow without end inside the Apache folder, and the stock Listen lines: the
+/// ports come from Settings, and a stock Listen 80 would keep Apache on port 80 after the HTTP port moved.
 /// </summary>
 public sealed partial class HttpdConfBootstrap(AppPaths paths)
 {
@@ -20,8 +21,8 @@ public sealed partial class HttpdConfBootstrap(AppPaths paths)
         {
             Directory.CreateDirectory(paths.ApacheConfDir);
             var stock = File.ReadAllText(Path.Combine(paths.ApacheRuntime(apacheVersion), "conf", "httpd.conf"));
-            AtomicFile.WriteAllText(paths.HttpdConf, StockAccessLog().Replace(stock,
-                @"$1#$2  # ArbiPache writes the access log to data\logs\apache, one file per day"));
+            stock = StockAccessLog().Replace(stock, @"$1#$2  # ArbiPache writes the access log to data\logs\apache, one file per day");
+            AtomicFile.WriteAllText(paths.HttpdConf, StockListen().Replace(stock, "$1#$2  # ArbiPache listens on the ports set in Settings"));
         }
         var current = File.ReadAllText(paths.HttpdConf);
         var updated = ApplyManagedLines(current, paths.ApacheRuntime(apacheVersion), Path.Combine(paths.Conf, "arbipache.conf"));
@@ -44,6 +45,9 @@ public sealed partial class HttpdConfBootstrap(AppPaths paths)
 
     [GeneratedRegex(@"^([ \t]*)(CustomLog[ \t]+""logs/access\.log""[ \t]+common)[ \t]*(?=\r?$)", RegexOptions.Multiline)]
     private static partial Regex StockAccessLog();
+
+    [GeneratedRegex(@"^([ \t]*)(Listen[ \t]+[^\r\n#]*?)[ \t]*(?=\r?$)", RegexOptions.Multiline | RegexOptions.IgnoreCase)]
+    private static partial Regex StockListen();
 
     [GeneratedRegex(@"^# >>> ArbiPache >>>\r?\n(?:.*\r?\n)*?# <<< ArbiPache <<<\r?(?:\n|\z)", RegexOptions.Multiline)]
     private static partial Regex ManagedBlock();

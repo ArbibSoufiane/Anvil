@@ -22,6 +22,28 @@ public sealed class PreflightTests
         new(probe, () => netsh, Vc(vc), Paths, _ => free);
 
     [Fact]
+    public void Busy_port_from_a_listen_line_in_httpd_conf_is_a_finding()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "ap-pre-" + Guid.NewGuid().ToString("N")));
+        Directory.CreateDirectory(paths.ApacheConfDir);
+        File.WriteAllText(paths.HttpdConf, "Listen 80\r\n#Listen 9090\r\nListen 0.0.0.0:8081\r\n");
+        try
+        {
+            var findings = new ArbiPache.Core.Preflight.Preflight(new FakeProbe(new PortHolder(8081, 4120, "node", null)), () => EmptyNetsh, Vc(true), paths, _ => Plenty)
+                .Run(new AppSettings());
+
+            var finding = Assert.Single(findings);
+            Assert.Equal("port-8081", finding.Id);
+            Assert.Equal("Port 8081 is used by node (PID 4120).", finding.Message);
+            Assert.Equal("Close node, or remove \"Listen 8081\" from httpd.conf (open it from the Apache page).", finding.Fix);
+        }
+        finally
+        {
+            Directory.Delete(paths.Root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void HttpSys_parser_finds_urls_on_port()
     {
         Assert.Equal(["HTTP://*:80/"], HttpSysParser.RegistrationsOnPort(IisNetsh, 80));

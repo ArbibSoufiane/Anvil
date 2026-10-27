@@ -90,4 +90,22 @@ public sealed class HttpdConfBootstrapTests : IDisposable
         Assert.Contains($"Include \"{AppPaths.ForApache(Path.Combine(_paths.Conf, "arbipache.conf"))}\"", conf);
         Assert.Equal(1, Count(conf, Begin));
     }
+
+    // The ports come from Settings: a stock Listen 80 would keep Apache on 80 after the HTTP port moves.
+    [Fact]
+    public void First_copy_leaves_the_ports_to_arbipache()
+    {
+        var stockDir = Path.Combine(_paths.ApacheRuntime("2.4.69"), "conf");
+        Directory.CreateDirectory(stockDir);
+        File.WriteAllText(Path.Combine(stockDir, "httpd.conf"), Stock + "  Listen [::]:8080\r\n");
+        var bootstrap = new HttpdConfBootstrap(_paths);
+
+        bootstrap.EnsureUserConf("2.4.69");
+        File.AppendAllText(_paths.HttpdConf, "Listen 8081\r\n");
+        bootstrap.EnsureUserConf("2.4.69");
+
+        var conf = File.ReadAllText(_paths.HttpdConf);
+        Assert.Equal([8081], StockConfScanner.Scan(conf).ListenPorts);
+        Assert.Contains("#Listen 80  # ArbiPache listens on the ports set in Settings", conf);
+    }
 }

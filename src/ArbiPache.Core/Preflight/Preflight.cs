@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Settings;
@@ -20,18 +21,18 @@ public sealed class Preflight(IPortProbe probe, Func<string> netshHttpServiceSta
     {
         var findings = new List<PreflightFinding>();
         var netsh = SafeNetsh();
-        foreach (var (port, label) in Ports(s))
+        foreach (var (port, move) in Ports(s))
         {
             var httpSys = HttpSysParser.RegistrationsOnPort(netsh, port);
             if (httpSys.Count > 0)
                 findings.Add(new PreflightFinding($"http-sys-{port}", Severity.Blocking,
                     $"Windows HTTP.SYS has URLs registered on port {port}: {string.Join(", ", httpSys)}.",
-                    $"Stop the World Wide Web Publishing service (IIS) or the program that registered them, or change the {label} port in Settings."));
+                    $"Stop the World Wide Web Publishing service (IIS) or the program that registered them, or {move}."));
 
             var holder = probe.HolderOf(port);
             if (holder is null || IsOurs(holder)) continue;
             if (holder.Pid == SystemPid && httpSys.Count > 0) continue; // already reported, with more detail
-            findings.Add(PortFinding(port, label, holder));
+            findings.Add(PortFinding(port, move, holder));
         }
 
         if (vc.Check() is var state and not VcRedistState.Ok)
@@ -65,10 +66,15 @@ public sealed class Preflight(IPortProbe probe, Func<string> netshHttpServiceSta
         return output;
     }
 
-    private static IEnumerable<(int Port, string Label)> Ports(AppSettings s)
+    // Every port httpd binds: the two from Settings and any Listen line the user added to httpd.conf. Each comes with
+    // how to move Apache off it.
+    private IEnumerable<(int Port, string Move)> Ports(AppSettings s)
     {
-        yield return (s.HttpPort, "HTTP");
-        if (s.HttpsPort != s.HttpPort) yield return (s.HttpsPort, "HTTPS");
+        yield return (s.HttpPort, "change the HTTP port in Settings");
+        if (s.HttpsPort != s.HttpPort) yield return (s.HttpsPort, "change the HTTPS port in Settings");
+        var conf = File.Exists(paths.HttpdConf) ? File.ReadAllText(paths.HttpdConf) : "";
+        foreach (var port in StockConfScanner.Scan(conf).ListenPorts.Where(p => p != s.HttpPort && p != s.HttpsPort).Order())
+            yield return (port, $"remove \"Listen {port}\" from httpd.conf (open it from the Apache page)");
     }
 
     private bool IsOurs(PortHolder holder) =>
@@ -76,14 +82,14 @@ public sealed class Preflight(IPortProbe probe, Func<string> netshHttpServiceSta
         && holder.ExePath is { } exe
         && Path.GetFullPath(exe).StartsWith(Path.GetFullPath(paths.Runtime) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
-    private static PreflightFinding PortFinding(int port, string label, PortHolder holder) =>
+    private static PreflightFinding PortFinding(int port, string move, PortHolder holder) =>
         holder.Pid == SystemPid
             ? new PreflightFinding($"port-{port}", Severity.Blocking,
                 $"Port {port} is used by Windows HTTP.SYS (PID {SystemPid}), usually IIS (W3SVC).",
-                $"Stop the World Wide Web Publishing service, or change the {label} port in Settings.")
+                $"Stop the World Wide Web Publishing service, or {move}.")
             : new PreflightFinding($"port-{port}", Severity.Blocking,
                 $"Port {port} is used by {holder.ProcessName} (PID {holder.Pid}).",
-                $"Close {holder.ProcessName}, or change the {label} port in Settings.");
+                $"Close {holder.ProcessName}, or {move}.");
 
     // HTTP.SYS is only a hint; a failing netsh must not hide the other checks.
     private string SafeNetsh()
