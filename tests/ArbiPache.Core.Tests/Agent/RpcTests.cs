@@ -85,6 +85,7 @@ public sealed class RpcTests
         var htdocs = await client.Api.GetHtdocsAsync(ct);
         var saved = await client.Api.SaveSiteAsync(FakeApi.Shop, new SiteSecrets("client", "pw"), ct);
         var detected = await client.Api.DetectAsync("D:/Sites/vite", ct);
+        var imported = await client.Api.ImportLegacyAsync(ct);
 
         var site = Assert.Single(sites);
         Assert.Equal(JsonSerializer.Serialize(FakeApi.Shop), JsonSerializer.Serialize(site));
@@ -92,6 +93,10 @@ public sealed class RpcTests
         Assert.Equal(["shop.test"], saved.HostsDomains);
         Assert.Equal(new SiteSecrets("client", "pw"), fake.SavedSite!.Value.Secrets);
         Assert.Equal(new Detected(SiteType.Proxy, "D:/Sites/vite", "Vite", "http://127.0.0.1:5173"), detected);
+        Assert.Equal(["afaq.test"], imported.Imported);
+        Assert.Equal(["shop.test: already exists"], imported.Skipped);
+        Assert.Equal(["7.4.9"], imported.MissingPhpVersions);
+        Assert.Equal(["afaq.test"], imported.Result?.HostsDomains);
     }
 
     [Fact]
@@ -238,6 +243,9 @@ public sealed class RpcTests
         public Task<Detected> DetectAsync(string folder, CancellationToken ct = default) =>
             Task.FromResult(new Detected(SiteType.Proxy, folder, "Vite", "http://127.0.0.1:5173"));
         public Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<ImportReport> ImportLegacyAsync(CancellationToken ct = default) =>
+            Task.FromResult(new ImportReport(["afaq.test"], ["shop.test: already exists"], ["7.4.9"]) { Result = ApplyResult.Success() with { HostsDomains = ["afaq.test"] } });
         public Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => Task.CompletedTask;
     }
 }

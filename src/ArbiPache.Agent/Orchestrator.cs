@@ -27,7 +27,8 @@ namespace ArbiPache.Agent;
 /// <param name="hostsText">Reads the Windows hosts file; the Agent never writes it (the Elevator does).</param>
 public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTester tester, IApacheControl apache,
     Func<AppSettings, IReadOnlyList<PreflightFinding>> preflight, ComponentCatalog catalog, ComponentInstaller installer,
-    IPhpPools php, Func<int, bool> portFree, bool runningAsService = false, Func<string>? hostsText = null)
+    IPhpPools php, Func<int, bool> portFree, bool runningAsService = false, Func<string>? hostsText = null,
+    string? legacyHome = null)
 {
     public const int MaxWorkers = 64;
     public const int MaxRecycleRequests = 1_000_000;
@@ -35,6 +36,7 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
     private const string NotInstalled = "Install Apache first, on the Apache page.";
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Func<string> _hostsText = hostsText ?? ReadSystemHosts;
+    private readonly string _legacyHome = legacyHome ?? LegacyImporter.DefaultHome();
     private AppSettings _settings = new();
     private IReadOnlyList<PreflightFinding> _findings = [];
     private string? _apacheUnderTest;
@@ -350,6 +352,45 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
         return applied ? result with { HostsDomains = HostsChange() } : result;
     }, ct);
 
+    /// <summary>
+    /// Brings in ArbiPache 3's sites, with local development certificates for its HTTPS sites. Either every importable
+    /// site is kept or, when Apache rejects the result, none is.
+    /// </summary>
+    public Task<ImportReport> ImportLegacyAsync(CancellationToken ct) => Locked(async () =>
+    {
+        var sites = new SiteStore(paths);
+        var installedPhp = installer.Installed(ComponentKind.Php).Select(i => i.Version).ToList();
+        var report = LegacyImporter.Import(_legacyHome, sites.All(), installedPhp, out var imported);
+        if (imported.Count == 0) return report with { Result = ApplyResult.Success() };
+
+        var undo = new List<Action>();
+        var certs = new CertificateStore(paths);
+        try
+        {
+            foreach (var site in imported)
+            {
+                if (site.Cert == CertSource.LocalDev && NeedsLocalCertificate(certs.Get(site.Id), CertNames(site)))
+                {
+                    RememberFolder(CertDir(site.Id), undo);
+                    new LocalCa(paths, certs, TimeProvider.System).Issue(site.Id, CertNames(site));
+                }
+
+                Remember(SiteFile(site.Id), undo);
+                sites.Save(site);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or CryptographicException)
+        {
+            Undo(undo);
+            return report with { Imported = [], Result = ApplyResult.Failure($"Nothing was imported: {e.Message}") };
+        }
+
+        var (applied, result) = await ApplySitesAsync(undo, "Nothing was imported.", ct);
+        return applied
+            ? report with { Result = result with { HostsDomains = HostsChange() } }
+            : report with { Imported = [], Result = result };
+    }, ct);
+
     /// <summary>Copies a project into htdocs\&lt;folderName&gt;. An existing folder or htdocs entry of that name is never overwritten.</summary>
     public Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct) => Locked(async () =>
     {
@@ -539,7 +580,10 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
         }, applied));
     }
 
-    /// <summary>The hosts entries the sites need, when they differ from ArbiPache's block in the hosts file now; else null.</summary>
+    /// <summary>
+    /// The hosts entries the sites need, when they differ from ArbiPache's block in the hosts file now or ArbiPache 3's block
+    /// still lists one of them; else null.
+    /// </summary>
     private IReadOnlyList<string>? HostsChange()
     {
         var wanted = new SiteStore(paths).All()
@@ -559,7 +603,9 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
             current = "";
         }
 
-        return HostsFile.ManagedDomains(current).ToHashSet(StringComparer.Ordinal).SetEquals(wanted) ? null : wanted;
+        var unchanged = HostsFile.ManagedDomains(current).ToHashSet(StringComparer.Ordinal).SetEquals(wanted)
+            && !HostsFile.LegacyDomains(current).Intersect(wanted, StringComparer.OrdinalIgnoreCase).Any();
+        return unchanged ? null : wanted;
     }
 
     private static string ReadSystemHosts()
@@ -757,7 +803,7 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
         _settings = s;
     }
 
-    private async Task<ApplyResult> Locked(Func<Task<ApplyResult>> work, CancellationToken ct)
+    private async Task<T> Locked<T>(Func<Task<T>> work, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
         try

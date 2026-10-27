@@ -74,6 +74,8 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
     public Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct = default) =>
         orchestrator.CopyIntoHtdocsAsync(sourceFolder, folderName, ct);
 
+    public Task<ImportReport> ImportLegacyAsync(CancellationToken ct = default) => orchestrator.ImportLegacyAsync(ct);
+
     /// <summary>Returns at once so the reply reaches the caller before the pipe closes.</summary>
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)
     {

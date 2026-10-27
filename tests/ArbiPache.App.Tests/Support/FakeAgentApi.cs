@@ -29,6 +29,7 @@ public sealed class FakeAgentApi : IAgentApi
     public List<ValidationError> ValidationErrors { get; } = [];
     public List<(SiteDefinition Site, SiteSecrets? Secrets)> SavedSites { get; } = [];
     public Detected? Detected { get; set; }
+    public ImportReport Import { get; set; } = new([], [], []);
 
     public event EventHandler<AgentStatus>? StatusChanged;
 
@@ -131,6 +132,12 @@ public sealed class FakeAgentApi : IAgentApi
 
     public Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct = default) =>
         Record($"copy {sourceFolder} {folderName}");
+
+    public Task<ImportReport> ImportLegacyAsync(CancellationToken ct = default)
+    {
+        Calls.Add("import");
+        return Task.FromResult(Import with { Result = NextResult });
+    }
 
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)
     {

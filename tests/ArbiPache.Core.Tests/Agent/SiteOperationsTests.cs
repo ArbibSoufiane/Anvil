@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ArbiPache.Agent;
 using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
@@ -45,7 +46,8 @@ public sealed class SiteOperationsTests : IDisposable
     {
         var orchestrator = new Orchestrator(_paths, new SettingsStore(_paths), _tester, _apache, _ => [],
             new ComponentCatalog([], new ShippedCatalogProvider(_paths)),
-            new ComponentInstaller(_paths, new Downloader(new HttpClient()), _ => null), _pools, _ => true, hostsText: () => _hosts);
+            new ComponentInstaller(_paths, new Downloader(new HttpClient()), _ => null), _pools, _ => true, hostsText: () => _hosts,
+            legacyHome: LegacyHome);
         await orchestrator.InitializeAsync(Ct);
         return orchestrator;
     }
@@ -55,6 +57,20 @@ public sealed class SiteOperationsTests : IDisposable
         var root = Path.Combine(_paths.Root, "projects", name);
         Directory.CreateDirectory(root);
         return new SiteDefinition { Id = SiteSet.IdFor(kind, name), Kind = kind, Type = SiteType.Php, Name = name, Root = root };
+    }
+
+    private string LegacyHome => Path.Combine(_paths.Root, "v3");
+
+    private void V3Site(string domain, string phpVersion = "php-8.4.23-Win32-vs17-x64")
+    {
+        var root = Path.Combine(_paths.Root, "projects", domain);
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(LegacyHome, "sites"));
+        File.WriteAllText(Path.Combine(LegacyHome, "sites", domain + ".json"), JsonSerializer.Serialize(new
+        {
+            domain, type = "php", root, php_version = phpVersion, index = new[] { "index.php" }, https = true, http_redirect = true,
+            aliases = Array.Empty<string>(), proxy_target = (string?)null, enabled = true, created = "2026-10-25T14:19:16",
+        }));
     }
 
     private string SiteJson(string id) => Path.Combine(_paths.Sites, id + ".json");
@@ -298,5 +314,53 @@ public sealed class SiteOperationsTests : IDisposable
         Assert.False(again.Ok);
         Assert.False(badName.Ok);
         Assert.Contains(orchestrator.GetHtdocs(), e => e.Folder == "blog");
+    }
+
+    [Fact]
+    public async Task Import_saves_v3_sites_with_certificates_and_asks_for_hosts()
+    {
+        TestPhp.Install(_paths, "8.4.23");
+        V3Site("afaq.test");
+        V3Site("old.test", "php-7.4.9-Win32-vc15-x64");
+        var orchestrator = await StartedAsync();
+
+        var report = await orchestrator.ImportLegacyAsync(Ct);
+
+        Assert.True(report.Result?.Ok, report.Result?.Error);
+        Assert.Equal(["afaq.test", "old.test"], report.Imported);
+        Assert.Equal(["7.4.9"], report.MissingPhpVersions);
+        Assert.Equal(["afaq.test", "old.test"], orchestrator.GetSites().Select(s => s.Id).Order());
+        Assert.True(File.Exists(SiteVhost("afaq.test")));
+        Assert.False(File.Exists(SiteVhost("old.test")));
+        Assert.Equal(CertSource.LocalDev, new CertificateStore(_paths).Get("afaq.test")?.Source);
+        Assert.Equal(["afaq.test"], report.Result!.HostsDomains);
+    }
+
+    [Fact]
+    public async Task Import_rejected_by_apache_saves_nothing()
+    {
+        TestPhp.Install(_paths, "8.4.23");
+        V3Site("afaq.test");
+        var orchestrator = await StartedAsync();
+        _tester.Next = new ConfigTestResult(false, "AH00526: Syntax error");
+
+        var report = await orchestrator.ImportLegacyAsync(Ct);
+
+        Assert.False(report.Result?.Ok);
+        Assert.Empty(report.Imported);
+        Assert.Empty(orchestrator.GetSites());
+        Assert.False(File.Exists(SiteJson("afaq.test")));
+    }
+
+    [Fact]
+    public async Task V3_hosts_lines_for_a_site_ask_for_a_hosts_update()
+    {
+        _hosts = HostsFile.ApplyBlock(_hosts, ["shop.test"]);
+        var orchestrator = await StartedAsync();
+        Assert.Null((await orchestrator.SaveSiteAsync(Site("shop.test"), null, Ct)).HostsDomains);
+
+        _hosts += "# >>> ApacheManager >>>\r\n127.0.0.1\tshop.test\r\n# <<< ApacheManager <<<\r\n";
+
+        Assert.Equal(["shop.test"], (await orchestrator.SaveSiteAsync(Site("shop.test"), null, Ct)).HostsDomains);
     }
 }

@@ -61,6 +61,9 @@ public partial interface IAgentApi
     /// <summary>Refuses a folder name htdocs already has.</summary>
     Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct = default);
 
+    /// <summary>Brings in ArbiPache 3's sites. Result.HostsDomains, when set, is the list to hand to the Elevator.</summary>
+    Task<ImportReport> ImportLegacyAsync(CancellationToken ct = default);
+
     /// <summary>Ends the Agent. With stopServices false, its processes still end with it (they live in its job).</summary>
     Task ShutdownAsync(bool stopServices, CancellationToken ct = default);
 }
