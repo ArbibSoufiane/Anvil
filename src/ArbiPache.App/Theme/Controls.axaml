@@ -374,4 +374,88 @@
   <Style Selector="TextBlock.logText.error">
     <Setter Property="Foreground" Value="{StaticResource LogErrorBrush}" />
   </Style>
+
+  <!-- Sites page and the site form -->
+  <Style Selector="Border.overlay">
+    <Setter Property="Background" Value="#B30A0D11" />
+  </Style>
+  <Style Selector="Border.dialog">
+    <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="16" />
+    <Setter Property="Padding" Value="24" />
+  </Style>
+  <Style Selector="Button.kind">
+    <Setter Property="Padding" Value="14" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+    <Setter Property="Background" Value="{StaticResource SidebarBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="VerticalContentAlignment" Value="Top" />
+  </Style>
+  <Style Selector="Button.kind:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource RaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
+  </Style>
+  <Style Selector="Button.kind.selected">
+    <Setter Property="Background" Value="{StaticResource ChipOnBgBrush}" />
+    <Setter Property="BorderBrush" Value="#5AA9FF" />
+  </Style>
+  <Style Selector="Button.kind.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource ChipOnBgBrush}" />
+    <Setter Property="BorderBrush" Value="#5AA9FF" />
+  </Style>
+  <Style Selector="Border.segs">
+    <Setter Property="Background" Value="{StaticResource InputBgBrush}" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="3" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Button.seg">
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.seg:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource RaisedBrush}" />
+  </Style>
+  <Style Selector="Button.seg.selected">
+    <Setter Property="Background" Value="#2A3442" />
+    <Setter Property="Foreground" Value="{StaticResource TextStrongBrush}" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+  <Style Selector="Button.seg.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#2A3442" />
+    <Setter Property="Foreground" Value="{StaticResource TextStrongBrush}" />
+  </Style>
+  <Style Selector="RadioButton.option">
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    <Setter Property="Padding" Value="8,0,0,0" />
+  </Style>
+  <Style Selector="TextBlock.error">
+    <Setter Property="Foreground" Value="{StaticResource BadTextBrush}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="Border.tag.network">
+    <Setter Property="Background" Value="{StaticResource ChipOnBgBrush}" />
+  </Style>
+  <Style Selector="Border.tag.network TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource DevTextBrush}" />
+  </Style>
+  <Style Selector="Border.tag.local">
+    <Setter Property="Background" Value="{StaticResource SelectedBrush}" />
+  </Style>
+  <Style Selector="Border.tag.local TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+  </Style>
 </Styles>

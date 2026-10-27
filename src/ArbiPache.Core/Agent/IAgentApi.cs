@@ -64,6 +64,9 @@ public partial interface IAgentApi
     /// <summary>Brings in ArbiPache 3's sites. Result.HostsDomains, when set, is the list to hand to the Elevator.</summary>
     Task<ImportReport> ImportLegacyAsync(CancellationToken ct = default);
 
+    /// <summary>Issues every local development certificate again from the local CA and reloads Apache.</summary>
+    Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default);
+
     /// <summary>Ends the Agent. With stopServices false, its processes still end with it (they live in its job).</summary>
     Task ShutdownAsync(bool stopServices, CancellationToken ct = default);
 }

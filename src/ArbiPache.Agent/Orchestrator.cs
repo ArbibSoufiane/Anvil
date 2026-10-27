@@ -391,6 +391,28 @@ public sealed class Orchestrator(AppPaths paths, SettingsStore store, IConfigTes
             : report with { Imported = [], Result = result };
     }, ct);
 
+    /// <summary>Issues every local development certificate again; a rejected configuration puts the old ones back.</summary>
+    public Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct) => Locked(async () =>
+    {
+        var undo = new List<Action>();
+        var certs = new CertificateStore(paths);
+        try
+        {
+            foreach (var site in new SiteStore(paths).All().Where(s => s.Cert == CertSource.LocalDev))
+            {
+                RememberFolder(CertDir(site.Id), undo);
+                new LocalCa(paths, certs, TimeProvider.System).Issue(site.Id, CertNames(site));
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or CryptographicException)
+        {
+            Undo(undo);
+            return ApplyResult.Failure($"The certificates were not issued again: {e.Message}");
+        }
+
+        return (await ApplySitesAsync(undo, "The old certificates stay.", ct)).Result;
+    }, ct);
+
     /// <summary>Copies a project into htdocs\&lt;folderName&gt;. An existing folder or htdocs entry of that name is never overwritten.</summary>
     public Task<ApplyResult> CopyIntoHtdocsAsync(string sourceFolder, string folderName, CancellationToken ct) => Locked(async () =>
     {

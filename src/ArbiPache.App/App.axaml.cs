@@ -3,6 +3,7 @@ using ArbiPache.App.Shell;
 using ArbiPache.App.ViewModels;
 using ArbiPache.Core;
 using ArbiPache.Core.Logging;
+using ArbiPache.Core.Elevation;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Platform;
 using ArbiPache.Core.Settings;
@@ -44,12 +45,24 @@ public partial class App : Application
             var apache = new ApacheViewModel(_agent.Api, paths, editor);
             var php = new PhpViewModel(_agent.Api, paths, editor);
             var logs = new LogsViewModel(paths, editor);
-            var vm = new ShellViewModel(settings, dashboard, apache, logs, php);
+            var elevator = new UacElevator(paths);
+            var ca = new LocalCaTrust(paths);
+            MainWindow? window = null;
+            var picker = new AvaloniaFolderPicker(() => window);
+            static string? Lan() => LanAddress.Find()?.ToString();
+            var sites = new SitesViewModel(_agent.Api, elevator, ca, picker, paths, LanAddress.All, Lan);
+            ShellViewModel vm = null!;
+            var settingsPage = new SettingsViewModel(_agent.Api, elevator, new RegistryRunKey(), ca, picker, paths, Lan, s =>
+            {
+                settings = s;
+                vm.CloseToTray = s.CloseToTray;
+            }, () => _ = sites.LoadAsync());
+            vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage);
             dashboard.CompareProfilesRequested += (_, _) => vm.NavigateCommand.Execute(AppPage.Mode);
             _agent.Api.StatusChanged += (_, s) => Dispatcher.UIThread.Post(() => vm.Mode = s.Mode);
 
             var icon = AppIcon.Create();
-            var window = new MainWindow(vm) { Icon = icon };
+            window = new MainWindow(vm) { Icon = icon };
 
             // The window hides to the tray, so only Quit (or a real close) ends the app.
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -65,35 +78,40 @@ public partial class App : Application
             Program.Activated = _ => vm.ShowAndActivate();
 
             if (!(desktop.Args ?? []).Contains("--minimized")) window.Show();
-            _agent.Reconnected += (_, _) => Dispatcher.UIThread.Post(() => _ = LoadPagesAsync(dashboard, apache, php));
-            _ = ConnectAsync(dashboard, apache, php);
+            var pages = new Pages(dashboard, apache, php, sites, settingsPage);
+            _agent.Reconnected += (_, _) => Dispatcher.UIThread.Post(() => _ = LoadPagesAsync(pages));
+            _ = ConnectAsync(pages);
         }
         base.OnFrameworkInitializationCompleted();
     }
 
-    private async Task ConnectAsync(DashboardViewModel dashboard, ApacheViewModel apache, PhpViewModel php)
+    private sealed record Pages(DashboardViewModel Dashboard, ApacheViewModel Apache, PhpViewModel Php, SitesViewModel Sites, SettingsViewModel Settings);
+
+    private async Task ConnectAsync(Pages pages)
     {
         try
         {
             var api = await _agent!.ConnectAsync(CancellationToken.None);
             _agentReady = true;
             _tray?.Attach(api);
-            await LoadPagesAsync(dashboard, apache, php);
+            await LoadPagesAsync(pages);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             Log.Error(e, "Could not reach the Agent");
-            dashboard.ApacheMessage = $"The ArbiPache Agent could not be started: {e.Message}";
+            pages.Dashboard.ApacheMessage = $"The ArbiPache Agent could not be started: {e.Message}";
         }
     }
 
-    private static async Task LoadPagesAsync(DashboardViewModel dashboard, ApacheViewModel apache, PhpViewModel php)
+    private static async Task LoadPagesAsync(Pages pages)
     {
         try
         {
-            await dashboard.LoadAsync();
-            await apache.LoadAsync();
-            await php.LoadAsync();
+            await pages.Dashboard.LoadAsync();
+            await pages.Apache.LoadAsync();
+            await pages.Php.LoadAsync();
+            await pages.Sites.LoadAsync();
+            await pages.Settings.LoadAsync();
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

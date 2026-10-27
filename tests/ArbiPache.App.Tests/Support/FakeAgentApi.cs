@@ -139,6 +139,8 @@ public sealed class FakeAgentApi : IAgentApi
         return Task.FromResult(Import with { Result = NextResult });
     }
 
+    public Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default) => Record("reissue");
+
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)
     {
         Calls.Add($"shutdown {stopServices}");

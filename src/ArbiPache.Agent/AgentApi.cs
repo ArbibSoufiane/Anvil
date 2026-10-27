@@ -76,6 +76,8 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
 
     public Task<ImportReport> ImportLegacyAsync(CancellationToken ct = default) => orchestrator.ImportLegacyAsync(ct);
 
+    public Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default) => orchestrator.ReissueLocalCertificatesAsync(ct);
+
     /// <summary>Returns at once so the reply reaches the caller before the pipe closes.</summary>
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)
     {

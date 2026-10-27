@@ -363,4 +363,22 @@ public sealed class SiteOperationsTests : IDisposable
 
         Assert.Equal(["shop.test"], (await orchestrator.SaveSiteAsync(Site("shop.test"), null, Ct)).HostsDomains);
     }
+
+    [Fact]
+    public async Task Reissue_replaces_every_local_dev_certificate()
+    {
+        var orchestrator = await StartedAsync();
+        await orchestrator.StartAsync(null, Ct);
+        await orchestrator.SaveSiteAsync(Site("shop.test") with { Cert = CertSource.LocalDev }, null, Ct);
+        await orchestrator.SaveSiteAsync(Site("plain.test"), null, Ct);
+        var before = File.ReadAllText(new CertificateStore(_paths).Get("shop.test")!.CertFile);
+        var restarts = _apache.Restarts;
+
+        var result = await orchestrator.ReissueLocalCertificatesAsync(Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.NotEqual(before, File.ReadAllText(new CertificateStore(_paths).Get("shop.test")!.CertFile));
+        Assert.Null(new CertificateStore(_paths).Get("plain.test"));
+        Assert.Equal(restarts + 1, _apache.Restarts);
+    }
 }

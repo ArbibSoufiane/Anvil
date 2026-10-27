@@ -9,6 +9,7 @@ using ArbiPache.Core.Components;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
+using ArbiPache.Core.Sites;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -144,5 +145,65 @@ public sealed class PageViewTests
         {
             try { Directory.Delete(root, recursive: true); } catch (IOException) { }
         }
+    }
+
+    private (MainWindow Window, ShellViewModel Shell, SitesViewModel Sites, SettingsViewModel Settings) ShowSitePages()
+    {
+        var sites = new SitesViewModel(_api, new FakeElevator(), new FakeCa(), new FakeFolderPicker(), Paths, () => ["192.168.10.2"], () => "192.168.10.2",
+            ui: a => a());
+        var settings = new SettingsViewModel(_api, new FakeElevator(), new FakeRunKey(), new FakeCa(), new FakeFolderPicker(), Paths, () => "192.168.10.2");
+        sites.LoadAsync().GetAwaiter().GetResult();
+        settings.LoadAsync().GetAwaiter().GetResult();
+        var shell = new ShellViewModel(_api.Settings, sites: sites, settingsPage: settings);
+        var window = new MainWindow(shell);
+        window.Show();
+        window.UpdateLayout();
+        return (window, shell, sites, settings);
+    }
+
+    [AvaloniaFact]
+    public void Sites_view_lists_sites_and_htdocs()
+    {
+        _api.Sites.Add(new SiteDefinition { Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "shop.test", Root = @"D:\Sites\shop" });
+        _api.Htdocs.Add(new HtdocsEntry("blog", @"D:\ArbiPache\htdocs\blog", false, null, AccessLevel.Network));
+        var (window, shell, _, _) = ShowSitePages();
+
+        shell.NavigateCommand.Execute(AppPage.Sites);
+        window.UpdateLayout();
+
+        Assert.IsType<SitesView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
+        Assert.Contains(Named<ItemsControl>(window, "SiteRows").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "shop.test");
+        Assert.Contains(Named<ItemsControl>(window, "HtdocsRows").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "localhost/blog");
+        Assert.False(Named<AddSiteDialog>(window, "Editor").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public async Task Add_site_opens_the_form_with_kind_cards_and_access_choices()
+    {
+        var (window, shell, sites, _) = ShowSitePages();
+        shell.NavigateCommand.Execute(AppPage.Sites);
+        window.UpdateLayout();
+
+        await sites.AddCommand.ExecuteAsync(null);
+        window.UpdateLayout();
+
+        Assert.True(Named<AddSiteDialog>(window, "Editor").IsEffectivelyVisible);
+        Assert.Contains("selected", Named<Button>(window, "KindDomain").Classes);
+        var access = Named<ItemsControl>(window, "AccessOptions").GetVisualDescendants().OfType<Button>().Select(b => b.Content).ToList();
+        Assert.Equal(["Everyone (internet)", "My network only", "This PC only", "Specific IPs"], access);
+        Assert.Equal("Create site", Named<Button>(window, "SaveSite").Content);
+    }
+
+    [AvaloniaFact]
+    public void Settings_view_shows_folders_and_ca_status()
+    {
+        var (window, shell, _, _) = ShowSitePages();
+
+        shell.NavigateCommand.Execute(AppPage.Settings);
+        window.UpdateLayout();
+
+        Assert.IsType<SettingsView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
+        Assert.Contains(Named<Border>(window, "CaStatus").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Not trusted");
+        Assert.Equal("80", Named<TextBox>(window, "HttpPort").Text);
     }
 }

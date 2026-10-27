@@ -26,6 +26,27 @@ public static class LanAddress
         }
     }
 
+    /// <summary>Every IPv4 address of this PC on a connected network, for IP sites. Empty when none is found.</summary>
+    public static IReadOnlyList<string> All()
+    {
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == OperationalStatus.Up
+                            && n.NetworkInterfaceType is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel))
+                .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                .Select(u => u.Address)
+                .Where(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a))
+                .Select(a => a.ToString())
+                .Distinct()
+                .ToList();
+        }
+        catch (NetworkInformationException)
+        {
+            return [];
+        }
+    }
+
     private static bool IsPrivate(IPAddress a)
     {
         var b = a.GetAddressBytes();

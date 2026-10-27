@@ -191,6 +191,9 @@ public sealed class AgentConnection : IAsyncDisposable
 
         public async Task<ImportReport> ImportLegacyAsync(CancellationToken ct = default) => await (await Remote()).ImportLegacyAsync(ct);
 
+        public async Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default) =>
+            await (await Remote()).ReissueLocalCertificatesAsync(ct);
+
         public async Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => await (await Remote()).ShutdownAsync(stopServices, ct);
     }
 }

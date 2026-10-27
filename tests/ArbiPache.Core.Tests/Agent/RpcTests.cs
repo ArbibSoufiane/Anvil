@@ -246,6 +246,8 @@ public sealed class RpcTests
 
         public Task<ImportReport> ImportLegacyAsync(CancellationToken ct = default) =>
             Task.FromResult(new ImportReport(["afaq.test"], ["shop.test: already exists"], ["7.4.9"]) { Result = ApplyResult.Success() with { HostsDomains = ["afaq.test"] } });
+
+        public Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => Task.CompletedTask;
     }
 }
