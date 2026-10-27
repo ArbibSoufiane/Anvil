@@ -66,7 +66,7 @@ public sealed class UpdatesPanelTests
     public async Task A_version_that_does_not_run_reports_the_switch_back()
     {
         _api.Offers.Add(new UpdateOffer(ComponentKind.Apache, "2.4.69", "2.4.70", null));
-        _api.NextResult = ApplyResult.Failure("Apache 2.4.70 did not start: Apache did not answer on port 80 within 10 s. Apache 2.4.69 is running again.");
+        _api.NextResult = ApplyResult.Failure("Apache 2.4.70 did not start: Apache did not answer on port 80 within 15 s. Apache 2.4.69 is running again.");
         var vm = new ApacheViewModel(_api, Paths, Editor, ui: a => a());
         await vm.LoadAsync(Ct);
 
@@ -74,7 +74,7 @@ public sealed class UpdatesPanelTests
 
         Assert.Equal(["activate 2.4.70"], _api.Calls);
         Assert.False(vm.Updates.MessageOk);
-        Assert.Equal("Apache 2.4.70 did not start: Apache did not answer on port 80 within 10 s. Apache 2.4.69 is running again.", vm.Updates.Message);
+        Assert.Equal("Apache 2.4.70 did not start: Apache did not answer on port 80 within 15 s. Apache 2.4.69 is running again.", vm.Updates.Message);
     }
 
     [Fact]

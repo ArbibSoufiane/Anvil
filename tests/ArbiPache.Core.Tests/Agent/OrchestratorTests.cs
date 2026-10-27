@@ -432,7 +432,7 @@ public sealed class OrchestratorTests : IDisposable
         var result = await orchestrator.ActivateAsync(ComponentKind.Apache, "2.4.70", ct);
 
         Assert.False(result.Ok);
-        Assert.Equal("Apache 2.4.70 did not start: Apache did not answer on port 80 within 10 s. Apache 2.4.69 is running again.", result.Error);
+        Assert.Equal("Apache 2.4.70 did not start: Apache did not answer on port 80 within 15 s. Apache 2.4.69 is running again.", result.Error);
         Assert.Equal(Version, orchestrator.Settings.ActiveApache);
         Assert.Equal(Version, new SettingsStore(_paths).Load().ActiveApache);
         Assert.Equal((Version, 80), _apache.StartedWith);

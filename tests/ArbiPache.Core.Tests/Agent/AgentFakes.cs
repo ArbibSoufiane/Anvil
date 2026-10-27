@@ -60,7 +60,7 @@ internal sealed class FakeApache(List<string> events) : IApacheControl
         if (Unhealthy.Contains(version))
         {
             Set(ProcessState.Failed);
-            throw new InvalidOperationException($"Apache did not answer on port {httpPort} within 10 s.");
+            throw new InvalidOperationException($"Apache did not answer on port {httpPort} within 15 s.");
         }
         StartedWith = (version, httpPort);
         Set(ProcessState.Running);

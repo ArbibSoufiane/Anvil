@@ -8,7 +8,7 @@ namespace ArbiPache.Core.Apache;
 public sealed class ApacheControl : IApacheControl
 {
     public const string ProcessName = "apache";
-    private static readonly TimeSpan ServeWait = TimeSpan.FromSeconds(10);
+    internal static readonly TimeSpan ServeWait = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan Probe = TimeSpan.FromSeconds(3);
 
@@ -51,7 +51,7 @@ public sealed class ApacheControl : IApacheControl
 
     /// <summary>
     /// Reloads gracefully: running requests finish on the old child while a new child starts. When httpd cannot be
-    /// signalled or is not serving again within 10 s, it is stopped and started instead.
+    /// signalled or is not serving again within 15 s, it is stopped and started instead.
     /// </summary>
     public async Task GracefulRestartAsync(CancellationToken ct)
     {
