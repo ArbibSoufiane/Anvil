@@ -278,8 +278,8 @@ public sealed class VhostRenderTests
         var config = RenderConfig([Domain()]);
         var conf = config.Files[SiteFile("shop.example.com")].ReplaceLineEndings("\n");
 
-        Assert.Contains("    ErrorLog \"D:/ArbiPache/data/logs/sites/shop.example.com/error.log\"\n", conf);
-        Assert.Contains("    CustomLog \"D:/ArbiPache/data/logs/sites/shop.example.com/access.log\" combined\n", conf);
+        Assert.Contains("\\\"D:/ArbiPache/data/logs/sites/shop.example.com/error.%Y-%m-%d.log\\\" 86400\"\n", conf);
+        Assert.Contains("""\"D:/ArbiPache/data/logs/sites/shop.example.com/access.%Y-%m-%d.log\" 86400" combined""", conf);
         Assert.Contains(@"D:\ArbiPache\data\logs\sites\shop.example.com", config.Folders);
     }
 

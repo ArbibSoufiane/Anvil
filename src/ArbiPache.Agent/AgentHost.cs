@@ -66,9 +66,11 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
 
             using var stopRenewal = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var renewal = new RenewalWorker(orchestrator.RenewCertificatesAsync, paths, TimeProvider.System).RunAsync(stopRenewal.Token);
+            var janitor = new Janitor(paths, TimeProvider.System).RunAsync(stopRenewal.Token);
             stopServices = await WaitForShutdownAsync(shutdown.Task, ct);
             await stopRenewal.CancelAsync();
             await renewal;
+            await janitor;
         }
 
         // Without a graceful stop, the job still ends every child when it closes below.

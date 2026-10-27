@@ -19,7 +19,10 @@ Listen 443
 
 ServerName localhost
 PidFile "D:/ArbiPache/data/run/httpd.pid"
-ErrorLog "D:/ArbiPache/data/logs/apache/error.log"
+ErrorLog "|\"${SRVROOT}/bin/rotatelogs.exe\" -l \"D:/ArbiPache/data/logs/apache/error.%Y-%m-%d.log\" 86400"
+<IfModule log_config_module>
+    CustomLog "|\"${SRVROOT}/bin/rotatelogs.exe\" -l \"D:/ArbiPache/data/logs/apache/access.%Y-%m-%d.log\" 86400" combined
+</IfModule>
 
 <IfModule mpm_winnt_module>
     ThreadsPerChild 256

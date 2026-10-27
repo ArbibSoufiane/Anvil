@@ -81,7 +81,7 @@ public sealed class OrchestratorTests : IDisposable
         Assert.Contains($"Define SRVROOT \"{fwd}/runtime/apache/{Version}\"", httpd);
         Assert.Contains($"Include \"{fwd}/data/conf/arbipache.conf\"", httpd);
         Assert.DoesNotContain(old, httpd);
-        Assert.Contains($"ErrorLog \"{fwd}/data/logs/apache/error.log\"", ArbipacheConf);
+        Assert.Contains($"{fwd}/data/logs/apache/error.%Y-%m-%d.log", ArbipacheConf);
         Assert.DoesNotContain(old, ArbipacheConf);
         Assert.False(_paths.RootChanged());
     }

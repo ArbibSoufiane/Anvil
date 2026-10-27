@@ -6,7 +6,7 @@
     ServerAlias {{ aliases }}
 {{~ end ~}}
     ErrorLog "{{ error_log }}"
-    CustomLog "{{ access_log }}" combined
+    CustomLog "{{ if v.ssl }}{{ ssl_access_log }}{{ else }}{{ access_log }}{{ end }}" combined
 {{~ if v.ssl ~}}
     SSLEngine on
     SSLCertificateFile "{{ cert.cert }}"

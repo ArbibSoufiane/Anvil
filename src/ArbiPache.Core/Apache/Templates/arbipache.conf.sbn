@@ -10,6 +10,9 @@ Listen {{ p }}
 ServerName localhost
 PidFile "{{ pid_file }}"
 ErrorLog "{{ error_log }}"
+<IfModule log_config_module>
+    CustomLog "{{ access_log }}" combined
+</IfModule>
 
 <IfModule mpm_winnt_module>
     ThreadsPerChild {{ threads_per_child }}

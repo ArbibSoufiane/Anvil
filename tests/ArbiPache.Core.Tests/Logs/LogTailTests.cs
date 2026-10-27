@@ -136,4 +136,17 @@ public sealed class LogTailTests : IDisposable
         Assert.Equal(["apache", "site-blog"], sources.Select(s => s.Id));
         Assert.Equal(Path.Combine(paths.Logs, "sites", "blog", "error.2026-10-27.log"), sources[1].Path);
     }
+
+    [Fact]
+    public void A_daily_log_newer_than_the_old_single_file_is_shown()
+    {
+        var paths = new AppPaths(_dir);
+        var dir = Directory.CreateDirectory(Path.Combine(paths.Logs, "apache")).FullName;
+        var plain = Path.Combine(dir, "error.log");
+        File.WriteAllText(plain, "");
+        File.SetLastWriteTimeUtc(plain, DateTime.UtcNow.AddDays(-3));
+        File.WriteAllText(Path.Combine(dir, "error.2026-10-27.log"), "");
+
+        Assert.Equal(Path.Combine(dir, "error.2026-10-27.log"), LogSources.Discover(paths)[0].Path);
+    }
 }

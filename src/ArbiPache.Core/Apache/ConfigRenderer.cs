@@ -42,7 +42,8 @@ public sealed class ConfigRenderer(AppPaths paths)
                 modules,
                 listen,
                 pid_file = AppPaths.ForApache(Path.Combine(paths.Run, "httpd.pid")),
-                error_log = AppPaths.ForApache(Path.Combine(paths.Logs, "apache", "error.log")),
+                error_log = Rotated(Path.Combine(paths.Logs, "apache"), "error"),
+                access_log = Rotated(Path.Combine(paths.Logs, "apache"), "access"),
                 threads_per_child = s.Apache.ThreadsPerChild,
                 max_connections_per_child = s.Apache.MaxConnectionsPerChild,
                 keep_alive_timeout = s.Apache.KeepAliveTimeout,
@@ -134,8 +135,9 @@ public sealed class ConfigRenderer(AppPaths paths)
             aliases = v6 is not null && !catchAll ? v6
                 : site.Kind == SiteKind.Domain && site.Aliases.Count > 0 ? string.Join(' ', site.Aliases.Select(a => SiteSet.NormalizeHost(a) ?? a))
                 : null,
-            error_log = AppPaths.ForApache(Path.Combine(SiteLogDir(site.Id), "error.log")),
-            access_log = AppPaths.ForApache(Path.Combine(SiteLogDir(site.Id), "access.log")),
+            error_log = Rotated(SiteLogDir(site.Id), "error"),
+            access_log = Rotated(SiteLogDir(site.Id), "access"),
+            ssl_access_log = Rotated(SiteLogDir(site.Id), "ssl-access"),
             cert = cert is null
                 ? null
                 : new
@@ -224,6 +226,13 @@ public sealed class ConfigRenderer(AppPaths paths)
     private const string CatchAllName = "arbipache-catchall.invalid";
 
     private string SiteLogDir(string id) => Path.Combine(paths.Logs, "sites", id);
+
+    /// <summary>
+    /// A log piped through Apache's rotatelogs: <c>name.YYYY-MM-DD.log</c>, a new file each local midnight. The value goes
+    /// inside the directive's quotes. Apache opens one pipe for identical ErrorLog values but one per CustomLog line.
+    /// </summary>
+    private static string Rotated(string dir, string name) =>
+        $$"""|\"${SRVROOT}/bin/rotatelogs.exe\" -l \"{{AppPaths.ForApache(Path.Combine(dir, name))}}.%Y-%m-%d.log\" 86400""";
 
     private string HtpasswdPath(string id) => Path.Combine(paths.Auth, id + ".htpasswd");
 

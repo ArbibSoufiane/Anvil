@@ -41,11 +41,13 @@ public static class LogSources
         return sources;
     }
 
-    // "<name>.log", or the newest "<name>.<date>.log" once rotatelogs writes dated files.
+    // The newest "<name>.<date>.log" rotatelogs writes, unless an older single "<name>.log" was written more recently.
     private static string? Current(string dir, string name)
     {
         var plain = Path.Combine(dir, name + ".log");
-        return File.Exists(plain) ? plain : Newest(dir, name + ".*.log");
+        var dated = Newest(dir, name + ".*.log");
+        if (!File.Exists(plain)) return dated;
+        return dated is not null && File.GetLastWriteTimeUtc(dated) >= File.GetLastWriteTimeUtc(plain) ? dated : plain;
     }
 
     // Dated names (2026-10-27, 20261027) sort the same as their dates.

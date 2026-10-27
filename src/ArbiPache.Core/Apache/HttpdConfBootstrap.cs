@@ -6,7 +6,8 @@ namespace ArbiPache.Core.Apache;
 
 /// <summary>
 /// data\apache\httpd.conf belongs to the user. ArbiPache touches only the <c>Define SRVROOT</c> value and one
-/// marked block at the end that includes the generated configuration.
+/// marked block at the end that includes the generated configuration. When it first copies the stock file, it turns
+/// off the stock access log, which would grow without end inside the Apache folder.
 /// </summary>
 public sealed partial class HttpdConfBootstrap(AppPaths paths)
 {
@@ -18,7 +19,9 @@ public sealed partial class HttpdConfBootstrap(AppPaths paths)
         if (!File.Exists(paths.HttpdConf))
         {
             Directory.CreateDirectory(paths.ApacheConfDir);
-            File.Copy(Path.Combine(paths.ApacheRuntime(apacheVersion), "conf", "httpd.conf"), paths.HttpdConf);
+            var stock = File.ReadAllText(Path.Combine(paths.ApacheRuntime(apacheVersion), "conf", "httpd.conf"));
+            AtomicFile.WriteAllText(paths.HttpdConf, StockAccessLog().Replace(stock,
+                @"$1#$2  # ArbiPache writes the access log to data\logs\apache, one file per day"));
         }
         var current = File.ReadAllText(paths.HttpdConf);
         var updated = ApplyManagedLines(current, paths.ApacheRuntime(apacheVersion), Path.Combine(paths.Conf, "arbipache.conf"));
@@ -38,6 +41,9 @@ public sealed partial class HttpdConfBootstrap(AppPaths paths)
         if (conf.Length > 0 && !conf.EndsWith('\n')) conf += nl;
         return $"{conf}{Begin}{nl}Include \"{AppPaths.ForApache(includeFile)}\"{nl}{End}{nl}";
     }
+
+    [GeneratedRegex(@"^([ \t]*)(CustomLog[ \t]+""logs/access\.log""[ \t]+common)[ \t]*(?=\r?$)", RegexOptions.Multiline)]
+    private static partial Regex StockAccessLog();
 
     [GeneratedRegex(@"^# >>> ArbiPache >>>\r?\n(?:.*\r?\n)*?# <<< ArbiPache <<<\r?(?:\n|\z)", RegexOptions.Multiline)]
     private static partial Regex ManagedBlock();
