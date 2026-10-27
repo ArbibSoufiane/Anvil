@@ -45,7 +45,7 @@ public sealed class SettingsStoreTests : IDisposable
             Apache = new ApacheTuning(256, 1000, 3),
             OptionalModules = ["deflate"],
             PhpPools = new Dictionary<string, PhpPoolSettings> { ["8.5.5"] = new(8, 500) },
-            PhpPoolPorts = new Dictionary<string, int[]> { ["8.5.5"] = [9100, 9101] },
+            PhpPoolPorts = new Dictionary<string, int> { ["php85"] = 9100 },
             Network = new NetworkAccess(false, true),
             AcmeEmail = "ops@example.com",
             ControlUserSids = ["S-1-5-21-1"],

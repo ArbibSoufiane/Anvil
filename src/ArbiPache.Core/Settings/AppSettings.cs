@@ -26,8 +26,8 @@ public sealed record AppSettings
     public IReadOnlyList<string> OptionalModules { get; init; } = ["deflate", "expires", "http2"];
     /// <summary>Keyed by PHP version, e.g. "8.5.5".</summary>
     public IReadOnlyDictionary<string, PhpPoolSettings> PhpPools { get; init; } = new Dictionary<string, PhpPoolSettings>();
-    /// <summary>Persisted port allocations per PHP version.</summary>
-    public IReadOnlyDictionary<string, int[]> PhpPoolPorts { get; init; } = new Dictionary<string, int[]>();
+    /// <summary>Persisted pool ports, keyed by pool key ("php85").</summary>
+    public IReadOnlyDictionary<string, int> PhpPoolPorts { get; init; } = new Dictionary<string, int>();
     public NetworkAccess Network { get; init; } = new(true, true);
     public bool StartServicesOnLaunch { get; init; } = true;
     public bool StartWithWindows { get; init; }

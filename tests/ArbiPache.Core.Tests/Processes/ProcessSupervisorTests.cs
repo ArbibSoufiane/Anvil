@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using ArbiPache.Core.Processes;
 using Microsoft.Extensions.Time.Testing;
 
@@ -159,5 +161,66 @@ public sealed class ProcessSupervisorTests : IDisposable
         Assert.Equal(["-b", "127.0.0.1:9100"], psi.ArgumentList);
         Assert.Equal("500", psi.Environment["PHP_FCGI_MAX_REQUESTS"]);
         Assert.Equal(_dir, psi.WorkingDirectory);
+    }
+
+    private static Socket Listen()
+    {
+        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        socket.Listen(16);
+        return socket;
+    }
+
+    private static async Task<string> AskAsync(Socket listener, Task? beforeReading = null)
+    {
+        using var client = new TcpClient();
+        await client.ConnectAsync((IPEndPoint)listener.LocalEndPoint!, TestContext.Current.CancellationToken);
+        if (beforeReading is not null) await beforeReading;
+        using var reader = new StreamReader(client.GetStream());
+        return await reader.ReadLineAsync(TestContext.Current.CancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken) ?? "";
+    }
+
+    [Fact]
+    public async Task Socket_child_inherits_listen_socket_as_stdin()
+    {
+        using var listener = Listen();
+        await using var supervisor = Supervisor(TimeProvider.System);
+
+        supervisor.Start(Spec("sock", "--accept-stdin") with { StdinListenSocket = listener });
+        var running = WaitFor(s => s.State == ProcessState.Running);
+
+        Assert.Equal($"hello from {running.Pid}", await AskAsync(listener));
+        Assert.Contains("hello from", await AskAsync(listener), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Socket_survives_worker_restart()
+    {
+        using var listener = Listen();
+        await using var supervisor = Supervisor(TimeProvider.System);
+        var spec = Spec("sock", "--accept-stdin") with { StdinListenSocket = listener };
+        supervisor.Start(spec);
+        var first = WaitFor(s => s.State == ProcessState.Running);
+        await supervisor.StopAsync("sock", TimeSpan.Zero);
+        WaitFor(s => s.State == ProcessState.Stopped);
+
+        // Nobody accepts now, but the agent still owns the socket: the connection waits in its backlog.
+        var reply = await AskAsync(listener, beforeReading: Task.Run(() => supervisor.Start(spec), TestContext.Current.CancellationToken));
+
+        var second = WaitFor(s => s.State == ProcessState.Running);
+        Assert.NotEqual(first.Pid, second.Pid);
+        Assert.Equal($"hello from {second.Pid}", reply);
+    }
+
+    [Fact]
+    public async Task Socket_child_exit_code_reported()
+    {
+        using var listener = Listen();
+        await using var supervisor = Supervisor(TimeProvider.System);
+
+        supervisor.Start(Spec("sock", "--exit-after", "0", "--code", "3") with { StdinListenSocket = listener, Restart = RestartPolicy.Never });
+
+        var stopped = WaitFor(s => s.State == ProcessState.Stopped);
+        Assert.Equal("exited with code 3", stopped.LastError);
     }
 }

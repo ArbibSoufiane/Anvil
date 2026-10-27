@@ -9,3 +9,14 @@ TCP_TABLE_CLASS
 OpenProcess
 QueryFullProcessImageName
 WIN32_ERROR
+CreateProcess
+InitializeProcThreadAttributeList
+UpdateProcThreadAttribute
+DeleteProcThreadAttributeList
+ResumeThread
+DuplicateHandle
+GetCurrentProcess
+CloseHandle
+STARTUPINFOEXW
+PROC_THREAD_ATTRIBUTE_HANDLE_LIST
+TerminateProcess

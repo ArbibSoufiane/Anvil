@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Text;
 
 namespace ArbiPache.Core.Processes;
@@ -93,6 +94,11 @@ public sealed class ProcessSupervisor(JobObject job, TimeProvider time) : IAsync
         {
             if (e.Stopping) return;
             Set(e, e.Status with { State = ProcessState.Starting, Pid = null });
+            if (e.Spec.StdinListenSocket is { } socket)
+            {
+                LaunchOnSocket(e, socket);
+                return;
+            }
             var p = new Process { StartInfo = BuildStartInfo(e.Spec), EnableRaisingEvents = true };
             p.OutputDataReceived += (_, a) => e.Append(a.Data);
             p.ErrorDataReceived += (_, a) =>
@@ -104,7 +110,7 @@ public sealed class ProcessSupervisor(JobObject job, TimeProvider time) : IAsync
             p.Exited += (_, _) => OnExited(e, p);
             try
             {
-                p.Start();
+                lock (SocketChildLauncher.LaunchLock) p.Start();
                 job.Assign(p);
             }
             catch (Exception ex)
@@ -119,6 +125,27 @@ public sealed class ProcessSupervisor(JobObject job, TimeProvider time) : IAsync
             p.BeginErrorReadLine();
             Set(e, e.Status with { State = ProcessState.Running, Pid = p.Id, StartedAt = time.GetUtcNow() });
         }
+    }
+
+    // Called under e.Lock. The child has no stdout or stderr, so the exit code is all there is to report.
+    private void LaunchOnSocket(Entry e, Socket socket)
+    {
+        Process p;
+        try
+        {
+            p = SocketChildLauncher.Start(e.Spec, socket, job);
+        }
+        catch (Exception ex)
+        {
+            Set(e, e.Status with { State = ProcessState.Failed, Pid = null, LastError = ex.Message });
+            return;
+        }
+        // Raised even when the child has already exited: the Process holds its handle from before it ran.
+        p.Exited += (_, _) => OnExited(e, p);
+        p.EnableRaisingEvents = true;
+        e.Process = p;
+        e.Append($"[arbipache] {e.Spec.Name} started (pid {p.Id})");
+        Set(e, e.Status with { State = ProcessState.Running, Pid = p.Id, StartedAt = time.GetUtcNow() });
     }
 
     private void OnExited(Entry e, Process p)
@@ -137,7 +164,7 @@ public sealed class ProcessSupervisor(JobObject job, TimeProvider time) : IAsync
 
             if (e.Stopping || e.Spec.Restart == RestartPolicy.Never)
             {
-                Set(e, e.Status with { State = ProcessState.Stopped, Pid = null, LastError = code == 0 ? null : e.LastStderr });
+                Set(e, e.Status with { State = ProcessState.Stopped, Pid = null, LastError = code == 0 ? null : e.LastStderr ?? $"exited with code {code}" });
                 return;
             }
             if (code == 0)
