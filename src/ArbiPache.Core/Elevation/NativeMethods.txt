@@ -1,0 +1,4 @@
+CreateFile
+GetFileInformationByHandle
+GetFinalPathNameByHandle
+FILE_ACCESS_RIGHTS

@@ -1,6 +1,8 @@
 using ArbiPache.Core.Elevation;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Settings;
+using ArbiPache.Core.Sites;
+using System.Diagnostics;
 
 namespace ArbiPache.Core.Tests.Elevation;
 
@@ -107,5 +109,135 @@ public sealed class RequestValidatorTests : IDisposable
         Assert.NotNull(RequestValidator.Validate(valid, Path.Combine(_paths.Tmp, "other.json"), _paths));
         Assert.NotNull(RequestValidator.PathError(Path.Combine(_paths.Data, "x.json"), _paths));
         Assert.Null(RequestValidator.Validate(valid, RequestFile("{}"), _paths));
+    }
+
+    private const string UserSid = "S-1-5-21-1004336348-1177238915-682003330-1001";
+
+    private string AgentExe()
+    {
+        var exe = Path.Combine(_paths.Root, "ArbiPache.Agent.exe");
+        File.WriteAllText(exe, "");
+        return exe;
+    }
+
+    [Fact]
+    public void Service_install_next_to_the_elevator_accepted()
+    {
+        var file = RequestFile(ElevatedJson.Serialize(new ServiceInstallRequest(AgentExe(), UserSid)));
+
+        var (request, error) = RequestValidator.Read(file, _paths);
+
+        Assert.Null(error);
+        Assert.Equal(UserSid, Assert.IsType<ServiceInstallRequest>(request).ControlUserSid);
+        Assert.Contains("\"verb\": \"service-install\"", File.ReadAllText(file));
+        Assert.Null(RequestValidator.Validate(new ServiceUninstallRequest(), RequestFile("{}"), _paths));
+    }
+
+    [Fact]
+    public void Agent_exe_elsewhere_rejected()
+    {
+        AgentExe();
+        var elsewhere = Path.Combine(_paths.Data, "ArbiPache.Agent.exe");
+        File.WriteAllText(elsewhere, "");
+        var file = RequestFile("{}");
+
+        Assert.Equal("The service can only run the ArbiPache.Agent.exe next to ArbiPache.Elevator.exe.",
+            RequestValidator.Validate(new ServiceInstallRequest(elsewhere, UserSid), file, _paths));
+        Assert.NotNull(RequestValidator.Validate(new ServiceInstallRequest(Path.Combine(_paths.Root, "data", "..", "evil.exe"), UserSid), file, _paths));
+        Assert.NotNull(RequestValidator.Validate(new ServiceInstallRequest(null!, UserSid), file, _paths));
+    }
+
+    [Fact]
+    public void Agent_exe_that_is_missing_rejected()
+    {
+        Assert.Equal("ArbiPache.Agent.exe is missing from the ArbiPache folder.",
+            RequestValidator.Validate(new ServiceInstallRequest(Path.Combine(_paths.Root, "ArbiPache.Agent.exe"), UserSid), RequestFile("{}"), _paths));
+    }
+
+    [Theory]
+    [InlineData("S-1-1-0")]
+    [InlineData("S-1-5-11")]
+    [InlineData("S-1-5-21-1-2-3")]
+    [InlineData("S-1-5-21-1-2-3-4\r\nS-1-1-0")]
+    [InlineData("")]
+    public void Control_user_must_be_an_account_sid(string sid)
+    {
+        Assert.Equal("The control user must be a user account's SID.",
+            RequestValidator.Validate(new ServiceInstallRequest(AgentExe(), sid), RequestFile("{}"), _paths));
+    }
+
+    [Fact]
+    public void Planned_acl_grants_accepted()
+    {
+        var file = RequestFile(ElevatedJson.Serialize(new AclGrantRequest(AclPlanner.Plan(_paths, []))));
+
+        var (request, error) = RequestValidator.Read(file, _paths);
+
+        Assert.Null(error);
+        Assert.Equal(3, Assert.IsType<AclGrantRequest>(request).Grants.Count);
+        Assert.Contains("\"verb\": \"acl-grant\"", File.ReadAllText(file));
+    }
+
+    [Fact]
+    public void Acl_path_outside_known_roots_rejected()
+    {
+        var other = Directory.CreateDirectory(Path.Combine(_paths.Root + "-other", "Documents")).FullName;
+        try
+        {
+            Assert.Equal($"{other} is not a folder ArbiPache's service needs.",
+                RequestValidator.Validate(new AclGrantRequest([new AclGrant(other, AclRight.Read)]), RequestFile("{}"), _paths));
+        }
+        finally
+        {
+            Directory.Delete(_paths.Root + "-other", recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Acl_right_above_the_plan_rejected()
+    {
+        Assert.Equal($"{_paths.Htdocs} is not a folder ArbiPache's service needs.",
+            RequestValidator.Validate(new AclGrantRequest([new AclGrant(_paths.Htdocs, AclRight.Modify)]), RequestFile("{}"), _paths));
+        Assert.NotNull(RequestValidator.Validate(new AclGrantRequest([new AclGrant(_paths.Data, (AclRight)9)]), RequestFile("{}"), _paths));
+        Assert.NotNull(RequestValidator.Validate(new AclGrantRequest(null!), RequestFile("{}"), _paths));
+        Assert.NotNull(RequestValidator.Validate(new AclGrantRequest([null!]), RequestFile("{}"), _paths));
+    }
+
+    [Fact]
+    public void Acl_on_a_system_folder_rejected()
+    {
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        new SiteStore(_paths).Save(new SiteDefinition { Id = "sys.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "sys.test", Root = windows });
+
+        Assert.Equal($"{windows} is a system folder; ArbiPache does not change its permissions.",
+            RequestValidator.Validate(new AclGrantRequest([new AclGrant(windows, AclRight.Read)]), RequestFile("{}"), _paths));
+    }
+
+    [Fact]
+    public void Acl_path_through_a_link_rejected()
+    {
+        var target = Directory.CreateDirectory(Path.Combine(_paths.Root + "-target", "shop")).FullName;
+        var link = Path.Combine(_paths.Root + "-sites");
+        try
+        {
+            var mklink = Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{Path.GetDirectoryName(target)}\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+            })!;
+            mklink.WaitForExit();
+            Assert.Equal(0, mklink.ExitCode);
+            var throughLink = Path.Combine(link, "shop");
+            new SiteStore(_paths).Save(new SiteDefinition { Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "shop.test", Root = throughLink });
+
+            Assert.Equal($"{throughLink} goes through a link to another folder; ArbiPache does not change its permissions.",
+                RequestValidator.Validate(new AclGrantRequest([new AclGrant(throughLink, AclRight.Read)]), RequestFile("{}"), _paths));
+        }
+        finally
+        {
+            if (Directory.Exists(link)) Directory.Delete(link);
+            Directory.Delete(_paths.Root + "-target", recursive: true);
+        }
     }
 }
