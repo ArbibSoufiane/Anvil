@@ -34,6 +34,8 @@ public sealed class AgentConnectionTests
 
         await server!.DisposeAsync();
         await reconnected.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+        // The client can connect before the new server has subscribed to the Agent's events.
+        await server!.Listening.WaitAsync(TimeSpan.FromSeconds(30), ct);
         api.Raise(api.Status with { AgentVersion = "4.0.1" });
 
         Assert.Equal(2, starts);
@@ -46,6 +48,9 @@ public sealed class AgentConnectionTests
     {
         private readonly NamedPipeServerStream _pipe;
         private JsonRpc? _rpc;
+        private readonly TaskCompletionSource _listening = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Listening => _listening.Task;
 
         private TestServer(string name) =>
             _pipe = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
@@ -63,6 +68,7 @@ public sealed class AgentConnectionTests
             _rpc = AgentRpc.Create(_pipe);
             _rpc.AddLocalRpcTarget<IAgentApi>(api, null);
             _rpc.StartListening();
+            _listening.TrySetResult();
         }
 
         public async ValueTask DisposeAsync()
