@@ -2,6 +2,7 @@ using ArbiPache.Core.Agent;
 using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
+using ArbiPache.Core.IO;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
 using ArbiPache.Core.Platform;
@@ -35,6 +36,8 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         using var probeHttp = new HttpClient();
         using var downloadHttp = new HttpClient();
         var store = new SettingsStore(paths);
+        var controlUsers = store.Load().ControlUserSids;
+        PrivateAcl.ControlUsers = controlUsers;
 
         Orchestrator? orchestrator = null;
         var tester = new ApacheConfigTester(paths, () => orchestrator?.ApacheVersion);
@@ -48,7 +51,7 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         var shutdown = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var api = new AgentApi(orchestrator, stopServices => shutdown.TrySetResult(stopServices));
         bool stopServices;
-        await using (var server = new PipeServer(options.PipeName, api, store.Load().ControlUserSids))
+        await using (var server = new PipeServer(options.PipeName, api, controlUsers))
         {
             server.Start();
             Log.Information("Agent {Version} listening on pipe {Pipe}", Core.BuildInfo.Version, options.PipeName);

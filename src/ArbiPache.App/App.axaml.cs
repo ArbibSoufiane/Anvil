@@ -47,6 +47,8 @@ public partial class App : Application
             var database = new DatabaseViewModel(_agent.Api, paths, editor);
             var logs = new LogsViewModel(paths, editor);
             var elevator = new UacElevator(paths);
+            using var me = System.Security.Principal.WindowsIdentity.GetCurrent();
+            var service = new ServiceSwitch(_agent.Api, _agent, elevator, new WindowsAgentService(), paths, me.User!.Value);
             var ca = new LocalCaTrust(paths);
             MainWindow? window = null;
             var picker = new AvaloniaFolderPicker(() => window);
@@ -57,11 +59,11 @@ public partial class App : Application
             {
                 settings = s;
                 vm.CloseToTray = s.CloseToTray;
-            }, () => _ = sites.LoadAsync());
+            }, () => _ = sites.LoadAsync(), service);
             var mode = new ModeViewModel(_agent.Api);
             var followUp = new ElevationFollowUp(elevator);
             vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage, database, mode,
-                (from, to) => new ModeSwitchViewModel(_agent.Api, followUp, paths, from, to));
+                (from, to) => new ModeSwitchViewModel(_agent.Api, followUp, paths, from, to, service));
             dashboard.CompareProfilesRequested += (_, _) => vm.NavigateCommand.Execute(AppPage.Mode);
             _agent.Api.StatusChanged += (_, s) => Dispatcher.UIThread.Post(() => vm.Mode = s.Mode);
 

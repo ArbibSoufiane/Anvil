@@ -7,6 +7,7 @@ using ArbiPache.Core.Apache;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Database;
+using ArbiPache.Core.Elevation;
 using ArbiPache.Core.Hosts;
 using ArbiPache.Core.IO;
 using ArbiPache.Core.Modes;
@@ -191,7 +192,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     /// Keeps the new settings only when Apache accepts the configuration they produce; then reloads Apache, or
     /// restarts it when a port changed. The active Apache version is changed by <see cref="ActivateAsync"/> only.
     /// </summary>
-    public Task<ApplyResult> SaveSettingsAsync(AppSettings s, CancellationToken ct) => Locked(async () =>
+    public async Task<ApplyResult> SaveSettingsAsync(AppSettings s, CancellationToken ct) => WithGrants(await Locked(async () =>
     {
         var previous = _settings;
         // Versions, pools and the mode change through their own calls, so a page holding older settings cannot undo them.
@@ -225,7 +226,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             }, applied);
         if (applied.ChangedFiles.Count == 0) return ApplyResult.Success();
         return await Guard(() => apache.GracefulRestartAsync(ct), applied);
-    }, ct);
+    }, ct));
 
     public Task<IReadOnlyList<ComponentRelease>> GetAvailableAsync(ComponentKind k, CancellationToken ct) => catalog.GetAsync(k, ct);
 
@@ -354,7 +355,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             certs.Delete(renamedFrom);
         }
 
-        return result with { HostsDomains = HostsChange() };
+        return result with { HostsDomains = HostsChange(), RequiredGrants = MissingGrants() };
     }, ct);
 
     /// <summary>Removes the site with its certificate and password file. Its logs stay.</summary>
@@ -382,7 +383,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         Remember(SiteFile(id), undo);
         sites.Save(site with { Enabled = enabled });
         var (applied, result) = await ApplySitesAsync(undo, enabled ? "The site stays off." : "The site stays on.", ct);
-        return applied ? result with { HostsDomains = HostsChange() } : result;
+        return applied ? result with { HostsDomains = HostsChange(), RequiredGrants = MissingGrants() } : result;
     }, ct);
 
     /// <summary>
@@ -420,7 +421,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
 
         var (applied, result) = await ApplySitesAsync(undo, "Nothing was imported.", ct);
         return applied
-            ? report with { Result = result with { HostsDomains = HostsChange() } }
+            ? report with { Result = result with { HostsDomains = HostsChange(), RequiredGrants = MissingGrants() } }
             : report with { Imported = [], Result = result };
     }, ct);
 
@@ -580,8 +581,23 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             return ApplyResult.Failure($"The copy did not finish: {e.Message}");
         }
 
-        return ApplyResult.Success();
+        return ApplyResult.Success() with { RequiredGrants = MissingGrants() };
     }, ct);
+
+    private ApplyResult WithGrants(ApplyResult r) => r.Ok ? r with { RequiredGrants = MissingGrants() } : r;
+
+    /// <summary>
+    /// As the service: the planned folders it cannot use yet (a new site, a new htdocs folder), for the GUI to ask the
+    /// Elevator for. Null as the window's child, which runs as the user.
+    /// </summary>
+    private IReadOnlyList<AclGrant>? MissingGrants()
+    {
+        if (!runningAsService) return null;
+        var missing = AclPlanner.Plan(paths, new SiteStore(paths).All(), _settings.HtdocsPath)
+            .Where(g => Directory.Exists(g.Path) && !FolderPermissions.Allows(g.Path, AclPlanner.ServiceSid, g.Right))
+            .ToList();
+        return missing.Count == 0 ? null : missing;
+    }
 
     /// <summary>Saves the pool's size and recycling; a running pool is resized at once.</summary>
     public Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings pool, CancellationToken ct) => Locked(async () =>

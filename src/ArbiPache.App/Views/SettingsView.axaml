@@ -26,9 +26,11 @@
                 <TextBlock Classes="dd" VerticalAlignment="Center" Text="Closing the window keeps it in the tray" />
                 <ToggleSwitch Grid.Column="1" OnContent="" OffContent="" IsChecked="{Binding CloseToTray}" Command="{Binding ApplyGeneralCommand}" />
               </Grid>
-              <Grid ColumnDefinitions="*,Auto" ToolTip.Tip="Comes with Windows service support in a later version.">
-                <TextBlock Classes="dim" VerticalAlignment="Center" Text="Run Apache and the database as Windows services (survive logoff)" TextWrapping="Wrap" />
-                <ToggleSwitch Grid.Column="1" OnContent="" OffContent="" IsChecked="{Binding RunAsService}" IsEnabled="False" />
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="dd" VerticalAlignment="Center" TextWrapping="Wrap"
+                           Text="Run as a Windows service, so sites stay up after sign-out and restarts" />
+                <ToggleSwitch x:Name="RunAsService" Grid.Column="1" OnContent="" OffContent="" IsChecked="{Binding RunAsService}"
+                              Command="{Binding ApplyServiceCommand}" IsEnabled="{Binding CanRunAsService}" />
               </Grid>
               <StackPanel Spacing="4">
                 <TextBlock Classes="fieldLabel" Text="Open config files with" />

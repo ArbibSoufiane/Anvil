@@ -5,8 +5,8 @@ using Serilog;
 namespace ArbiPache.App.Services;
 
 /// <summary>
-/// Runs what an Agent result still needs from an administrator: the hosts file and the firewall rules. The change itself
-/// is already saved; each step Windows refuses comes back as a sentence for the user.
+/// Runs what an Agent result still needs from an administrator: the hosts file, the service's access to site folders and
+/// the firewall rules. The change itself is already saved; each step Windows refuses comes back as a sentence for the user.
 /// </summary>
 public sealed class ElevationFollowUp(IElevator elevator)
 {
@@ -19,6 +19,13 @@ public sealed class ElevationFollowUp(IElevator elevator)
                 ? $"Windows did not let ArbiPache update the hosts file ({error}). Old entries stay there until it does."
                 : $"Windows did not let ArbiPache update the hosts file ({error}). {string.Join(", ", domains)} will not open in the browser "
                   + "until it does: save the site again to retry.");
+        if (result.RequiredGrants is { Count: > 0 } grants && await TryAsync(new AclGrantRequest(grants), ct) is { } denied)
+        {
+            var folders = grants.Select(g => g.Path).ToList();
+            var list = folders.Count == 1 ? folders[0] : $"{string.Join(", ", folders[..^1])} and {folders[^1]}";
+            problems.Add($"Windows did not let ArbiPache give its service access to {list} ({denied}). Those sites show an error until it does: "
+                         + "save the site again to retry.");
+        }
         if (result.RequiredFirewall is { } scope && await FirewallAsync(scope, httpPort, httpsPort, ct) is { } firewall)
             problems.Add(firewall);
         return problems.Count == 0 ? null : string.Join(" ", problems);

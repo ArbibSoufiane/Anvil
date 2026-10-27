@@ -1,15 +1,20 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
+using ArbiPache.Core.Elevation;
 
 namespace ArbiPache.Core.IO;
 
 /// <summary>
-/// Limits a folder or file to this Windows account and the Administrators group. Volumes that keep no permissions
-/// (FAT, exFAT) and network shares are left as they are.
+/// Limits a folder or file to this Windows account, the Administrators group, the ArbiPache service and the users who
+/// control it: the Agent runs as the user or as the service, and each must read what the other wrote. Volumes that keep
+/// no permissions (FAT, exFAT) and network shares are left as they are.
 /// </summary>
-internal static class PrivateAcl
+public static class PrivateAcl
 {
     private static readonly SecurityIdentifier Administrators = new(WellKnownSidType.BuiltinAdministratorsSid, null);
+
+    /// <summary>The settings' control users; the Agent sets them at start.</summary>
+    public static IReadOnlyList<string> ControlUsers { get; set; } = [];
 
     public static void RestrictFolder(string dir)
     {
@@ -31,11 +36,14 @@ internal static class PrivateAcl
         new FileInfo(path).SetAccessControl(security);
     }
 
-    private static SecurityIdentifier[] Holders()
+    private static IReadOnlyList<SecurityIdentifier> Holders()
     {
         using var me = WindowsIdentity.GetCurrent();
-        return [me.User!, Administrators];
+        return Holders(me.User!, ControlUsers);
     }
+
+    internal static IReadOnlyList<SecurityIdentifier> Holders(SecurityIdentifier me, IEnumerable<string> controlUsers) =>
+        new[] { me, Administrators, AclPlanner.ServiceSid }.Concat(controlUsers.Select(s => new SecurityIdentifier(s))).Distinct().ToList();
 
     private static bool KeepsPermissions(string path)
     {

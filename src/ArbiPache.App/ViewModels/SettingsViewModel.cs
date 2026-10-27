@@ -31,13 +31,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly Action<AppSettings>? _settingsChanged;
     private readonly Action? _sitesChanged;
     private readonly ElevationFollowUp _followUp;
+    private readonly ServiceSwitch? _service;
     private AppSettings _settings = new();
 
     /// <param name="settingsChanged">Told about every saved change, so the rest of the window follows.</param>
     /// <param name="sitesChanged">Told when imported sites or a new htdocs folder change the Sites page.</param>
+    /// <param name="service">Moves the Agent to and from the Windows service; null leaves the switch off.</param>
     public SettingsViewModel(IAgentApi api, IElevator elevator, IRunKey runKey, ILocalCaTrust ca, IFolderPicker picker, AppPaths paths,
-        Func<string?> lanIp, Action<AppSettings>? settingsChanged = null, Action? sitesChanged = null)
+        Func<string?> lanIp, Action<AppSettings>? settingsChanged = null, Action? sitesChanged = null, ServiceSwitch? service = null)
     {
+        _service = service;
         _api = api;
         _runKey = runKey;
         _ca = ca;
@@ -148,6 +151,43 @@ public sealed partial class SettingsViewModel : ObservableObject
         CaTrusted = IsCaTrusted();
         // A portable folder may have moved since the Run entry was written.
         if (_settings.StartWithWindows) TryRunKey(set: true);
+    }
+
+    public bool CanRunAsService => _service is not null;
+
+    /// <summary>Moves the Agent to the Windows service or back into this window; a refused move puts the switch back.</summary>
+    [RelayCommand]
+    private async Task ApplyServiceAsync()
+    {
+        var on = RunAsService;
+        if (_service is null || on == _settings.RunAsService) return;
+        Say(on ? "Moving ArbiPache to a Windows service…" : "Moving ArbiPache back to this window…", ok: true);
+
+        string? problem;
+        try
+        {
+            problem = on ? await _service.TurnOnAsync() : await _service.TurnOffAsync();
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Warning(e, "Moving the Agent failed");
+            problem = e.Message;
+        }
+
+        try
+        {
+            _settings = await _api.GetSettingsAsync();
+            Show(_settings);
+            _settingsChanged?.Invoke(_settings);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Warning(e, "Reading settings after moving the Agent failed");
+        }
+
+        if (problem is not null) Say(problem, ok: false);
+        else if (on) Say("ArbiPache now runs as a Windows service. Sites stay up after you sign out or restart Windows.", ok: true);
+        else Say("ArbiPache runs from this window again. Sites stop when you quit ArbiPache.", ok: true);
     }
 
     [RelayCommand]
@@ -309,6 +349,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         Show(next);
         _settingsChanged?.Invoke(next);
         Say("Saved.", ok: true);
+        // A new htdocs folder needs the service's access too.
+        if (result.RequiredGrants is not null && await _followUp.RunAsync(result, next.HttpPort, next.HttpsPort) is { } problem) Say(problem, ok: false);
         return true;
     }
 

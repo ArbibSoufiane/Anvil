@@ -16,7 +16,7 @@
         </StackPanel>
       </Border>
 
-      <!-- Keep Xdebug, Cancel, Apply -->
+      <!-- Keep Xdebug, Run as a service, Cancel, Apply -->
       <Border DockPanel.Dock="Bottom" Padding="24,16" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,1,0,0">
         <DockPanel>
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10">
@@ -24,8 +24,12 @@
             <Button x:Name="ApplySwitch" Classes="primary" Content="Apply and restart" Command="{Binding ApplyCommand}"
                     IsVisible="{Binding ShowsApply}" />
           </StackPanel>
-          <CheckBox Content="Keep Xdebug loaded" IsChecked="{Binding KeepXdebug}" IsVisible="{Binding ShowsKeepXdebug}"
-                    VerticalAlignment="Center" />
+          <StackPanel Spacing="4" VerticalAlignment="Center">
+            <CheckBox Content="Keep Xdebug loaded" IsChecked="{Binding KeepXdebug}" IsVisible="{Binding ShowsKeepXdebug}" />
+            <CheckBox x:Name="RunAsServiceOption" Content="Run as a Windows service (survives sign-out)"
+                      ToolTip.Tip="Sites stay up after you sign out or restart Windows."
+                      IsChecked="{Binding RunAsService}" IsVisible="{Binding OffersService}" />
+          </StackPanel>
         </DockPanel>
       </Border>
 

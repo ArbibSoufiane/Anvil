@@ -101,7 +101,7 @@ public static partial class RequestValidator
     private static string? AclError(AclGrantRequest a, AppPaths paths)
     {
         if (a.Grants is null || a.Grants.Count == 0) return "The request lists no folders.";
-        var plan = AclPlanner.Plan(paths, new SiteStore(paths).All());
+        var plan = AclPlanner.Plan(paths, new SiteStore(paths).All(), new SettingsStore(paths).Load().HtdocsPath);
         foreach (var g in a.Grants)
         {
             if (g is null || FullPath(g.Path) is not { } full || !Enum.IsDefined(g.Right)) return "The request lists a folder without a path or right.";
@@ -127,22 +127,25 @@ public static partial class RequestValidator
         }
     }
 
-    /// <summary>Windows and everything in it, a drive root, and the shared Program Files, ProgramData and Users folders themselves.</summary>
+    /// <summary>
+    /// A drive root, the Users folder itself, and Windows, Program Files, Program Files (x86) and ProgramData with
+    /// everything in them: programs there may run as an administrator.
+    /// </summary>
     private static bool IsSystemFolder(string full)
     {
         static string Folder(Environment.SpecialFolder f) => Path.TrimEndingDirectorySeparator(Environment.GetFolderPath(f));
         bool Same(string other) => other.Length > 0 && string.Equals(full, other, StringComparison.OrdinalIgnoreCase);
+        bool Inside(string other) => Same(other) || (other.Length > 0 && full.StartsWith(other + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
 
-        var windows = Folder(Environment.SpecialFolder.Windows);
-        if (Same(windows) || full.StartsWith(windows + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return true;
         if (Same(Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full) ?? ""))) return true;
+        if (Same(Path.GetDirectoryName(Folder(Environment.SpecialFolder.UserProfile)) ?? "")) return true;
         return new[]
         {
-            Folder(Environment.SpecialFolder.ProgramFiles),
-            Folder(Environment.SpecialFolder.ProgramFilesX86),
-            Folder(Environment.SpecialFolder.CommonApplicationData),
-            Path.GetDirectoryName(Folder(Environment.SpecialFolder.UserProfile)) ?? "",
-        }.Any(Same);
+            Environment.SpecialFolder.Windows,
+            Environment.SpecialFolder.ProgramFiles,
+            Environment.SpecialFolder.ProgramFilesX86,
+            Environment.SpecialFolder.CommonApplicationData,
+        }.Select(Folder).Any(Inside);
     }
 
     /// <summary>True when the folder or any folder above it is a junction or symbolic link.</summary>

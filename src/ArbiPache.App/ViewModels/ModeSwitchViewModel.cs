@@ -28,12 +28,15 @@ public sealed partial class ModeSwitchViewModel : ObservableObject
     private readonly IAgentApi _api;
     private readonly ElevationFollowUp _followUp;
     private readonly AppPaths _paths;
+    private readonly ServiceSwitch? _service;
 
-    public ModeSwitchViewModel(IAgentApi api, ElevationFollowUp followUp, AppPaths paths, ServerMode from, ServerMode target)
+    /// <param name="service">Offered for Production when the Agent is not yet a Windows service; null offers nothing.</param>
+    public ModeSwitchViewModel(IAgentApi api, ElevationFollowUp followUp, AppPaths paths, ServerMode from, ServerMode target, ServiceSwitch? service = null)
     {
         _api = api;
         _followUp = followUp;
         _paths = paths;
+        _service = service;
         From = from;
         Target = target;
     }
@@ -57,6 +60,13 @@ public sealed partial class ModeSwitchViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool KeepXdebug { get; set; }
+
+    /// <summary>Production without the service stops serving when the user signs out, so the dialog offers it.</summary>
+    [ObservableProperty]
+    public partial bool OffersService { get; set; }
+
+    [ObservableProperty]
+    public partial bool RunAsService { get; set; } = true;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
@@ -93,6 +103,7 @@ public sealed partial class ModeSwitchViewModel : ObservableObject
                 Groups.Add(new ModeChangeGroup(group.Key.Where, group.Key.File, group.Select(c => new ModeChangeRow(c.Key, Dash(c.From), Dash(c.To))).ToList()));
             Note = RestartNote(preview);
             BackupPath = Path.GetRelativePath(_paths.Root, preview.BackupPreviewPath);
+            OffersService = ToProduction && _service is not null && !(await _api.GetSettingsAsync(ct)).RunAsService;
             IsPreviewed = true;
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -119,9 +130,16 @@ public sealed partial class ModeSwitchViewModel : ObservableObject
                 return;
             }
             var settings = await _api.GetSettingsAsync();
-            if (await _followUp.RunAsync(result, settings.HttpPort, settings.HttpsPort) is { } problem)
+            var problems = new List<string>();
+            if (await _followUp.RunAsync(result, settings.HttpPort, settings.HttpsPort) is { } problem) problems.Add(problem);
+            if (OffersService && RunAsService && _service is not null)
             {
-                Message = $"Switched to {Target} mode. {problem}";
+                Message = "Moving ArbiPache to a Windows service…";
+                if (await _service.TurnOnAsync() is { } moved) problems.Add(moved);
+            }
+            if (problems.Count > 0)
+            {
+                Message = $"Switched to {Target} mode. {string.Join(" ", problems)}";
                 IsDone = true;
                 return;
             }

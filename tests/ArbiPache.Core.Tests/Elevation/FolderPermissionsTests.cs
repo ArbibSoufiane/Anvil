@@ -120,6 +120,20 @@ public sealed class FolderPermissionsTests : IDisposable
     }
 
     [Fact]
+    public void Allows_reports_rights_the_account_has_on_a_folder_or_above_it()
+    {
+        var project = Directory.CreateDirectory(Path.Combine(_dir, "crm")).FullName;
+        var storage = Directory.CreateDirectory(Path.Combine(project, "storage")).FullName;
+        Assert.False(FolderPermissions.Allows(storage, Guests, AclRight.Read));
+
+        Assert.Null(FolderPermissions.Grant(project, Guests, AclRight.Read));
+
+        Assert.True(FolderPermissions.Allows(storage, Guests, AclRight.Read));
+        Assert.False(FolderPermissions.Allows(storage, Guests, AclRight.Modify));
+        Assert.False(FolderPermissions.Allows(Path.Combine(project, "missing"), Guests, AclRight.Read));
+    }
+
+    [Fact]
     public void Read_only_entries_cannot_write()
     {
         Assert.Null(FolderPermissions.Grant(_dir, Guests, AclRight.ReadExecute));

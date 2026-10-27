@@ -174,7 +174,7 @@ public sealed class RequestValidatorTests : IDisposable
         var (request, error) = RequestValidator.Read(file, _paths);
 
         Assert.Null(error);
-        Assert.Equal(3, Assert.IsType<AclGrantRequest>(request).Grants.Count);
+        Assert.Equal(4, Assert.IsType<AclGrantRequest>(request).Grants.Count);
         Assert.Contains("\"verb\": \"acl-grant\"", File.ReadAllText(file));
     }
 
@@ -211,6 +211,32 @@ public sealed class RequestValidatorTests : IDisposable
 
         Assert.Equal($"{windows} is a system folder; ArbiPache does not change its permissions.",
             RequestValidator.Validate(new AclGrantRequest([new AclGrant(windows, AclRight.Read)]), RequestFile("{}"), _paths));
+    }
+
+    [Fact]
+    public void Acl_inside_program_files_rejected()
+    {
+        var vendor = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Vendor", "app");
+        new SiteStore(_paths).Save(new SiteDefinition { Id = "vendor.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "vendor.test", Root = vendor });
+
+        Assert.Equal($"{vendor} is a system folder; ArbiPache does not change its permissions.",
+            RequestValidator.Validate(new AclGrantRequest([new AclGrant(vendor, AclRight.Read)]), RequestFile("{}"), _paths));
+    }
+
+    [Fact]
+    public void Acl_for_the_chosen_htdocs_folder_accepted()
+    {
+        var htdocs = Directory.CreateDirectory(Path.Combine(_paths.Root + "-www")).FullName;
+        try
+        {
+            new SettingsStore(_paths).Save(new AppSettings { HtdocsPath = htdocs });
+
+            Assert.Null(RequestValidator.Validate(new AclGrantRequest([new AclGrant(htdocs, AclRight.Read)]), RequestFile("{}"), _paths));
+        }
+        finally
+        {
+            Directory.Delete(htdocs);
+        }
     }
 
     [Fact]

@@ -53,7 +53,34 @@ public sealed class AclPlannerTests : IDisposable
         Assert.Contains(new AclGrant(_paths.Root, AclRight.ReadExecute), plan);
         Assert.Contains(new AclGrant(_paths.Data, AclRight.Modify), plan);
         Assert.Contains(new AclGrant(_paths.Htdocs, AclRight.Read), plan);
-        Assert.Equal(3, plan.Count);
+        Assert.Equal(4, plan.Count);
+    }
+
+    [Fact]
+    public void Runtime_gets_modify_so_the_service_can_install_components()
+    {
+        Assert.Contains(new AclGrant(_paths.Runtime, AclRight.Modify), AclPlanner.Plan(_paths, []));
+    }
+
+    [Fact]
+    public void A_htdocs_folder_outside_the_root_gets_read_and_its_write_folders()
+    {
+        var htdocs = Folder("www");
+        var storage = Folder("www", "crm", "storage");
+        Touch("www", "crm", "artisan");
+
+        var plan = AclPlanner.Plan(_paths, [], htdocs);
+
+        Assert.Contains(new AclGrant(htdocs, AclRight.Read), plan);
+        Assert.Contains(new AclGrant(storage, AclRight.Modify), plan);
+        Assert.DoesNotContain(new AclGrant(_paths.Htdocs, AclRight.Read), plan);
+    }
+
+    [Fact]
+    public void Service_sid_is_the_one_windows_derives_from_the_name()
+    {
+        Assert.Equal("S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464", AclPlanner.ServiceSidOf("TrustedInstaller").Value);
+        Assert.Equal(AclPlanner.ServiceSidOf("ArbiPacheAgent"), AclPlanner.ServiceSid);
     }
 
     [Fact]
@@ -134,7 +161,7 @@ public sealed class AclPlannerTests : IDisposable
 
         var plan = AclPlanner.Plan(_paths, [Site(Path.Combine(project, "public"))]);
 
-        Assert.DoesNotContain(plan, g => g.Right == AclRight.Modify && g.Path != _paths.Data);
+        Assert.DoesNotContain(plan, g => g.Right == AclRight.Modify && g.Path != _paths.Data && g.Path != _paths.Runtime);
     }
 
     [Fact]
@@ -144,6 +171,6 @@ public sealed class AclPlannerTests : IDisposable
 
         var plan = AclPlanner.Plan(_paths, [Site("http://127.0.0.1:5173", SiteType.Proxy), Site(inside)]);
 
-        Assert.Equal(3, plan.Count);
+        Assert.Equal(4, plan.Count);
     }
 }

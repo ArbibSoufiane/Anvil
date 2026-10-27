@@ -58,6 +58,25 @@ public static class FolderPermissions
         return null;
     }
 
+    /// <summary>True when the folder's entries, its own or inherited, already give <paramref name="account"/> the right.</summary>
+    public static bool Allows(string folder, SecurityIdentifier account, AclRight right)
+    {
+        if (!Directory.Exists(folder)) return false;
+        try
+        {
+            var granted = Rules(new DirectoryInfo(folder).GetAccessControl())
+                .Where(r => r.AccessControlType == AccessControlType.Allow && r.IdentityReference.Equals(account)
+                            && !r.PropagationFlags.HasFlag(PropagationFlags.InheritOnly))
+                .Aggregate((FileSystemRights)0, (all, r) => all | r.FileSystemRights);
+            var needed = Rights(right);
+            return (granted & needed) == needed;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     private static FileSystemRights Rights(AclRight right) => right switch
     {
         AclRight.Modify => FileSystemRights.Modify | FileSystemRights.Synchronize,

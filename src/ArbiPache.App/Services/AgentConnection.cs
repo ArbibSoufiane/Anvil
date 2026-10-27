@@ -14,27 +14,35 @@ using Serilog;
 namespace ArbiPache.App.Services;
 
 /// <summary>
-/// The GUI's link to the Agent. Tries the pipe for 2 s; when nobody answers, starts ArbiPache.Agent.exe --child and
-/// waits up to 10 s more. When the Agent goes away it keeps reconnecting. <see cref="ConnectAsync"/> returns one
-/// stable <see cref="IAgentApi"/> that always talks to the current connection, so view models subscribe once.
+/// The GUI's link to the Agent. Tries the pipe for 2 s; when nobody answers, starts the ArbiPacheAgent service when it
+/// is installed, else ArbiPache.Agent.exe --child, and waits up to 10 s more. When the Agent goes away it keeps
+/// reconnecting. <see cref="ConnectAsync"/> returns one stable <see cref="IAgentApi"/> that always talks to the current
+/// connection, so view models subscribe once.
 /// </summary>
-public sealed class AgentConnection : IAsyncDisposable
+public sealed class AgentConnection : IAsyncDisposable, IAgentLink
 {
     private static readonly TimeSpan Probe = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan AfterStart = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan RetryEvery = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan StopWithin = TimeSpan.FromMinutes(1);
 
     private readonly string _pipeName;
+    private readonly string _mutexName;
     private readonly Func<bool> _startAgent;
     private readonly CancellationTokenSource _life = new();
     private readonly Lock _lock = new();
     private Task<AgentClient>? _current;
+    private int _holds;
 
-    /// <param name="startAgent">Starts the Agent; returns false when it could not. Null starts ArbiPache.Agent.exe.</param>
-    public AgentConnection(AppPaths paths, string pipeName = AgentPipe.Name, Func<bool>? startAgent = null)
+    /// <param name="startAgent">Starts the Agent; returns false when it could not. Null starts the service or ArbiPache.Agent.exe.</param>
+    /// <param name="mutexName">The mutex a running Agent holds.</param>
+    public AgentConnection(AppPaths paths, string pipeName = AgentPipe.Name, Func<bool>? startAgent = null, string mutexName = AgentPipe.Mutex,
+        IAgentService? service = null)
     {
         _pipeName = pipeName;
-        _startAgent = startAgent ?? (() => StartAgentProcess(paths));
+        _mutexName = mutexName;
+        var windowsService = service ?? new WindowsAgentService();
+        _startAgent = startAgent ?? (() => StartAgent(windowsService, () => StartAgentProcess(paths)));
         Api = new ForwardingApi(this);
     }
 
@@ -47,6 +55,56 @@ public sealed class AgentConnection : IAsyncDisposable
     {
         await CurrentAsync().WaitAsync(ct);
         return Api;
+    }
+
+    async Task IAgentLink.ConnectAsync(CancellationToken ct) => await ConnectAsync(ct);
+
+    public IDisposable HoldStart()
+    {
+        Interlocked.Increment(ref _holds);
+        return new Hold(this);
+    }
+
+    public async Task WhenAgentGoneAsync(CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + StopWithin;
+        while (AgentRunning(_mutexName))
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("The ArbiPache Agent did not stop within a minute.");
+            await Task.Delay(TimeSpan.FromMilliseconds(250), ct);
+        }
+    }
+
+    /// <summary>The service when Windows has it, else the child process. False when neither could be started.</summary>
+    internal static bool StartAgent(IAgentService service, Func<bool> startChild)
+    {
+        if (!service.IsInstalled()) return startChild();
+        try
+        {
+            service.Start();
+            Log.Information("Started the ArbiPache service");
+            return true;
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            Log.Warning(e, "Windows did not start the ArbiPache service");
+            return false;
+        }
+    }
+
+    // Existence marks a running Agent; access denied means it runs under another account (the service).
+    private static bool AgentRunning(string mutexName)
+    {
+        try
+        {
+            if (!Mutex.TryOpenExisting(mutexName, out var mutex)) return false;
+            mutex.Dispose();
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true;
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -76,6 +134,8 @@ public sealed class AgentConnection : IAsyncDisposable
         }
         catch (TimeoutException)
         {
+            // The service switch is moving the Agent and decides which one runs next.
+            if (Volatile.Read(ref _holds) > 0) throw new InvalidOperationException("The ArbiPache Agent is being moved.");
             if (!_startAgent()) throw new InvalidOperationException("ArbiPache.Agent.exe could not be started.");
             client = await AgentRpc.ConnectAsync(_pipeName, AfterStart, _life.Token);
         }
@@ -129,6 +189,16 @@ public sealed class AgentConnection : IAsyncDisposable
         using var process = Process.Start(psi);
         Log.Information("Started the Agent (PID {Pid})", process?.Id);
         return process is not null;
+    }
+
+    private sealed class Hold(AgentConnection owner) : IDisposable
+    {
+        private int _released;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0) Interlocked.Decrement(ref owner._holds);
+        }
     }
 
     private sealed class ForwardingApi(AgentConnection owner) : IAgentApi

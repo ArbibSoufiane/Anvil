@@ -1,3 +1,7 @@
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Security.Principal;
+using System.Text;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Sites;
 
@@ -9,22 +13,36 @@ public enum AclRight { Read, ReadExecute, Modify }
 public sealed record AclGrant(string Path, AclRight Right);
 
 /// <summary>
-/// What NT SERVICE\ArbiPacheAgent may use: the app folder read and execute, data\ modify, htdocs and every site folder
-/// read, and the folders PHP frameworks write to (Laravel storage and bootstrap\cache, Symfony var, WordPress uploads)
-/// modify. A PHP script running under the service can change nothing else.
+/// What NT SERVICE\ArbiPacheAgent may use: the app folder read and execute, data\ and runtime\ (component installs)
+/// modify, htdocs and every site folder read, and the folders PHP frameworks write to (Laravel storage and
+/// bootstrap\cache, Symfony var, WordPress uploads) modify. A PHP script running under the service can change nothing else.
 /// </summary>
 public static class AclPlanner
 {
     public const string ServiceName = "ArbiPacheAgent";
     public const string ServiceAccount = @"NT SERVICE\ArbiPacheAgent";
 
-    public static IReadOnlyList<AclGrant> Plan(AppPaths paths, IReadOnlyList<SiteDefinition> sites)
+    /// <summary>The service account's SID. Windows derives it from the name, so it is known before the service exists.</summary>
+    public static SecurityIdentifier ServiceSid { get; } = ServiceSidOf(ServiceName);
+
+    /// <summary>S-1-5-80 followed by the SHA-1 of the upper-case service name (UTF-16), as five little-endian numbers.</summary>
+    public static SecurityIdentifier ServiceSidOf(string serviceName)
     {
+        var hash = SHA1.HashData(Encoding.Unicode.GetBytes(serviceName.ToUpperInvariant()));
+        var parts = Enumerable.Range(0, 5).Select(i => BinaryPrimitives.ReadUInt32LittleEndian(hash.AsSpan(i * 4)));
+        return new SecurityIdentifier($"S-1-5-80-{string.Join('-', parts)}");
+    }
+
+    /// <param name="htdocs">The htdocs folder from the settings; null means the one in the app folder.</param>
+    public static IReadOnlyList<AclGrant> Plan(AppPaths paths, IReadOnlyList<SiteDefinition> sites, string? htdocs = null)
+    {
+        htdocs = htdocs is not null && Path.IsPathFullyQualified(htdocs) ? Normal(htdocs) : paths.Htdocs;
         var grants = new List<AclGrant>
         {
             new(paths.Root, AclRight.ReadExecute),
             new(paths.Data, AclRight.Modify),
-            new(paths.Htdocs, AclRight.Read),
+            new(paths.Runtime, AclRight.Modify),
+            new(htdocs, AclRight.Read),
         };
 
         void Add(string path, AclRight right)
@@ -32,9 +50,9 @@ public static class AclPlanner
             if (!grants.Any(have => Covers(have, path, right))) grants.Add(new AclGrant(path, right));
         }
 
-        if (Directory.Exists(paths.Htdocs))
+        if (Directory.Exists(htdocs))
         {
-            foreach (var folder in Directory.GetDirectories(paths.Htdocs))
+            foreach (var folder in Directory.GetDirectories(htdocs))
             foreach (var write in WriteFolders(folder))
                 Add(write, AclRight.Modify);
         }
