@@ -17,14 +17,19 @@ public sealed class CertificateStore(AppPaths paths)
         return File.Exists(meta) && JsonFiles.Read<Meta>(meta) is { } m ? ToCertificate(dir, m) : null;
     }
 
-    /// <summary>Stores PEM text as given, replacing the site's previous certificate. Names and expiry are read from the certificate.</summary>
+    /// <summary>
+    /// Stores PEM text as given, replacing the site's previous certificate. Names and expiry are read from the certificate.
+    /// The folder and the key are limited to this account and Administrators.
+    /// </summary>
     public void Save(string siteId, string certPem, string keyPem, string? chainPem, CertSource src)
     {
         using var cert = X509Certificate2.CreateFromPem(certPem);
         var dir = DirFor(siteId);
         Directory.CreateDirectory(dir);
+        PrivateAcl.RestrictFolder(dir);
         AtomicFile.WriteAllText(Path.Combine(dir, "cert.pem"), certPem);
         AtomicFile.WriteAllText(Path.Combine(dir, "key.pem"), keyPem);
+        PrivateAcl.RestrictFile(Path.Combine(dir, "key.pem"));
         var chain = Path.Combine(dir, "chain.pem");
         if (chainPem is null) File.Delete(chain);
         else AtomicFile.WriteAllText(chain, chainPem);
