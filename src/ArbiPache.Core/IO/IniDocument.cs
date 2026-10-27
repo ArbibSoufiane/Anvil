@@ -75,6 +75,14 @@ public sealed partial class IniDocument
             line.Text = ";" + line.Text.TrimStart();
     }
 
+    /// <summary>Deletes every active line of the key in the section.</summary>
+    public void Remove(string section, string key) => _lines.RemoveAll(l => InSection(l, section) && IsKey(Pair(), l, key));
+
+    /// <summary>The section's active keys and values in file order.</summary>
+    public IReadOnlyList<(string Key, string Value)> Pairs(string section) =>
+        _lines.Where(l => InSection(l, section)).Select(l => Pair().Match(l.Text)).Where(m => m.Success)
+            .Select(m => (m.Groups["key"].Value, Unquote(m.Groups["value"].Value))).ToList();
+
     public override string ToString() => string.Concat(_lines.Select(l => l.Text + l.Ending));
 
     private IEnumerable<Line> Active(string section, string key) =>

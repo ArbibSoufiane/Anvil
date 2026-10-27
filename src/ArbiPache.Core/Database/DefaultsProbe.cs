@@ -53,7 +53,7 @@ public static class DefaultsProbe
     /// </summary>
     public static IReadOnlyDictionary<string, string> Parse(string helpOutput)
     {
-        var defaults = new Dictionary<string, string>(OptionNameComparer.Instance);
+        var defaults = new Dictionary<string, string>(OptionNames.Comparer);
         var lines = helpOutput.ReplaceLineEndings("\n").Split('\n');
         var start = Array.FindIndex(lines, l => l.StartsWith("Variables (--variable-name=value)", StringComparison.Ordinal));
         if (start < 0) return defaults;
@@ -70,15 +70,5 @@ public static class DefaultsProbe
             defaults[gap < 0 ? line : line[..gap]] = value == "(No default value)" ? "" : value;
         }
         return defaults;
-    }
-
-    private sealed class OptionNameComparer : IEqualityComparer<string>
-    {
-        public static readonly OptionNameComparer Instance = new();
-
-        public bool Equals(string? x, string? y) =>
-            string.Equals(x?.Replace('-', '_'), y?.Replace('-', '_'), StringComparison.OrdinalIgnoreCase);
-
-        public int GetHashCode(string obj) => StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Replace('-', '_'));
     }
 }

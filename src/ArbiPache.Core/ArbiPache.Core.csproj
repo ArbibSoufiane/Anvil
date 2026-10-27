@@ -13,6 +13,8 @@
     <PackageReference Include="Serilog.Sinks.File" />
     <PackageReference Include="BCrypt.Net-Next" />
     <PackageReference Include="Certes" />
+    <PackageReference Include="MySqlConnector" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>
   <ItemGroup>
     <AdditionalFiles Include="Processes\NativeMethods.txt" />
