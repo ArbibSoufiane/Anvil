@@ -1,7 +1,10 @@
 using System.Net;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Security.Principal;
 using ArbiPache.Core.Certificates;
+using ArbiPache.Core.Elevation;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Sites;
 using Microsoft.Extensions.Time.Testing;
@@ -43,6 +46,26 @@ public sealed class LocalCaTests : IDisposable
         Assert.IsAssignableFrom<ECDsa>(ca.GetECDsaPublicKey());
         Assert.Equal(Now.AddYears(10).UtcDateTime, ca.NotAfter.ToUniversalTime(), TimeSpan.FromMinutes(10));
         Assert.True(File.Exists(Path.Combine(_paths.Certs, "ca", "ca.key")));
+    }
+
+    // The CA key signs certificates any site on this account would trust: other local accounts must not read it.
+    [Fact]
+    public void Ca_key_is_limited_to_arbipache()
+    {
+        Ca().EnsureCa();
+
+        var allowed = new[] { WindowsIdentity.GetCurrent().User!, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), AclPlanner.ServiceSid };
+        foreach (FileSystemSecurity security in new FileSystemSecurity[]
+        {
+            new DirectoryInfo(Path.Combine(_paths.Certs, "ca")).GetAccessControl(),
+            new FileInfo(Path.Combine(_paths.Certs, "ca", "ca.key")).GetAccessControl(),
+        })
+        {
+            Assert.True(security.AreAccessRulesProtected);
+            var holders = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>()
+                .Select(r => (SecurityIdentifier)r.IdentityReference).Distinct().ToList();
+            Assert.Equal(allowed.OrderBy(s => s.Value), holders.OrderBy(s => s.Value));
+        }
     }
 
     [Fact]

@@ -36,8 +36,11 @@ public sealed class LocalCa(AppPaths paths, CertificateStore store, TimeProvider
         var now = time.GetUtcNow();
         using var ca = request.CreateSelfSigned(now - Backdate, now.AddYears(10));
 
+        // The key signs certificates this account trusts for any name: only ArbiPache and its users may read it.
         Directory.CreateDirectory(Dir);
+        PrivateAcl.RestrictFolder(Dir);
         AtomicFile.WriteAllText(KeyFile, key.ExportPkcs8PrivateKeyPem());
+        PrivateAcl.RestrictFile(KeyFile);
         AtomicFile.WriteAllText(CertFile, ca.ExportCertificatePem());
     }
 
