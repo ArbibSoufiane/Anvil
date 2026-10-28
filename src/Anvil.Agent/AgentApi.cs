@@ -86,14 +86,6 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
     public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
         Task.FromResult(orchestrator.GetCertificates());
 
-    public Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct = default) =>
-        AgentErrors.CertificateCall(() => orchestrator.ImportCertificateAsync(siteId, r, ct));
-
-    public Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct = default) =>
-        orchestrator.IssueLetsEncryptAsync(siteId, staging, ct);
-
-    public Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default) => DnsCheck.ResolveAsync(name, ct);
-
     public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
         orchestrator.InstallDatabaseAsync(e, version, rootPassword, ct);
 

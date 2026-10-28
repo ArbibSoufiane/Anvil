@@ -16,7 +16,7 @@
 {{~ end ~}}
 {{~ end ~}}
 {{~ if v.redirect ~}}
-    RedirectMatch 301 ^/(?!\.well-known/acme-challenge/)(.*)$ {{ redirect }}$1
+    RedirectMatch 301 ^/(.*)$ {{ redirect }}$1
 {{~ else ~}}
 {{~ if lb ~}}
 {{ lb }}
@@ -44,9 +44,6 @@
     <Location "/">
         AuthMerging And
 {{ rules }}
-    </Location>
-    <Location "/.well-known/acme-challenge/">
-        Require all granted
     </Location>
 {{~ end ~}}
 {{~ end ~}}

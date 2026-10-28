@@ -106,33 +106,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string? ImportMessage { get; set; }
 
-    [ObservableProperty]
-    public partial string AcmeEmail { get; set; } = "";
-
-    [ObservableProperty]
-    public partial bool AcmeStaging { get; set; }
-
-    [ObservableProperty]
-    public partial string? AcmeEmailError { get; set; }
-
-    /// <summary>Saves the Let's Encrypt contact (optional) and whether orders go to Let's Encrypt's staging server.</summary>
-    [RelayCommand]
-    private async Task ApplyCertificatesAsync()
-    {
-        var email = AcmeEmail.Trim();
-        if (email.Length > 0 && !EmailAddress().IsMatch(email))
-        {
-            AcmeEmailError = "Enter an email address such as ops@example.com, or leave it empty.";
-            return;
-        }
-
-        AcmeEmailError = null;
-        await SaveAsync(_settings with { AcmeEmail = email.Length > 0 ? email : null, AcmeStaging = AcmeStaging });
-    }
-
-    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
-    private static partial Regex EmailAddress();
-
     public bool CanUpdate => _update is not null;
 
     [ObservableProperty]
@@ -425,8 +398,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         HttpPortText = s.HttpPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         HttpsPortText = s.HttpsPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         HtdocsFolder = s.HtdocsPath ?? _paths.Htdocs;
-        AcmeEmail = s.AcmeEmail ?? "";
-        AcmeStaging = s.AcmeStaging;
     }
 
     private void TryRunKey(bool set)

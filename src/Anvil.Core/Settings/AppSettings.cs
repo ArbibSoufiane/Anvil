@@ -35,6 +35,4 @@ public sealed record AppSettings
     public bool StartWithWindows { get; init; }
     public bool CloseToTray { get; init; } = true;
     public string? HtdocsPath { get; init; }
-    public string? AcmeEmail { get; init; }
-    public bool AcmeStaging { get; init; }
 }

@@ -120,49 +120,6 @@
 
         <StackPanel Spacing="8" IsVisible="{Binding ShowCert}">
           <TextBlock Classes="fieldLabel" Text="HTTPS certificate" />
-          <RadioButton x:Name="CertLetsEncrypt" Classes="option" GroupName="cert" IsChecked="{Binding IsLetsEncrypt}" IsEnabled="{Binding LetsEncryptEnabled}">
-            <StackPanel Spacing="2">
-              <TextBlock FontWeight="Medium" Text="Automatic (Let's Encrypt)" />
-              <TextBlock Classes="note" TextWrapping="Wrap" Text="{Binding LetsEncryptHint}" />
-            </StackPanel>
-          </RadioButton>
-          <StackPanel Spacing="4" Margin="28,0,0,0" IsVisible="{Binding IsLetsEncrypt}">
-            <TextBlock x:Name="DnsText" Classes="note" TextWrapping="Wrap" Text="{Binding DnsText}"
-                       IsVisible="{Binding DnsText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-            <TextBlock Classes="note" TextWrapping="Wrap" IsVisible="{Binding Busy}"
-                       Text="Asking Let's Encrypt for the certificate. This can take a minute." />
-          </StackPanel>
-          <RadioButton Classes="option" GroupName="cert" IsChecked="{Binding IsImported}">
-            <StackPanel Spacing="2">
-              <TextBlock FontWeight="Medium" Text="Use a certificate I was given" />
-              <TextBlock Classes="note" TextWrapping="Wrap" Text=".pfx, or .crt + .key + chain. Warns 30 days before it expires." />
-            </StackPanel>
-          </RadioButton>
-          <StackPanel x:Name="ImportFiles" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding IsImported}">
-            <TextBlock Classes="note" TextWrapping="Wrap" Text="{Binding CurrentCertificateText}"
-                       IsVisible="{Binding CurrentCertificateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-            <TextBlock Classes="fieldLabel" Text="Certificate file (.pfx, .p12, .crt, .pem)" />
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-              <TextBox Classes="field" Text="{Binding CertFile}" PlaceholderText="D:\Clients\portal.pfx" />
-              <Button Grid.Column="1" Classes="secondary" Content="Browse" Command="{Binding ChooseCertFileCommand}" />
-            </Grid>
-            <StackPanel Spacing="4" IsVisible="{Binding IsPfx}">
-              <TextBlock Classes="fieldLabel" Text="Password of the .pfx file" />
-              <TextBox Classes="field" Text="{Binding CertPassword}" PasswordChar="•" />
-            </StackPanel>
-            <StackPanel Spacing="6" IsVisible="{Binding ShowKeyFiles}">
-              <TextBlock Classes="fieldLabel" Text="Private key file (.key)" />
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBox Classes="field" Text="{Binding KeyFile}" PlaceholderText="D:\Clients\portal.key" />
-                <Button Grid.Column="1" Classes="secondary" Content="Browse" Command="{Binding ChooseKeyFileCommand}" />
-              </Grid>
-              <TextBlock Classes="fieldLabel" Text="Intermediate certificates (optional)" />
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBox Classes="field" Text="{Binding ChainFile}" PlaceholderText="D:\Clients\chain.crt" />
-                <Button Grid.Column="1" Classes="secondary" Content="Browse" Command="{Binding ChooseChainFileCommand}" />
-              </Grid>
-            </StackPanel>
-          </StackPanel>
           <RadioButton Classes="option" GroupName="cert" IsChecked="{Binding IsLoadBalancer}">
             <StackPanel Spacing="2">
               <TextBlock FontWeight="Medium" Text="HTTP only, the client's load balancer handles SSL" />

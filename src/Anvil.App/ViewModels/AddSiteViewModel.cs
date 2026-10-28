@@ -19,7 +19,6 @@ public sealed record SiteFormContext(IReadOnlyList<PhpVersionInfo> Php, IReadOnl
     string? LanIp)
 {
     /// <summary>Each saved site's certificate, by site id.</summary>
-    public IReadOnlyDictionary<string, SiteCertificate> Certificates { get; init; } = new Dictionary<string, SiteCertificate>();
 }
 
 /// <summary>One entry of the PHP list: a version (null follows the default), no PHP, or forwarding to another server.</summary>
@@ -157,7 +156,7 @@ public sealed partial class AddSiteViewModel : ObservableObject
     public string SaveLabel => IsEditing ? "Save" : "Create site";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDomain), nameof(IsIp), nameof(IsHtdocs), nameof(ShowCert), nameof(LetsEncryptEnabled), nameof(LetsEncryptHint),
+    [NotifyPropertyChangedFor(nameof(IsDomain), nameof(IsIp), nameof(IsHtdocs), nameof(ShowCert),
         nameof(PreviewUrls), nameof(Footnote), nameof(ShowCopyChoice))]
     public partial SiteKind Kind { get; set; }
 
@@ -212,15 +211,10 @@ public sealed partial class AddSiteViewModel : ObservableObject
     public partial string ProxyTarget { get; set; } = ProjectDetector.ViteTarget;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsLetsEncrypt), nameof(IsImported), nameof(IsLoadBalancer), nameof(IsLocalDev), nameof(IsHttpOnly),
-        nameof(PreviewUrls), nameof(Footnote), nameof(CurrentCertificateText))]
+    [NotifyPropertyChangedFor(nameof(IsLoadBalancer), nameof(IsLocalDev), nameof(IsHttpOnly),
+        nameof(PreviewUrls), nameof(Footnote))]
     public partial CertSource Cert { get; set; }
 
-    public bool LetsEncryptEnabled => Kind == SiteKind.Domain;
-    public string LetsEncryptHint => Kind == SiteKind.Ip ? "Not possible for a private IP address." : "Free, renews itself. Domain must point at this server.";
-
-    public bool IsLetsEncrypt { get => Cert == CertSource.LetsEncrypt; set { if (value) Cert = CertSource.LetsEncrypt; } }
-    public bool IsImported { get => Cert == CertSource.Imported; set { if (value) Cert = CertSource.Imported; } }
     public bool IsLoadBalancer { get => Cert == CertSource.LoadBalancer; set { if (value) Cert = CertSource.LoadBalancer; } }
     public bool IsLocalDev { get => Cert == CertSource.LocalDev; set { if (value) Cert = CertSource.LocalDev; } }
     public bool IsHttpOnly { get => Cert == CertSource.None; set { if (value) Cert = CertSource.None; } }
@@ -228,29 +222,6 @@ public sealed partial class AddSiteViewModel : ObservableObject
     [ObservableProperty]
     public partial string TrustedProxies { get; set; } = "";
 
-    /// <summary>The client's certificate: a .pfx/.p12 file, or a PEM/DER certificate that needs <see cref="KeyFile"/>.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsPfx), nameof(ShowKeyFiles))]
-    public partial string CertFile { get; set; } = "";
-
-    [ObservableProperty]
-    public partial string CertPassword { get; set; } = "";
-
-    [ObservableProperty]
-    public partial string KeyFile { get; set; } = "";
-
-    [ObservableProperty]
-    public partial string ChainFile { get; set; } = "";
-
-    public bool IsPfx => Path.GetExtension(CertFile.Trim()).ToLowerInvariant() is ".pfx" or ".p12";
-    public bool ShowKeyFiles => CertFile.Trim().Length > 0 && !IsPfx;
-
-    public string? CurrentCertificateText =>
-        _editing is { } e && Current(e.Id) is { } c ? $"Current certificate: {string.Join(", ", c.Names)}, expires {c.NotAfter:yyyy-MM-dd}." : null;
-
-    /// <summary>Where the domain points, checked before Let's Encrypt is asked.</summary>
-    [ObservableProperty]
-    public partial string? DnsText { get; set; }
 
     [ObservableProperty]
     public partial bool Busy { get; set; }
@@ -340,7 +311,6 @@ public sealed partial class AddSiteViewModel : ObservableObject
         SiteKind.Htdocs => "htdocs folders are never served to the internet.",
         _ => Cert switch
         {
-            CertSource.LetsEncrypt => "Domain must point at this server. Port 80 must be reachable for Let's Encrypt.",
             CertSource.LocalDev => "Trusted on this PC only. Anvil adds .test names to the hosts file for you.",
             CertSource.LoadBalancer => "The domain points at the load balancer; the load balancer forwards to this server.",
             _ => "Domain must point at this server.",
@@ -371,15 +341,14 @@ public sealed partial class AddSiteViewModel : ObservableObject
     partial void OnKindChanged(SiteKind value)
     {
         if (!IsEditing) Cert = DefaultCert(value);
-        else if (Cert == CertSource.LetsEncrypt && !LetsEncryptEnabled) Cert = DefaultCert(value);
         if (value == SiteKind.Htdocs) Access = AccessLevel.Network;
         RebuildAccess();
     }
 
-    // An option the kind does not offer falls back to the kind's default.
+    // Let's Encrypt and imported certificates are gone: a site saved with one falls back to the kind's default.
     partial void OnCertChanged(CertSource value)
     {
-        if (value == CertSource.LetsEncrypt && !LetsEncryptEnabled) Cert = DefaultCert(Kind);
+        if (value is CertSource.LetsEncrypt or CertSource.Imported) Cert = DefaultCert(Kind);
     }
 
     partial void OnAccessChanged(AccessLevel value)
@@ -446,36 +415,10 @@ public sealed partial class AddSiteViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ChooseCertFileAsync()
-    {
-        if (await _picker.PickFileAsync("Choose the certificate the client sent", "Certificates", ["*.pfx", "*.p12", "*.crt", "*.cer", "*.pem"]) is { } file)
-            CertFile = file;
-    }
-
-    [RelayCommand]
-    private async Task ChooseKeyFileAsync()
-    {
-        if (await _picker.PickFileAsync("Choose the private key", "Private keys", ["*.key", "*.pem"]) is { } file) KeyFile = file;
-    }
-
-    [RelayCommand]
-    private async Task ChooseChainFileAsync()
-    {
-        if (await _picker.PickFileAsync("Choose the intermediate certificates", "Certificates", ["*.crt", "*.pem", "*.ca-bundle"]) is { } file)
-            ChainFile = file;
-    }
-
-    [RelayCommand]
     private async Task SaveAsync()
     {
         ClearErrors();
-        DnsText = null;
         var site = Build();
-        if (MissingCertificateFiles(site) is { } missing)
-        {
-            CertError = missing;
-            return;
-        }
 
         try
         {
@@ -513,7 +456,6 @@ public sealed partial class AddSiteViewModel : ObservableObject
             }
 
             KeepEditing(site, result);
-            if (!await GetCertificateAsync(site)) return;
             await _done(site, result);
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -523,80 +465,6 @@ public sealed partial class AddSiteViewModel : ObservableObject
         }
     }
 
-    /// <summary>A new client certificate needs its file, and a PEM certificate its key; editing may keep the current one.</summary>
-    private string? MissingCertificateFiles(SiteDefinition site)
-    {
-        if (site.Cert != CertSource.Imported) return null;
-        if (CertFile.Trim().Length == 0)
-            return Current(site.Id) is null ? "Choose the certificate file the client sent." : null;
-        return !IsPfx && KeyFile.Trim().Length == 0 ? "Choose the private key file that goes with the certificate." : null;
-    }
-
-    /// <summary>
-    /// After the site is saved: imports the chosen certificate, or asks Let's Encrypt when every name resolves and the
-    /// current certificate does not cover them. False keeps the form open with the reason; the site stays saved.
-    /// </summary>
-    private async Task<bool> GetCertificateAsync(SiteDefinition site)
-    {
-        if (site.Cert == CertSource.Imported && CertFile.Trim().Length > 0)
-        {
-            try
-            {
-                await _api.ImportCertificateAsync(site.Id, ImportRequest());
-                CertFile = KeyFile = ChainFile = CertPassword = "";
-                return true;
-            }
-            catch (Exception e) when (e is not OperationCanceledException)
-            {
-                CertError = CertificateMessages.For(e);
-                return false;
-            }
-        }
-
-        if (site.Cert != CertSource.LetsEncrypt || Covered(site)) return true;
-        var lines = new List<string>();
-        var unresolved = new List<string>();
-        foreach (var name in site.Aliases.Prepend(site.Name))
-        {
-            var addresses = await _api.ResolveAsync(name);
-            if (addresses.Count == 0) unresolved.Add(name);
-            else lines.Add($"{name} points to {string.Join(", ", addresses)}.");
-        }
-
-        if (unresolved.Count > 0)
-            lines.Add($"{string.Join(", ", unresolved)} {(unresolved.Count == 1 ? "does" : "do")} not point to any address yet. " +
-                "Point the domain at this server; Anvil asks Let's Encrypt every night until the certificate is issued.");
-        DnsText = string.Join("\n", lines);
-        if (unresolved.Count > 0) return false;
-
-        Busy = true;
-        try
-        {
-            await _api.IssueLetsEncryptAsync(site.Id, _context.Settings.AcmeStaging);
-            return true;
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            CertError = $"Let's Encrypt did not issue the certificate. {e.Message} Anvil tries again every night.";
-            return false;
-        }
-        finally
-        {
-            Busy = false;
-        }
-    }
-
-    /// <summary>Reads the chosen files here: the Agent may run as a service account that cannot open the person's folders.</summary>
-    private CertImportRequest ImportRequest() => IsPfx
-        ? new CertImportRequest(CertImportFile.Read(CertFile.Trim()), CertPassword, null, null, null)
-        : new CertImportRequest(null, null, CertImportFile.Read(CertFile.Trim()), CertImportFile.Read(KeyFile.Trim()),
-            ChainFile.Trim() is { Length: > 0 } chain ? CertImportFile.Read(chain) : null);
-
-    private SiteCertificate? Current(string siteId) =>
-        _context.Certificates.TryGetValue(siteId, out var c) && c.Source == Cert ? c : null;
-
-    private bool Covered(SiteDefinition site) =>
-        Current(site.Id) is { } c && site.Aliases.Prepend(site.Name).All(n => NameMatch.Covers(c.Names, n));
 
     /// <summary>The site is saved: from here the form edits it, and leaving reports it to the sites page.</summary>
     private void KeepEditing(SiteDefinition site, ApplyResult result)
@@ -701,7 +569,6 @@ public sealed partial class AddSiteViewModel : ObservableObject
 
     private CertSource DefaultCert(SiteKind kind) => (kind, _context.Settings.Mode) switch
     {
-        (SiteKind.Domain, ServerMode.Production) => CertSource.LetsEncrypt,
         (SiteKind.Domain, _) => CertSource.LocalDev,
         (SiteKind.Ip, ServerMode.Production) => CertSource.LoadBalancer,
         _ => CertSource.None,

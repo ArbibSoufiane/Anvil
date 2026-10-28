@@ -258,14 +258,6 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
         public async Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
             await (await Remote()).GetCertificatesAsync(ct);
 
-        public async Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct = default) =>
-            await (await Remote()).ImportCertificateAsync(siteId, r, ct);
-
-        public async Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct = default) =>
-            await (await Remote()).IssueLetsEncryptAsync(siteId, staging, ct);
-
-        public async Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default) => await (await Remote()).ResolveAsync(name, ct);
-
         public async Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
             await (await Remote()).InstallDatabaseAsync(e, version, rootPassword, ct);
 

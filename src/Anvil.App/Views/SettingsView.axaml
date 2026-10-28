@@ -101,17 +101,6 @@
                 <Button Classes="secondary" Content="Re-issue all" Command="{Binding ReissueCommand}" />
                 <Button Classes="ghost" Content="Remove from Windows" Command="{Binding UntrustCaCommand}" IsVisible="{Binding CaTrusted}" />
               </StackPanel>
-              <StackPanel Spacing="4">
-                <TextBlock Classes="fieldLabel" Text="Let's Encrypt contact email (optional)" />
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                  <TextBox x:Name="AcmeEmail" Classes="field" Text="{Binding AcmeEmail}" PlaceholderText="ops@example.com" />
-                  <Button Grid.Column="1" Classes="secondary" Content="Apply" Command="{Binding ApplyCertificatesCommand}" />
-                </Grid>
-                <TextBlock Classes="error" Text="{Binding AcmeEmailError}"
-                           IsVisible="{Binding AcmeEmailError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              </StackPanel>
-              <CheckBox IsChecked="{Binding AcmeStaging}" Command="{Binding ApplyCertificatesCommand}"
-                        Content="Use Let's Encrypt staging (test certificates browsers do not trust)" />
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <TextBlock Classes="dim" VerticalAlignment="Center" Text="{Binding VersionText}" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" IsVisible="{Binding CanUpdate}">

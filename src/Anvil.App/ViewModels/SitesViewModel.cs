@@ -23,7 +23,6 @@ public sealed partial class SiteRow : ObservableObject
     public required string Url { get; init; }
 
     /// <summary>The certificate on disk for this site, when there is one.</summary>
-    public SiteCertificate? Current { get; init; }
 
     public string Name => Site.Name;
 
@@ -42,8 +41,6 @@ public sealed partial class SiteRow : ObservableObject
 
     public string Certificate => Site.Cert switch
     {
-        CertSource.LetsEncrypt => "Let's Encrypt · " + Expiry("not issued yet"),
-        CertSource.Imported => "Client certificate · " + Expiry("missing"),
         CertSource.LoadBalancer => "HTTP only · client load balancer",
         CertSource.LocalDev => "Local development",
         _ => "HTTP only",
@@ -59,19 +56,6 @@ public sealed partial class SiteRow : ObservableObject
 
     [ObservableProperty]
     public partial bool ConfirmingRemove { get; set; }
-
-    private string Expiry(string none)
-    {
-        if (Current is not { } cert || cert.Source != Site.Cert) return none;
-        var days = (int)Math.Floor((cert.NotAfter - DateTimeOffset.UtcNow).TotalDays);
-        return days switch
-        {
-            < 0 => "expired",
-            0 => "expires today",
-            1 => "1 day left",
-            _ => $"{days} days left",
-        };
-    }
 }
 
 /// <summary>One folder answering at localhost/&lt;folder&gt;.</summary>
@@ -97,7 +81,6 @@ public sealed partial class SitesViewModel : ObservableObject
     private readonly Action<Action> _ui;
     private AppSettings _settings = new();
     private IReadOnlyList<PhpVersionInfo> _php = [];
-    private IReadOnlyDictionary<string, SiteCertificate> _certificates = new Dictionary<string, SiteCertificate>();
 
     public SitesViewModel(IAgentApi api, IElevator elevator, ILocalCaTrust ca, IFolderPicker picker, AppPaths paths,
         Func<IReadOnlyList<string>> addresses, Func<string?> lanIp, Action<Action>? ui = null)
@@ -150,12 +133,7 @@ public sealed partial class SitesViewModel : ObservableObject
             _php = await _api.GetPhpAsync(ct);
             var sites = await _api.GetSitesAsync(ct);
             var htdocs = await _api.GetHtdocsAsync(ct);
-            var certificates = await _api.GetCertificatesAsync(ct);
-            _ui(() =>
-            {
-                _certificates = certificates;
-                Fill(sites, htdocs);
-            });
+            _ui(() => Fill(sites, htdocs));
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -279,7 +257,7 @@ public sealed partial class SitesViewModel : ObservableObject
     private void DismissTrust() => OfferTrust = false;
 
     private AddSiteViewModel NewEditor(SiteDefinition? editing) =>
-        new(_api, _picker, new SiteFormContext(_php, _addresses(), _settings, HtdocsPath, _lanIp()) { Certificates = _certificates }, OnEditorDoneAsync,
+        new(_api, _picker, new SiteFormContext(_php, _addresses(), _settings, HtdocsPath, _lanIp()), OnEditorDoneAsync,
             () => Editor = null, editing);
 
     private async Task OnEditorDoneAsync(SiteDefinition? site, ApplyResult result)
@@ -329,7 +307,6 @@ public sealed partial class SitesViewModel : ObservableObject
             Sites.Add(new SiteRow
             {
                 Site = site, Php = site.Type == SiteType.Php ? site.PhpVersion ?? defaultPhp : "none", Url = UrlOf(site),
-                Current = _certificates.GetValueOrDefault(site.Id),
             });
         Htdocs.Clear();
         var lan = _lanIp();

@@ -31,7 +31,7 @@ namespace Anvil.Agent;
 public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IConfigTester tester, IApacheControl apache,
     Func<AppSettings, IReadOnlyList<PreflightFinding>> preflight, ComponentCatalog catalog, ComponentInstaller installer,
     IPhpPools php, Func<int, bool> portFree, Func<string>? hostsText = null,
-    string? legacyHome = null, Func<bool, IAcmeProtocol>? acme = null, TimeProvider? time = null, IDatabaseServer? db = null)
+    string? legacyHome = null, TimeProvider? time = null, IDatabaseServer? db = null)
 {
     public const int MaxWorkers = 64;
     public const int MaxRecycleRequests = 1_000_000;
@@ -43,8 +43,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private AppSettings _settings = new();
     private readonly TimeProvider _time = time ?? TimeProvider.System;
     private IReadOnlyList<PreflightFinding> _findings = [];
-    private IReadOnlyList<PreflightFinding> _expiryFindings = [];
-    private readonly Dictionary<string, PreflightFinding> _renewalFailures = [];
     private IReadOnlyList<PreflightFinding> _productionFindings = [];
     private string? _apacheUnderTest;
 
@@ -54,8 +52,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
 
     /// <summary>The Apache version whose httpd.exe tests the configuration: a candidate while switching, else the active one.</summary>
     public string? ApacheVersion => _apacheUnderTest ?? _settings.ActiveApache;
-
-    private Func<bool, IAcmeProtocol> Acme => acme ?? (staging => new CertesAcmeProtocol(paths, staging, _settings.AcmeEmail));
 
     private bool ApacheRunning => apache.Status?.State is ProcessState.Starting or ProcessState.Running or ProcessState.Restarting;
 
@@ -77,6 +73,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             if (store.LastLoadWarning is { } warning)
                 findings.Add(new PreflightFinding("settings-reset", Severity.Warning, warning, null));
 
+            ReissueExpiringLocalCertificates();
             var version = InstalledApache(_settings.ActiveApache);
             var configOk = true;
             if (version is not null)
@@ -96,7 +93,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
 
             findings.AddRange(preflight(_settings));
             _findings = findings;
-            RefreshCertificateFindings();
             if (version is not null && _settings.StartServicesOnLaunch && !findings.Any(f => f.Severity == Severity.Blocking))
             {
                 var started = await StartApacheCoreAsync(version, ct);
@@ -148,7 +144,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             PhpStatus(),
             DbStatus(),
         ];
-        var findings = _findings.Concat(_expiryFindings).Concat(_renewalFailures.Values).Concat(_productionFindings).ToList();
+        var findings = _findings.Concat(_productionFindings).ToList();
         return new AgentStatus(_settings.Mode, services, findings, BuildInfo.Version);
     }
 
@@ -482,115 +478,27 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     }, ct);
 
     /// <summary>Issues every local development certificate again; a rejected configuration puts the old ones back.</summary>
-    /// <summary>
-    /// Renews the certificates <see cref="RenewalPlanner"/> finds due and reloads Apache when any changed. A renewal that
-    /// fails keeps the certificate in use and becomes a finding, as does an imported certificate close to expiry.
-    /// </summary>
-    public Task<RenewalReport> RenewCertificatesAsync(CancellationToken ct) => Locked(async () =>
-    {
-        var sites = new SiteStore(paths).All();
-        var certs = new CertificateStore(paths);
-        var renewed = new List<string>();
-        var failed = new List<string>();
-        var undo = new List<Action>();
-        foreach (var decision in RenewalPlanner.Plan(sites, certs.All(), _time.GetUtcNow()))
-        {
-            if (decision.Action is not (RenewalAction.RenewLetsEncrypt or RenewalAction.ReissueLocal)) continue;
-            var site = sites.First(s => s.Id == decision.SiteId);
-            try
-            {
-                RememberFolder(CertDir(site.Id), undo);
-                if (decision.Action == RenewalAction.ReissueLocal) new LocalCa(paths, certs, _time).Issue(site.Id, CertNames(site));
-                else await new AcmeService(Acme, certs, paths).IssueAsync(site.Id, CertNames(site), _settings.AcmeStaging, ct);
-                renewed.Add(site.Id);
-                _renewalFailures.Remove(site.Id);
-            }
-            catch (Exception e) when (e is not OperationCanceledException)
-            {
-                Log.Warning(e, "The certificate for {Site} was not renewed", site.Id);
-                failed.Add(site.Id);
-                _renewalFailures[site.Id] = RenewalFailed(site, e.Message);
-            }
-        }
-
-        if (renewed.Count > 0)
-        {
-            var (applied, result) = await ApplySitesAsync(undo, "The previous certificates stay in use.", ct);
-            if (!applied)
-            {
-                foreach (var id in renewed) _renewalFailures[id] = RenewalFailed(sites.First(s => s.Id == id), result.Error ?? "Apache rejected it.");
-                failed.AddRange(renewed);
-                renewed.Clear();
-            }
-        }
-
-        RefreshCertificateFindings();
-        RaiseStatus();
-        return new RenewalReport(renewed, failed);
-    }, ct);
-
-    private static PreflightFinding RenewalFailed(SiteDefinition site, string reason) =>
-        new($"cert-{site.Id}", Severity.Warning, $"The certificate for {site.Name} was not renewed. {reason}",
-            $"Anvil tries again in {RenewalWorker.RetryAfter.TotalHours:0} hours.");
-
-    /// <summary>Imported certificates close to expiry become findings; failures of sites no longer due are dropped.</summary>
-    private void RefreshCertificateFindings()
-    {
-        var sites = new SiteStore(paths).All();
-        var plan = RenewalPlanner.Plan(sites, new CertificateStore(paths).All(), _time.GetUtcNow());
-        _expiryFindings = plan.Where(d => d.Action == RenewalAction.WarnImported)
-            .Select(d => ExpiryFinding(sites.First(s => s.Id == d.SiteId), d.DaysLeft))
-            .ToList();
-        var due = plan.Where(d => d.Action is RenewalAction.RenewLetsEncrypt or RenewalAction.ReissueLocal).Select(d => d.SiteId).ToHashSet();
-        foreach (var id in _renewalFailures.Keys.Where(id => !due.Contains(id)).ToList()) _renewalFailures.Remove(id);
-    }
-
-    private static PreflightFinding ExpiryFinding(SiteDefinition site, int daysLeft) =>
-        new($"cert-{site.Id}", daysLeft <= 7 ? Severity.Warning : Severity.Info, daysLeft switch
-        {
-            < 0 => $"The certificate for {site.Name} has expired.",
-            0 => $"The certificate for {site.Name} expires today.",
-            1 => $"The certificate for {site.Name} expires tomorrow.",
-            _ => $"The certificate for {site.Name} expires in {daysLeft} days.",
-        }, "Ask the client for the renewed certificate and import it in the site's settings.");
-
-
     public IReadOnlyDictionary<string, SiteCertificate> GetCertificates() => new CertificateStore(paths).All();
 
-    /// <summary>Stores the certificate a client sent for a saved site and reloads Apache. A refused certificate changes nothing.</summary>
-    public Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct) => Locked(() =>
-        ReplaceCertificateAsync(siteId, CertSource.Imported, (site, certs) =>
-            Task.FromResult(new CertImporter(certs, _time).Import(site.Id, CertNames(site), r)), ct), ct);
-
-    /// <summary>Orders the saved site's certificate from Let's Encrypt and reloads Apache. A failed order changes nothing.</summary>
-    public Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct) => Locked(() =>
-        ReplaceCertificateAsync(siteId, CertSource.LetsEncrypt, (site, certs) =>
-            new AcmeService(Acme, certs, paths).IssueAsync(site.Id, CertNames(site), staging, ct), ct), ct);
-
-    private async Task<SiteCertificate> ReplaceCertificateAsync(string siteId, CertSource source,
-        Func<SiteDefinition, CertificateStore, Task<SiteCertificate>> obtain, CancellationToken ct)
+    /// <summary>
+    /// At startup, before the configuration is written: issues again every enabled site's local certificate that is
+    /// missing, lacks a name or expires within 30 days. A certificate that cannot be issued stays as it is.
+    /// </summary>
+    private void ReissueExpiringLocalCertificates()
     {
-        var site = new SiteStore(paths).All().FirstOrDefault(s => s.Id == siteId)
-            ?? throw new InvalidOperationException($"There is no site {siteId}. Save the site first.");
-        if (site.Cert != source) throw new InvalidOperationException($"{site.Name} does not take this kind of certificate.");
-
-        var undo = new List<Action>();
-        RememberFolder(CertDir(site.Id), undo);
-        SiteCertificate saved;
-        try
+        var certs = new CertificateStore(paths);
+        foreach (var site in new SiteStore(paths).All().Where(s => s.Enabled && s.Cert == CertSource.LocalDev))
         {
-            saved = await obtain(site, new CertificateStore(paths));
+            if (!NeedsLocalCertificate(certs.Get(site.Id), CertNames(site))) continue;
+            try
+            {
+                new LocalCa(paths, certs, _time).Issue(site.Id, CertNames(site));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or CryptographicException)
+            {
+                Log.Warning(e, "The certificate for {Site} was not issued again", site.Id);
+            }
         }
-        catch
-        {
-            Undo(undo);
-            throw;
-        }
-
-        var (applied, result) = await ApplySitesAsync(undo, "The previous certificate stays in use.", ct);
-        if (!applied) throw new InvalidOperationException(string.Join("\n", new[] { result.Error, result.ConfigTestOutput }.Where(t => !string.IsNullOrWhiteSpace(t))));
-        RaiseStatus();
-        return saved;
     }
 
     public Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct) => Locked(async () =>
@@ -769,7 +677,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             return (false, Rejected(applied, consequence));
         }
 
-        RefreshCertificateFindings();
         if (!ApacheRunning) return (true, ApplyResult.Success(applied.ChangedFiles, applied.TestOutput));
         return (true, await Guard(async () =>
         {

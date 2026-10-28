@@ -37,8 +37,6 @@ public sealed class FakeAgentApi : IAgentApi
     public Detected? Detected { get; set; }
     public ImportReport Import { get; set; } = new([], [], []);
     public Dictionary<string, SiteCertificate> Certificates { get; } = [];
-    public List<string> Resolved { get; } = [];
-    public Exception? CertificateError { get; set; }
     public List<DbSettingRow> DbRows { get; } = [];
     public IReadOnlyDictionary<string, string?>? DbSaved { get; private set; }
     public Exception? BackupError { get; set; }
@@ -166,27 +164,6 @@ public sealed class FakeAgentApi : IAgentApi
     public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate>(Certificates));
 
-    public CertImportRequest? LastImport { get; private set; }
-
-    public Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct = default)
-    {
-        LastImport = r;
-        Calls.Add($"import cert {siteId} {(r.Pfx ?? r.Cert)?.Name}");
-        return Issue(siteId, CertSource.Imported);
-    }
-
-    public Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct = default)
-    {
-        Calls.Add($"issue {siteId}{(staging ? " staging" : "")}");
-        return Issue(siteId, CertSource.LetsEncrypt);
-    }
-
-    public Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default)
-    {
-        Calls.Add($"resolve {name}");
-        return Task.FromResult<IReadOnlyList<string>>(Resolved.ToList());
-    }
-
     public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default)
     {
         if (NextResult.Ok) Settings = Settings with { DbEngine = e, DbVersion = version };
@@ -230,15 +207,6 @@ public sealed class FakeAgentApi : IAgentApi
     {
         ProfileSaved = (mode, overrides);
         return Record($"save profile {mode}");
-    }
-
-    private Task<SiteCertificate> Issue(string siteId, CertSource source)
-    {
-        if (CertificateError is { } error) return Task.FromException<SiteCertificate>(error);
-        var cert = new SiteCertificate(source, [siteId], DateTimeOffset.UtcNow.AddDays(90), $@"D:\Anvil\data\certs\{siteId}\cert.pem",
-            $@"D:\Anvil\data\certs\{siteId}\key.pem", null);
-        Certificates[siteId] = cert;
-        return Task.FromResult(cert);
     }
 
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)

@@ -56,7 +56,6 @@ public sealed class SettingsStoreTests : IDisposable
             PhpPools = new Dictionary<string, PhpPoolSettings> { ["8.5.5"] = new(8, 500) },
             PhpPoolPorts = new Dictionary<string, int> { ["php85"] = 9100 },
             Network = new NetworkAccess(false, true),
-            AcmeEmail = "ops@example.com",
         };
 
         store.Save(saved);

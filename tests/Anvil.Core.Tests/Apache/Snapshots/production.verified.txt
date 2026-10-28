@@ -52,14 +52,6 @@ Include "D:/Anvil/data/conf/php-pools.conf"
     Require all denied
 </Directory>
 
-# Let's Encrypt HTTP-01 challenges, answered on every site.
-Alias "/.well-known/acme-challenge/" "D:/Anvil/data/acme/.well-known/acme-challenge/"
-<Directory "D:/Anvil/data/acme/.well-known/acme-challenge">
-    Options None
-    AllowOverride None
-    Require all granted
-</Directory>
-
 IncludeOptional "D:/Anvil/data/conf/vhosts/*.conf"
 
 === mode.conf ===

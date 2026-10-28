@@ -83,18 +83,6 @@ public partial interface IAgentApi
     Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Checks the client's certificate against the saved site, stores it and reloads Apache. A certificate problem fails
-    /// with a <see cref="CertificateImportException"/> whose code <see cref="AgentErrors.CertificateCode"/> reads on the GUI side.
-    /// </summary>
-    Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct = default);
-
-    /// <summary>Orders the saved site's certificate from Let's Encrypt over HTTP-01 and reloads Apache.</summary>
-    Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct = default);
-
-    /// <summary>The addresses a domain resolves to from this server; empty when it does not resolve.</summary>
-    Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default);
-
-    /// <summary>
     /// Makes an installed MariaDB or MySQL version the active database: initializes an empty datadir with the root
     /// password (an existing one must accept it), stops the other engine and starts this one.
     /// </summary>

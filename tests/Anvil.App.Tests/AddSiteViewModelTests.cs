@@ -30,19 +30,14 @@ public sealed class AddSiteViewModelTests
             }, () => { }, editing);
 
     [Fact]
-    public void LetsEncrypt_option_disabled_for_ip_site()
+    public void Domain_sites_default_to_a_local_certificate_and_drop_lets_encrypt()
     {
         var vm = Make(mode: ServerMode.Production);
-        Assert.True(vm.LetsEncryptEnabled);
-        Assert.Equal(CertSource.LetsEncrypt, vm.Cert);
+        Assert.Equal(CertSource.LocalDev, vm.Cert);
 
-        vm.Kind = SiteKind.Ip;
+        vm.Cert = CertSource.LetsEncrypt;
 
-        Assert.False(vm.LetsEncryptEnabled);
-        Assert.Equal("Not possible for a private IP address.", vm.LetsEncryptHint);
-        Assert.Equal(CertSource.LoadBalancer, vm.Cert);
-        vm.IsLetsEncrypt = true;
-        Assert.Equal(CertSource.LoadBalancer, vm.Cert);
+        Assert.Equal(CertSource.LocalDev, vm.Cert);
     }
 
     [Fact]

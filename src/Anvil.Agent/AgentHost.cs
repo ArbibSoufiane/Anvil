@@ -62,12 +62,10 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
                 Log.Error(e, "Agent initialization failed");
             }
 
-            using var stopRenewal = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var renewal = new RenewalWorker(orchestrator.RenewCertificatesAsync, paths, TimeProvider.System).RunAsync(stopRenewal.Token);
-            var janitor = new Janitor(paths, TimeProvider.System).RunAsync(stopRenewal.Token);
+            using var stopJanitor = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var janitor = new Janitor(paths, TimeProvider.System).RunAsync(stopJanitor.Token);
             stopServices = await WaitForShutdownAsync(shutdown.Task, ct);
-            await stopRenewal.CancelAsync();
-            await renewal;
+            await stopJanitor.CancelAsync();
             await janitor;
         }
 
@@ -79,7 +77,7 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         return ExitOk;
     }
 
-    /// <summary>Cancellation (Windows stopping the service, or the host) counts as a shutdown that stops services.</summary>
+    /// <summary>Cancellation counts as a shutdown that stops services.</summary>
     private static async Task<bool> WaitForShutdownAsync(Task<bool> requested, CancellationToken ct)
     {
         try

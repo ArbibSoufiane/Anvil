@@ -201,29 +201,18 @@ public sealed class RpcTests
     }
 
     [Fact]
-    public async Task Certificate_calls_round_trip_and_keep_their_error_code()
+    public async Task Certificates_round_trip()
     {
         var ct = TestContext.Current.CancellationToken;
-        var fake = new FakeApi();
         var name = UniquePipe();
-        await using var server = new PipeServer(name, fake);
+        await using var server = new PipeServer(name, new FakeApi());
         server.Start();
         await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
 
-        var issued = await client.Api.IssueLetsEncryptAsync("shop.test", staging: true, ct);
-        var addresses = await client.Api.ResolveAsync("shop.example.com", ct);
         var certificates = await client.Api.GetCertificatesAsync(ct);
-        var error = await Assert.ThrowsAnyAsync<Exception>(() =>
-            client.Api.ImportCertificateAsync("shop.test", new CertImportRequest(new CertImportFile("client.pfx", [1, 2, 3]), "guess", null, null, null), ct));
 
-        Assert.Equal(FakeApi.Cert, issued with { Names = FakeApi.Cert.Names });
-        Assert.Equal(["shop.test"], issued.Names);
-        Assert.Equal(("shop.test", true), fake.Issued);
-        Assert.Equal(["203.0.113.5"], addresses);
-        Assert.Equal(["shop.test"], certificates.Keys);
-        Assert.Equal("bad-password", AgentErrors.CertificateCode(error));
-        Assert.Equal("The password does not open this .pfx file.", error.Message);
-        Assert.Null(AgentErrors.CertificateCode(new InvalidOperationException("other")));
+        Assert.Equal(FakeApi.Cert, certificates["shop.test"] with { Names = FakeApi.Cert.Names });
+        Assert.Equal(["shop.test"], certificates["shop.test"].Names);
     }
 
     [Fact]
@@ -377,23 +366,8 @@ public sealed class RpcTests
 
         public Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default) => throw new NotSupportedException();
 
-        public static readonly SiteCertificate Cert = new(CertSource.LetsEncrypt, ["shop.test"], new DateTimeOffset(2027, 1, 25, 0, 0, 0, TimeSpan.Zero),
+        public static readonly SiteCertificate Cert = new(CertSource.LocalDev, ["shop.test"], new DateTimeOffset(2027, 1, 25, 0, 0, 0, TimeSpan.Zero),
             "D:/Anvil/data/certs/shop.test/cert.pem", "D:/Anvil/data/certs/shop.test/key.pem", null);
-
-        public (string Id, bool Staging)? Issued { get; private set; }
-
-        public Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct = default) =>
-            AgentErrors.CertificateCall<SiteCertificate>(() =>
-                throw new CertificateImportException("bad-password", "The password does not open this .pfx file."));
-
-        public Task<SiteCertificate> IssueLetsEncryptAsync(string siteId, bool staging, CancellationToken ct = default)
-        {
-            Issued = (siteId, staging);
-            return Task.FromResult(Cert);
-        }
-
-        public Task<IReadOnlyList<string>> ResolveAsync(string name, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<string>>(["203.0.113.5"]);
 
         public IReadOnlyDictionary<string, string?>? DbChanges { get; private set; }
 

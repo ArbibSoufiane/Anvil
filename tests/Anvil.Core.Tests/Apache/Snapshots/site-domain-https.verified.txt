@@ -3,7 +3,7 @@
     ServerName shop.example.com
     ErrorLog "|\"${SRVROOT}/bin/rotatelogs.exe\" -l \"D:/Anvil/data/logs/sites/shop.example.com/error.%Y-%m-%d.log\" 86400"
     CustomLog "|\"${SRVROOT}/bin/rotatelogs.exe\" -l \"D:/Anvil/data/logs/sites/shop.example.com/access.%Y-%m-%d.log\" 86400" combined
-    RedirectMatch 301 ^/(?!\.well-known/acme-challenge/)(.*)$ https://shop.example.com/$1
+    RedirectMatch 301 ^/(.*)$ https://shop.example.com/$1
 </VirtualHost>
 <VirtualHost *:443>
     ServerName shop.example.com

@@ -292,8 +292,7 @@ public sealed class VhostRenderTests
 
         var conf = Render([site])[SiteFile(site.Id)];
 
-        Assert.Contains("    <Location \"/\">\n        AuthMerging And\n        Require local\n    </Location>\n"
-            + "    <Location \"/.well-known/acme-challenge/\">\n        Require all granted\n    </Location>\n", conf);
+        Assert.Contains("    <Location \"/\">\n        AuthMerging And\n        Require local\n    </Location>\n", conf);
     }
 
     [Fact]

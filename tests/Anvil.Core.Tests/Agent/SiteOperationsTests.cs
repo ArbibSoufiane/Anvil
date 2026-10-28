@@ -47,12 +47,12 @@ public sealed class SiteOperationsTests : IDisposable
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private async Task<Orchestrator> StartedAsync(Func<bool, IAcmeProtocol>? acme = null, TimeProvider? time = null)
+    private async Task<Orchestrator> StartedAsync(TimeProvider? time = null)
     {
         var orchestrator = new Orchestrator(_paths, new SettingsStore(_paths), _tester, _apache, _ => [],
             new ComponentCatalog([], new ShippedCatalogProvider(_paths)),
             new ComponentInstaller(_paths, new Downloader(new HttpClient()), _ => null), _pools, _ => true, hostsText: () => _hosts,
-            legacyHome: LegacyHome, acme: acme, time: time);
+            legacyHome: LegacyHome, time: time);
         await orchestrator.InitializeAsync(Ct);
         return orchestrator;
     }
@@ -397,38 +397,33 @@ public sealed class SiteOperationsTests : IDisposable
         Assert.Equal(restarts + 1, _apache.Restarts);
     }
 
-    private sealed class FakeAcme
+    [Fact]
+    public async Task Local_certificates_near_expiry_are_reissued_at_startup()
     {
-        public List<bool> Staging { get; } = [];
-        public IReadOnlyList<string> Names { get; private set; } = [];
-        public bool Fails { get; init; }
+        var site = Site("shop.test") with { Cert = CertSource.LocalDev };
+        new SiteStore(_paths).Save(site);
+        var (cert, key) = SelfSigned(["shop.test"], DateTimeOffset.UtcNow.AddDays(10));
+        new CertificateStore(_paths).Save("shop.test", cert, key, null, CertSource.LocalDev);
+        var before = new CertificateStore(_paths).Get("shop.test")!.NotAfter;
 
-        public IAcmeProtocol For(bool staging)
-        {
-            Staging.Add(staging);
-            return new Protocol(this);
-        }
+        await StartedAsync();
 
-        private sealed class Protocol(FakeAcme owner) : IAcmeProtocol, IAcmeOrder
-        {
-            public IReadOnlyList<(string Token, string KeyAuthorization)> Http01Challenges => [("tok", "tok.thumb")];
+        var after = new CertificateStore(_paths).Get("shop.test")!;
+        Assert.True(after.NotAfter > before.AddDays(30), $"{after.NotAfter} is not later than {before}");
+        Assert.Equal(CertSource.LocalDev, after.Source);
+    }
 
-            public Task<IAcmeOrder> NewOrderAsync(IReadOnlyList<string> names, CancellationToken ct)
-            {
-                owner.Names = names;
-                return Task.FromResult<IAcmeOrder>(this);
-            }
+    [Fact]
+    public async Task Local_certificates_far_from_expiry_are_kept_at_startup()
+    {
+        new SiteStore(_paths).Save(Site("shop.test") with { Cert = CertSource.LocalDev });
+        var (cert, key) = SelfSigned(["shop.test"], DateTimeOffset.UtcNow.AddDays(200));
+        new CertificateStore(_paths).Save("shop.test", cert, key, null, CertSource.LocalDev);
+        var before = File.ReadAllText(new CertificateStore(_paths).Get("shop.test")!.CertFile);
 
-            public Task ValidateAsync(CancellationToken ct) => owner.Fails
-                ? Task.FromException(new InvalidOperationException("Let's Encrypt could not verify shop.example.com: connection refused."))
-                : Task.CompletedTask;
+        await StartedAsync();
 
-            public Task<(string CertPem, string ChainPem, string KeyPem)> FinalizeAsync(CancellationToken ct)
-            {
-                var (cert, key) = SelfSigned(owner.Names, DateTimeOffset.UtcNow.AddDays(90));
-                return Task.FromResult((cert, "", key));
-            }
-        }
+        Assert.Equal(before, File.ReadAllText(new CertificateStore(_paths).Get("shop.test")!.CertFile));
     }
 
     private static (string Cert, string Key) SelfSigned(IReadOnlyList<string> names, DateTimeOffset notAfter)
@@ -440,165 +435,6 @@ public sealed class SiteOperationsTests : IDisposable
         request.CertificateExtensions.Add(san.Build());
         using var cert = request.CreateSelfSigned(notAfter.AddDays(-60), notAfter);
         return (cert.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem());
-    }
-
-    [Fact]
-    public async Task Renewal_orders_missing_letsencrypt_certificate_and_restarts()
-    {
-        var acme = new FakeAcme();
-        var orchestrator = await StartedAsync(acme.For);
-        await orchestrator.StartAsync(null, Ct);
-        await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Cert = CertSource.LetsEncrypt, Aliases = ["www.shop.example.com"] }, null, Ct);
-        var restarts = _apache.Restarts;
-
-        var report = await orchestrator.RenewCertificatesAsync(Ct);
-
-        Assert.Equal(["shop.example.com"], report.Renewed);
-        Assert.Empty(report.Failed);
-        Assert.Equal([false], acme.Staging);
-        Assert.Equal(["shop.example.com", "www.shop.example.com"], acme.Names);
-        Assert.Equal(CertSource.LetsEncrypt, new CertificateStore(_paths).Get("shop.example.com")!.Source);
-        Assert.Contains("SSLCertificateFile", File.ReadAllText(SiteVhost("shop.example.com")));
-        Assert.Equal(restarts + 1, _apache.Restarts);
-    }
-
-    [Fact]
-    public async Task Renewal_reissues_local_dev_certificate_close_to_expiry()
-    {
-        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var orchestrator = await StartedAsync(time: time);
-        await orchestrator.SaveSiteAsync(Site("shop.test") with { Cert = CertSource.LocalDev }, null, Ct);
-        var before = File.ReadAllText(new CertificateStore(_paths).Get("shop.test")!.CertFile);
-        Assert.Empty((await orchestrator.RenewCertificatesAsync(Ct)).Renewed);
-        time.Advance(TimeSpan.FromDays(815));
-
-        var report = await orchestrator.RenewCertificatesAsync(Ct);
-
-        Assert.Equal(["shop.test"], report.Renewed);
-        Assert.NotEqual(before, File.ReadAllText(new CertificateStore(_paths).Get("shop.test")!.CertFile));
-    }
-
-    [Fact]
-    public async Task Imported_certificate_near_expiry_becomes_a_finding()
-    {
-        var (cert, key) = SelfSigned(["portal.clientco.com"], DateTimeOffset.UtcNow.AddDays(5).AddHours(1));
-        new CertificateStore(_paths).Save("portal.clientco.com", cert, key, null, CertSource.Imported);
-        var orchestrator = await StartedAsync();
-        await orchestrator.SaveSiteAsync(Site("portal.clientco.com") with { Cert = CertSource.Imported }, null, Ct);
-
-        var report = await orchestrator.RenewCertificatesAsync(Ct);
-
-        Assert.Empty(report.Renewed);
-        var finding = Assert.Single(orchestrator.Status().Findings, f => f.Id == "cert-portal.clientco.com");
-        Assert.Equal(Severity.Warning, finding.Severity);
-        Assert.Contains("portal.clientco.com expires in 5 days", finding.Message);
-    }
-
-    [Fact]
-    public async Task Expiry_finding_clears_once_a_renewed_certificate_is_in_place()
-    {
-        var store = new CertificateStore(_paths);
-        var (cert, key) = SelfSigned(["portal.clientco.com"], DateTimeOffset.UtcNow.AddDays(5).AddHours(1));
-        store.Save("portal.clientco.com", cert, key, null, CertSource.Imported);
-        var orchestrator = await StartedAsync();
-        var site = Site("portal.clientco.com") with { Cert = CertSource.Imported };
-        await orchestrator.SaveSiteAsync(site, null, Ct);
-        Assert.Contains(orchestrator.Status().Findings, f => f.Id == "cert-portal.clientco.com");
-
-        (cert, key) = SelfSigned(["portal.clientco.com"], DateTimeOffset.UtcNow.AddDays(365));
-        store.Save("portal.clientco.com", cert, key, null, CertSource.Imported);
-        await orchestrator.SaveSiteAsync(site, null, Ct);
-
-        Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id == "cert-portal.clientco.com");
-    }
-
-    [Fact]
-    public async Task Failed_renewal_becomes_a_finding_and_restarts_nothing()
-    {
-        var acme = new FakeAcme { Fails = true };
-        var orchestrator = await StartedAsync(acme.For);
-        await orchestrator.StartAsync(null, Ct);
-        await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Cert = CertSource.LetsEncrypt }, null, Ct);
-        var restarts = _apache.Restarts;
-
-        var report = await orchestrator.RenewCertificatesAsync(Ct);
-
-        Assert.Equal(["shop.example.com"], report.Failed);
-        var finding = Assert.Single(orchestrator.Status().Findings, f => f.Id == "cert-shop.example.com");
-        Assert.Contains("connection refused", finding.Message);
-        Assert.Contains("6 hours", finding.Fix);
-        Assert.Null(new CertificateStore(_paths).Get("shop.example.com"));
-        Assert.Equal(restarts, _apache.Restarts);
-    }
-
-    private CertImportRequest PemFiles(string name, DateTimeOffset notAfter, string? keyFrom = null)
-    {
-        var (cert, key) = SelfSigned([name], notAfter);
-        if (keyFrom is not null) key = SelfSigned([keyFrom], notAfter).Key;
-        var dir = Path.Combine(_paths.Root, "inbox");
-        Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, "site.crt"), cert);
-        File.WriteAllText(Path.Combine(dir, "site.key"), key);
-        return new CertImportRequest(null, null, CertImportFile.Read(Path.Combine(dir, "site.crt")), CertImportFile.Read(Path.Combine(dir, "site.key")), null);
-    }
-
-    [Fact]
-    public async Task Imported_certificate_is_applied_to_the_site()
-    {
-        var orchestrator = await StartedAsync();
-        await orchestrator.StartAsync(null, Ct);
-        await orchestrator.SaveSiteAsync(Site("portal.clientco.com") with { Cert = CertSource.Imported }, null, Ct);
-        Assert.DoesNotContain("SSLCertificateFile", File.ReadAllText(SiteVhost("portal.clientco.com")));
-        var restarts = _apache.Restarts;
-
-        var saved = await orchestrator.ImportCertificateAsync("portal.clientco.com", PemFiles("portal.clientco.com", DateTimeOffset.UtcNow.AddDays(200)), Ct);
-
-        Assert.Equal(CertSource.Imported, saved.Source);
-        Assert.Contains("SSLCertificateFile", File.ReadAllText(SiteVhost("portal.clientco.com")));
-        Assert.Equal(restarts + 1, _apache.Restarts);
-    }
-
-    [Fact]
-    public async Task Import_with_the_wrong_key_keeps_the_site_as_it_was()
-    {
-        var orchestrator = await StartedAsync();
-        await orchestrator.SaveSiteAsync(Site("portal.clientco.com") with { Cert = CertSource.Imported }, null, Ct);
-        var vhost = File.ReadAllText(SiteVhost("portal.clientco.com"));
-
-        var error = await Assert.ThrowsAsync<CertificateImportException>(() => orchestrator.ImportCertificateAsync("portal.clientco.com",
-            PemFiles("portal.clientco.com", DateTimeOffset.UtcNow.AddDays(200), keyFrom: "other.example.com"), Ct));
-
-        Assert.Equal("key-mismatch", error.Code);
-        Assert.Null(new CertificateStore(_paths).Get("portal.clientco.com"));
-        Assert.Equal(vhost, File.ReadAllText(SiteVhost("portal.clientco.com")));
-    }
-
-    [Fact]
-    public async Task Certificate_for_a_missing_site_is_refused()
-    {
-        var orchestrator = await StartedAsync();
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            orchestrator.ImportCertificateAsync("nope.example.com", PemFiles("nope.example.com", DateTimeOffset.UtcNow.AddDays(200)), Ct));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.IssueLetsEncryptAsync("nope.example.com", staging: false, Ct));
-    }
-
-    [Fact]
-    public async Task Lets_encrypt_certificate_is_issued_on_request()
-    {
-        var acme = new FakeAcme();
-        var orchestrator = await StartedAsync(acme.For);
-        await orchestrator.StartAsync(null, Ct);
-        await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Cert = CertSource.LetsEncrypt }, null, Ct);
-        var restarts = _apache.Restarts;
-
-        var saved = await orchestrator.IssueLetsEncryptAsync("shop.example.com", staging: true, Ct);
-
-        Assert.Equal(CertSource.LetsEncrypt, saved.Source);
-        Assert.Equal([true], acme.Staging);
-        Assert.Contains("SSLCertificateFile", File.ReadAllText(SiteVhost("shop.example.com")));
-        Assert.Equal(restarts + 1, _apache.Restarts);
-        Assert.Equal(CertSource.LetsEncrypt, orchestrator.GetCertificates()["shop.example.com"].Source);
     }
 
     [Fact]

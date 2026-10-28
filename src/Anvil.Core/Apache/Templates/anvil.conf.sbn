@@ -45,12 +45,4 @@ Include "{{ php_pools_conf }}"
     Require all denied
 </Directory>
 
-# Let's Encrypt HTTP-01 challenges, answered on every site.
-Alias "/.well-known/acme-challenge/" "{{ acme_challenges }}/"
-<Directory "{{ acme_challenges }}">
-    Options None
-    AllowOverride None
-    Require all granted
-</Directory>
-
 IncludeOptional "{{ vhosts }}/*.conf"
