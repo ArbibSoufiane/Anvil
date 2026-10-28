@@ -137,18 +137,6 @@ public sealed class DashboardViewModelTests
     }
 
     [Fact]
-    public async Task Mode_card_follows_status()
-    {
-        var vm = Make();
-        await vm.LoadAsync(TestContext.Current.CancellationToken);
-
-        _api.Raise(_api.Status with { Mode = ServerMode.Production });
-
-        Assert.Equal("Production", vm.ModeName);
-        Assert.Contains("Errors logged, never shown; version headers hidden", vm.ModeLines);
-    }
-
-    [Fact]
     public async Task Database_card_shows_engine_version_and_where_it_listens()
     {
         _api.Settings = _api.Settings with { DbEngine = DbEngine.MariaDb, DbVersion = "11.8.9", DbPort = 3307 };

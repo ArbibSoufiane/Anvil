@@ -18,8 +18,8 @@ public sealed class PhpViewModelTests
     {
         _api.Php.Add(new PhpVersionInfo("8.5.12", "vs17", 4, 1000, 9100, ["htdocs"], ProcessState.Running, IsDefault: true, EndOfLife: false));
         _api.Php.Add(new PhpVersionInfo("7.4.33", "vc15", 2, 1000, 0, [], ProcessState.Stopped, IsDefault: false, EndOfLife: true));
-        _api.Extensions["8.5.12"] = [new("curl", true, true, false, false), new("intl", true, true, false, false), new("soap", false, true, false, false)];
-        _api.Extensions["7.4.33"] = [new("curl", true, true, false, false)];
+        _api.Extensions["8.5.12"] = [new("curl", true, true, false), new("intl", true, true, false), new("soap", false, true, false)];
+        _api.Extensions["7.4.33"] = [new("curl", true, true, false)];
     }
 
     private PhpViewModel Make() => new(_api, Paths, new EditorLauncher(() => "auto", new NoRegistry(), _ => false, ""), ui: a => a());
@@ -72,7 +72,7 @@ public sealed class PhpViewModelTests
         Assert.Equal(1000, vm.MaxRequests);
         Assert.Equal("127.0.0.1:9100", vm.PortText);
         Assert.Equal("300", vm.MaxExecutionTime);
-        Assert.Equal("Set by Development profile", vm.MaxExecutionTimeHint);
+        Assert.Equal("In a new php.ini. Edit php.ini to change it.", vm.MaxExecutionTimeHint);
 
         vm.Workers = 6;
         vm.MaxRequests = 500;
@@ -98,7 +98,7 @@ public sealed class PhpViewModelTests
     }
 
     [Fact]
-    public async Task Xdebug_chip_disabled_with_mode_hint()
+    public async Task Xdebug_chip_toggles_like_any_extension()
     {
         _api.Installed.Add(new InstalledComponent(ComponentKind.Xdebug, "3.5.3", @"D:\Anvil\runtime\xdebug\3.5.3-php8.5", new string('b', 64),
             DateTimeOffset.Now, AppliesTo: "8.5"));
@@ -107,9 +107,8 @@ public sealed class PhpViewModelTests
         await vm.LoadAsync(TestContext.Current.CancellationToken);
 
         var xdebug = vm.Extensions.Single(e => e.Name == "xdebug");
-        Assert.True(xdebug.IsLocked);
-        Assert.False(xdebug.ToggleCommand.CanExecute(null));
-        Assert.Equal("Xdebug follows the mode: loaded in Development, not loaded in Production.", xdebug.Hint);
+        Assert.True(xdebug.ToggleCommand.CanExecute(null));
+        Assert.Equal("Xdebug starts on a trigger: add XDEBUG_TRIGGER to a request, or use a browser extension.", xdebug.Hint);
         Assert.False(vm.CanGetXdebug);
     }
 
@@ -126,7 +125,7 @@ public sealed class PhpViewModelTests
         await vm.GetXdebugCommand.ExecuteAsync(null);
 
         Assert.Equal("8.5", _api.Installed.Single(c => c.Kind == ComponentKind.Xdebug).AppliesTo);
-        Assert.True(vm.Extensions.Single(e => e.Name == "xdebug").IsLocked);
+        Assert.Contains(vm.Extensions, e => e.Name == "xdebug");
         Assert.False(vm.CanGetXdebug);
     }
 

@@ -4,7 +4,6 @@ using Anvil.Core.Apache;
 using Anvil.Core.Certificates;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
@@ -270,18 +269,6 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
             await (await Remote()).SetDbRootPasswordAsync(password, ct);
 
         public async Task<string> BackupDatabaseAsync(CancellationToken ct = default) => await (await Remote()).BackupDatabaseAsync(ct);
-
-        public async Task<ModeChangeSet> PreviewModeAsync(ServerMode target, CancellationToken ct = default) =>
-            await (await Remote()).PreviewModeAsync(target, ct);
-
-        public async Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default) =>
-            await (await Remote()).ApplyModeAsync(target, options, ct);
-
-        public async Task<IReadOnlyList<ModeProfile>> GetModeProfilesAsync(CancellationToken ct = default) =>
-            await (await Remote()).GetModeProfilesAsync(ct);
-
-        public async Task<ApplyResult> SaveModeProfileAsync(ServerMode mode, ModeProfileOverrides overrides, CancellationToken ct = default) =>
-            await (await Remote()).SaveModeProfileAsync(mode, overrides, ct);
 
         public async Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => await (await Remote()).ShutdownAsync(stopServices, ct);
     }

@@ -21,12 +21,12 @@ public sealed class DatabaseViewModelTests
         _api.Status = _api.Status with { Services = [Db(ProcessState.Running)] };
         _api.DbRows.AddRange(
         [
-            new("innodb_buffer_pool_size", "1G", "134217728", "Memory for table and index data", true, false, false, false),
-            new("max_connections", null, "151", "Most clients connected at once", false, false, false, false),
-            new("max_allowed_packet", "64M", "16777216", "Largest single query or row", true, false, false, false),
-            new("max_statement_time", "60", "0", "Seconds before a query is stopped", true, true, false, false),
-            new("lower_case_table_names", null, "1", "How table names are stored", false, false, false, true),
-            new("slow_query_log", "OFF", "OFF", "Log queries slower than long_query_time", false, false, false, false),
+            new("innodb_buffer_pool_size", "1G", "134217728", "Memory for table and index data", true, false, false),
+            new("max_connections", null, "151", "Most clients connected at once", false, false, false),
+            new("max_allowed_packet", "64M", "16777216", "Largest single query or row", true, false, false),
+            new("max_statement_time", "60", "0", "Seconds before a query is stopped", true, false, false),
+            new("lower_case_table_names", null, "1", "How table names are stored", false, false, true),
+            new("slow_query_log", "OFF", "OFF", "Log queries slower than long_query_time", false, false, false),
         ]);
     }
 
@@ -61,7 +61,7 @@ public sealed class DatabaseViewModelTests
         Assert.Equal("151", Row(vm, "max_connections").Default);
 
         _api.DbRows.Clear();
-        _api.DbRows.Add(new("max_connections", null, "151", "Most clients connected at once", false, false, false, false));
+        _api.DbRows.Add(new("max_connections", null, "151", "Most clients connected at once", false, false, false));
         await vm.LoadAsync(TestContext.Current.CancellationToken);
         Assert.Equal("Every setting is at its default", vm.ChangedText);
     }
@@ -121,23 +121,6 @@ public sealed class DatabaseViewModelTests
 
         Assert.False(vm.SaveCommand.CanExecute(null));
         Assert.False(Row(vm, "innodb_buffer_pool_size").IsEdited);
-    }
-
-    [Fact]
-    public async Task SetByMode_rows_read_only_with_hint()
-    {
-        var vm = await LoadedAsync();
-        var row = Row(vm, "max_statement_time");
-
-        Assert.True(row.IsReadOnly);
-        Assert.Equal("Set by Development mode. Change it on the Dev / Production page.", row.Hint);
-        Assert.False(row.ResetCommand.CanExecute(null));
-        Assert.Null(Row(vm, "max_connections").Hint);
-        Assert.False(Row(vm, "max_connections").IsReadOnly);
-
-        _api.Raise(_api.Status with { Mode = ServerMode.Production });
-        await vm.LoadAsync(TestContext.Current.CancellationToken);
-        Assert.Equal("Set by Production mode. Change it on the Dev / Production page.", Row(vm, "max_statement_time").Hint);
     }
 
     [Fact]

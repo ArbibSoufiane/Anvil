@@ -7,7 +7,6 @@ using Anvil.Core.Agent;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
 using Anvil.Core.IO;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Preflight;
@@ -251,24 +250,23 @@ public sealed class OrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task Start_renders_php_and_apache_from_the_edited_profile()
+    public async Task Start_writes_development_values_into_php_ini_and_defaults_conf()
     {
         var ct = TestContext.Current.CancellationToken;
         InstallPhp("8.5.12");
         UsePhp("8.5.12");
-        new ProfileStore(_paths).SaveOverrides(ServerMode.Development, new ModeProfileOverrides(
-            Php: new Dictionary<string, string> { ["memory_limit"] = "2G" }, Apache: new Dictionary<string, string> { ["Timeout"] = "120" },
-            Database: null, Xdebug: null, SecurityHeaders: null, DirectoryListing: null));
         var orchestrator = Make();
         await orchestrator.InitializeAsync(ct);
 
         var result = await orchestrator.StartAsync(null, ct);
 
         Assert.True(result.Ok, result.Error);
-        var ini = File.ReadAllText(Path.Combine(_paths.PhpConfigDir("8.5.12"), "conf.d", "99-anvil-mode.ini"));
-        Assert.Contains("memory_limit = 2G", ini, StringComparison.Ordinal);
+        var ini = File.ReadAllText(Path.Combine(_paths.PhpConfigDir("8.5.12"), "php.ini"));
+        Assert.Contains("memory_limit = 1G", ini, StringComparison.Ordinal);
         Assert.Contains("display_errors = On", ini, StringComparison.Ordinal);
-        Assert.Contains("Timeout 120", File.ReadAllText(Path.Combine(_paths.Conf, "mode.conf")), StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(_paths.PhpConfigDir("8.5.12"), "conf.d", "99-anvil-mode.ini")));
+        Assert.Contains("Timeout 300", File.ReadAllText(Path.Combine(_paths.Conf, "defaults.conf")), StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(_paths.Conf, "mode.conf")));
     }
 
     [Fact]
@@ -457,6 +455,24 @@ public sealed class OrchestratorTests : IDisposable
             Task.FromResult(files.TryGetValue(request.RequestUri!.AbsolutePath, out var body)
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) }
                 : new HttpResponseMessage(HttpStatusCode.NotFound));
+    }
+
+    [Fact]
+    public async Task Installing_xdebug_turns_it_on_for_that_php_branch()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        InstallPhp("8.5.12");
+        InstallPhp("8.4.27");
+        var dll = "xdebug"u8.ToArray();
+        var orchestrator = Make(new MapHandler(new() { ["/php_xdebug-3.5.3-8.5-nts-vs17-x86_64.dll"] = dll }));
+        await orchestrator.InitializeAsync(ct);
+
+        await orchestrator.InstallAsync(new ComponentRelease(ComponentKind.Xdebug, "3.5.3",
+            new Uri("https://example.com/php_xdebug-3.5.3-8.5-nts-vs17-x86_64.dll"), Sha(dll), AppliesTo: "8.5"), ct);
+
+        Assert.True(orchestrator.GetExtensions("8.5.12").Single(e => e.Name == "xdebug").Enabled);
+        Assert.DoesNotContain(orchestrator.GetExtensions("8.4.27"), e => e.Name == "xdebug" && e.Enabled);
+        Assert.Contains("xdebug.start_with_request = trigger", File.ReadAllText(Path.Combine(_paths.PhpConfigDir("8.5.12"), "php.ini")), StringComparison.Ordinal);
     }
 
     [Fact]

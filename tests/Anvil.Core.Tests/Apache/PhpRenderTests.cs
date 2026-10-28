@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Anvil.Core.Apache;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
@@ -16,12 +15,11 @@ public sealed class PhpRenderTests
         new(version, PhpVersionKey.Of(version), port, 4, 1000, $@"D:\Anvil\runtime\php\{version}\php-cgi.exe",
             $@"D:\Anvil\data\php\{version}", $@"D:\Anvil\data\php\{version}\conf.d");
 
-    private static IReadOnlyDictionary<string, string> Render(ServerMode mode = ServerMode.Development, string? defaultPhp = "8.5.12", params PhpPool[] pools) =>
+    private static IReadOnlyDictionary<string, string> Render(string? defaultPhp = "8.5.12", params PhpPool[] pools) =>
         new ConfigRenderer(Paths).Render(new RenderInput
         {
-            Settings = new AppSettings { Mode = mode, DefaultPhp = defaultPhp },
+            Settings = new AppSettings { DefaultPhp = defaultPhp },
             Stock = Stock,
-            Profile = BuiltInProfiles.For(mode),
             Pools = pools,
         }).Files;
 
@@ -66,11 +64,11 @@ public sealed class PhpRenderTests
     }
 
     [Fact]
-    public void Backend_timeout_follows_profile()
+    public void Backend_timeout_is_the_development_value()
     {
-        var pools = Render(ServerMode.Production, pools: Pool("8.5.12", 9100))["php-pools.conf"];
+        var pools = Render(pools: Pool("8.5.12", 9100))["php-pools.conf"];
 
-        Assert.Contains("ProxySet timeout=60 retry=0", pools, StringComparison.Ordinal);
+        Assert.Contains("ProxySet timeout=300 retry=0", pools, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -84,14 +82,6 @@ public sealed class PhpRenderTests
             Assert.DoesNotContain("9100", files[vhost], StringComparison.Ordinal);
             Assert.Contains("DirectoryIndex index.php index.html", files[vhost], StringComparison.Ordinal);
         }
-    }
-
-    [Fact]
-    public void Production_catchall_has_no_php_handler()
-    {
-        var catchall = Render(ServerMode.Production, pools: Pool("8.5.12", 9100))[@"vhosts\00-catchall.conf"];
-
-        Assert.DoesNotContain("SetHandler", catchall, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -35,20 +35,12 @@ public sealed class JanitorTests : IDisposable
         return file;
     }
 
-    private string SnapshotDir(string name)
-    {
-        var dir = Path.Combine(_paths.Backups, name);
-        File(dir, "manifest.json", TimeSpan.Zero);
-        return dir;
-    }
-
     [Fact]
-    public void Clean_deletes_logs_unwritten_for_14_days_and_snapshots_beyond_the_newest_30()
+    public void Clean_deletes_logs_unwritten_for_14_days()
     {
         var oldLog = File(Path.Combine(_paths.Logs, "sites", "shop"), "error.2026-10-01.log", TimeSpan.FromDays(26));
         var newLog = File(Path.Combine(_paths.Logs, "apache"), "error.2026-10-27.log", TimeSpan.Zero);
         var oldDump = File(Path.Combine(_paths.Backups, "db"), "2026-09-01-020000.sql.gz", TimeSpan.FromDays(56));
-        var snapshots = Enumerable.Range(1, 32).Select(n => SnapshotDir(n == 1 ? "2026-10-27-120000" : $"2026-10-27-120000-{n}")).ToList();
 
         new Janitor(_paths, new FakeTimeProvider(Now)).Clean();
 
@@ -56,7 +48,6 @@ public sealed class JanitorTests : IDisposable
         Assert.True(System.IO.File.Exists(newLog));
         // Database dumps keep their own count (DbBackup).
         Assert.True(System.IO.File.Exists(oldDump));
-        Assert.Equal(snapshots.Skip(2).Reverse(), new Core.IO.BackupService(_paths, TimeProvider.System).List());
     }
 
     [Fact]

@@ -1,5 +1,4 @@
 using Anvil.Core.Database;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Settings;
 
@@ -67,8 +66,6 @@ public static class ComponentUpdater
         var from = paths.PhpConfigDir(source);
         foreach (var file in Directory.EnumerateFiles(from, "*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint }))
         {
-            // The mode file is written for each version as its pool starts.
-            if (string.Equals(Path.GetFileName(file), PhpModeIniRenderer.FileName, StringComparison.OrdinalIgnoreCase)) continue;
             var copy = Path.Combine(target, Path.GetRelativePath(from, file));
             Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
             File.Copy(file, copy, overwrite: true);

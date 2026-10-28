@@ -148,10 +148,9 @@ public sealed class DatabaseOperationsTests : IDisposable
     }
 
     [Fact]
-    public async Task Settings_rows_show_my_ini_mode_file_and_probed_defaults()
+    public async Task Settings_rows_show_my_ini_and_probed_defaults()
     {
         var orchestrator = await InstalledAsync();
-        File.WriteAllText(_ini.ModeFile(DbEngine.MariaDb), "[mysqld]\nmax_statement_time = 60\n");
         _ini.Set(DbEngine.MariaDb, new Dictionary<string, string?>
         {
             ["innodb_buffer_pool_size"] = "128M", ["slow_query_log"] = "OFF", ["max_allowed_packet"] = "64M",
@@ -159,7 +158,7 @@ public sealed class DatabaseOperationsTests : IDisposable
 
         var rows = (await orchestrator.GetDbSettingsAsync(Ct)).ToDictionary(r => r.Key);
 
-        Assert.Equal(new DbSettingRow("max_connections", null, "151", rows["max_connections"].Description, false, false, false, false), rows["max_connections"]);
+        Assert.Equal(new DbSettingRow("max_connections", null, "151", rows["max_connections"].Description, false, false, false), rows["max_connections"]);
         Assert.Equal("127.0.0.1", rows["bind-address"].Current);
         Assert.Equal("", rows["bind-address"].Default);
         Assert.True(rows["bind-address"].Changed);
@@ -168,8 +167,7 @@ public sealed class DatabaseOperationsTests : IDisposable
         Assert.False(rows["innodb_buffer_pool_size"].Changed); // 128M is the default's 134217728 bytes
         Assert.False(rows["slow_query_log"].Changed); // OFF is FALSE
         Assert.True(rows["max_allowed_packet"].Changed);
-        Assert.Equal("60", rows["max_statement_time"].Current);
-        Assert.True(rows["max_statement_time"].SetByMode);
+        Assert.Equal("0", rows["max_statement_time"].Current); // the development value of a new my.ini
         Assert.True(rows["lower_case_table_names"].InitOnly);
         Assert.DoesNotContain("max_execution_time", rows.Keys);
     }
@@ -205,51 +203,24 @@ public sealed class DatabaseOperationsTests : IDisposable
     }
 
     [Fact]
-    public async Task Database_start_writes_the_mode_file_for_its_engine()
+    public async Task New_my_ini_carries_the_development_values_and_no_mode_file()
     {
         var orchestrator = await InstalledAsync();
 
-        var cnf = File.ReadAllText(_ini.ModeFile(DbEngine.MariaDb)).ReplaceLineEndings("\n");
-        Assert.Contains("max_statement_time = 0\n", cnf, StringComparison.Ordinal);
-        Assert.Contains("wait_timeout = 28800\n", cnf, StringComparison.Ordinal);
         var rows = (await orchestrator.GetDbSettingsAsync(Ct)).ToDictionary(r => r.Key);
-        Assert.True(rows["wait_timeout"].SetByMode);
         Assert.Equal("28800", rows["wait_timeout"].Current);
-
-        File.WriteAllText(_ini.ModeFile(DbEngine.MariaDb), "[mysqld]\n");
-        await orchestrator.StopAsync(ServiceId.Database, Ct);
-        await orchestrator.StartAsync(ServiceId.Database, Ct);
-        Assert.Contains("general_log = ON", File.ReadAllText(_ini.ModeFile(DbEngine.MariaDb)), StringComparison.Ordinal);
+        Assert.Equal("ON", _ini.Read(DbEngine.MariaDb)["general_log"]);
+        Assert.False(File.Exists(Path.Combine(_paths.DbData(DbEngine.MariaDb), "mode.cnf")));
     }
 
     [Fact]
-    public async Task A_statement_timeout_that_is_not_seconds_stops_the_start_with_a_reason()
+    public async Task Init_only_and_unknown_keys_are_refused()
     {
         var orchestrator = await InstalledAsync();
-        await orchestrator.StopAsync(ServiceId.Database, Ct);
-        new Core.Modes.ProfileStore(_paths).SaveOverrides(ServerMode.Development, new Core.Modes.ModeProfileOverrides(
-            Php: null, Apache: null, Database: new Dictionary<string, string> { ["statement_timeout"] = "soon" },
-            Xdebug: null, SecurityHeaders: null, DirectoryListing: null));
-        _events.Clear();
 
-        var result = await orchestrator.StartAsync(ServiceId.Database, Ct);
-
-        Assert.False(result.Ok);
-        Assert.Equal("MariaDB did not start. The Development profile's statement_timeout must be a number of seconds, not \"soon\".", result.Error);
-        Assert.Empty(_events);
-    }
-
-    [Fact]
-    public async Task Mode_init_only_and_unknown_keys_are_refused()
-    {
-        var orchestrator = await InstalledAsync();
-        File.WriteAllText(_ini.ModeFile(DbEngine.MariaDb), "[mysqld]\nwait_timeout = 600\n");
-
-        var mode = await orchestrator.SaveDbSettingsAsync(new Dictionary<string, string?> { ["wait_timeout"] = "100" }, Ct);
         var init = await orchestrator.SaveDbSettingsAsync(new Dictionary<string, string?> { ["lower_case_table_names"] = "2" }, Ct);
         var unknown = await orchestrator.SaveDbSettingsAsync(new Dictionary<string, string?> { ["skip-grant-tables"] = "1" }, Ct);
 
-        Assert.Equal("wait_timeout is set by Production or Development mode. Change it on the Dev / Production page.", mode.Error);
         Assert.Equal("lower_case_table_names is fixed when the database is created.", init.Error);
         Assert.Equal("skip-grant-tables is not a setting Anvil manages. Edit my.ini for it.", unknown.Error);
         Assert.Empty(_events);
@@ -321,25 +292,5 @@ public sealed class DatabaseOperationsTests : IDisposable
         Assert.Equal("MariaDB 12.0.1 is a new series, not an update of 11.8.9. Back up your databases first: a new series upgrades the data files and cannot be undone.", result.Error);
         Assert.Empty(_events);
         Assert.Equal("MySQL is not the active database.", (await orchestrator.ActivateAsync(ComponentKind.MySql, "8.4.13", Ct)).Error);
-    }
-
-    [Fact]
-    public async Task Production_warns_when_the_database_listens_beyond_this_pc()
-    {
-        var store = new SettingsStore(_paths);
-        store.Save(store.Load() with { Mode = ServerMode.Production });
-        var orchestrator = await InstalledAsync();
-        Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id == "prod-db-exposed");
-
-        Assert.True((await orchestrator.SaveDbSettingsAsync(new Dictionary<string, string?> { ["bind-address"] = "0.0.0.0" }, Ct)).Ok);
-        Assert.Contains(orchestrator.Status().Findings, f => f.Id == "prod-db-exposed");
-
-        Assert.True((await orchestrator.SaveDbSettingsAsync(new Dictionary<string, string?> { ["bind-address"] = "127.0.0.1" }, Ct)).Ok);
-        Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id == "prod-db-exposed");
-
-        // The mode file is read after my.ini, so its value is the one the server uses.
-        File.AppendAllText(_ini.ModeFile(DbEngine.MariaDb), "bind-address=0.0.0.0\n");
-        await orchestrator.GetDbSettingsAsync(Ct);
-        Assert.Contains(orchestrator.Status().Findings, f => f.Id == "prod-db-exposed");
     }
 }

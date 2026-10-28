@@ -1,6 +1,5 @@
 using Anvil.Core.Components;
 using Anvil.Core.Database;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Processes;
 using Anvil.Integration.Tests.Support;
@@ -61,15 +60,15 @@ public sealed class DatabaseTests : IAsyncDisposable
     {
         var s = await InstallAsync(DbEngine.MariaDb, 13306);
         await s.Manager.InitializeAsync(s.Engine, s.Version, Password, Ct);
-        File.WriteAllText(s.Ini.ModeFile(DbEngine.MariaDb), DbModeRenderer.Render(BuiltInProfiles.Production, DbEngine.MariaDb));
         await StartAsync(s);
 
         Assert.StartsWith("11.8.", await ScalarAsync(s, Password, "SELECT VERSION()"), StringComparison.Ordinal);
         var runtime = await s.Manager.RuntimeValuesAsync(s.Engine, Ct);
         Assert.Equal("127.0.0.1", runtime["bind_address"]);
-        Assert.Equal("60.000000", runtime["max_statement_time"]);
-        Assert.Equal("600", runtime["wait_timeout"]);
-        Assert.Equal("5.000000", runtime["long_query_time"]);
+        Assert.Equal("0.000000", runtime["max_statement_time"]);
+        Assert.Equal("28800", runtime["wait_timeout"]);
+        Assert.Equal("2.000000", runtime["long_query_time"]);
+        Assert.Equal("ON", runtime["general_log"]);
         Assert.Equal("utf8mb4", runtime["character-set-server"]);
         Assert.Equal("0", await ScalarAsync(s, Password, "SELECT COUNT(*) FROM mysql.user WHERE User = 'root' AND Host = '%'"));
 
@@ -86,15 +85,14 @@ public sealed class DatabaseTests : IAsyncDisposable
     {
         var s = await InstallAsync(DbEngine.MySql, 13307);
         await s.Manager.InitializeAsync(s.Engine, s.Version, Password, Ct);
-        File.WriteAllText(s.Ini.ModeFile(DbEngine.MySql), DbModeRenderer.Render(BuiltInProfiles.Production, DbEngine.MySql));
         await StartAsync(s);
 
         Assert.StartsWith("8.4.", await ScalarAsync(s, Password, "SELECT VERSION()"), StringComparison.Ordinal);
         var runtime = await s.Manager.RuntimeValuesAsync(s.Engine, Ct);
         Assert.Equal("127.0.0.1", runtime["bind_address"]);
-        Assert.Equal("60000", runtime["max_execution_time"]);
-        Assert.Equal("600", runtime["wait_timeout"]);
-        Assert.Equal("OFF", runtime["general_log"]);
+        Assert.Equal("0", runtime["max_execution_time"]);
+        Assert.Equal("28800", runtime["wait_timeout"]);
+        Assert.Equal("ON", runtime["general_log"]);
 
         await s.Manager.StopAsync(s.Engine, s.Version, Ct);
     }

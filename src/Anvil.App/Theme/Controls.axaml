@@ -66,25 +66,6 @@
     <Setter Property="StrokeJoin" Value="Round" />
   </Style>
 
-  <!-- Development / Production chip in the title bar -->
-  <Style Selector="Border.modeChip">
-    <Setter Property="Padding" Value="10,2" />
-    <Setter Property="CornerRadius" Value="999" />
-    <Setter Property="Background" Value="{StaticResource DevBgBrush}" />
-    <Setter Property="VerticalAlignment" Value="Center" />
-  </Style>
-  <Style Selector="Border.modeChip > TextBlock">
-    <Setter Property="FontSize" Value="12" />
-    <Setter Property="FontWeight" Value="Medium" />
-    <Setter Property="Foreground" Value="{StaticResource DevTextBrush}" />
-  </Style>
-  <Style Selector="Border.modeChip.prod">
-    <Setter Property="Background" Value="{StaticResource ProdBgBrush}" />
-  </Style>
-  <Style Selector="Border.modeChip.prod > TextBlock">
-    <Setter Property="Foreground" Value="{StaticResource ProdTextBrush}" />
-  </Style>
-
   <!-- Card surface used by every page -->
   <Style Selector="Border.card">
     <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
@@ -457,82 +438,5 @@
   </Style>
   <Style Selector="Border.tag.local TextBlock">
     <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
-  </Style>
-
-  <!-- Development / Production: the header switch, the mode cards, the profile table and the switch dialog -->
-  <Style Selector="Button.seg.dev.selected">
-    <Setter Property="Background" Value="{StaticResource DevBgBrush}" />
-    <Setter Property="Foreground" Value="{StaticResource DevTextBrush}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Button.seg.dev.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource DevBgBrush}" />
-    <Setter Property="Foreground" Value="{StaticResource DevTextBrush}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Button.seg.prod.selected">
-    <Setter Property="Background" Value="{StaticResource ProdBgBrush}" />
-    <Setter Property="Foreground" Value="{StaticResource ProdTextBrush}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Button.seg.prod.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource ProdBgBrush}" />
-    <Setter Property="Foreground" Value="{StaticResource ProdTextBrush}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Button.kind.prod.selected">
-    <Setter Property="Background" Value="#2A1A0E" />
-    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-  </Style>
-  <Style Selector="Button.kind.prod.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="#2A1A0E" />
-    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-  </Style>
-  <Style Selector="Border.compareCell">
-    <Setter Property="Padding" Value="8,9" />
-  </Style>
-  <Style Selector="Border.compareCell > TextBlock">
-    <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
-    <Setter Property="FontSize" Value="12" />
-    <Setter Property="Foreground" Value="#7D8794" />
-    <Setter Property="TextWrapping" Value="Wrap" />
-  </Style>
-  <Style Selector="Border.compareCell.on > TextBlock">
-    <Setter Property="Foreground" Value="{StaticResource TextStrongBrush}" />
-    <Setter Property="FontWeight" Value="Medium" />
-  </Style>
-  <Style Selector="Border.compareCell.on.dev">
-    <Setter Property="Background" Value="#112032" />
-  </Style>
-  <Style Selector="Border.compareCell.on.prod">
-    <Setter Property="Background" Value="#24170D" />
-  </Style>
-  <Style Selector="Border.changeRow">
-    <Setter Property="Background" Value="{StaticResource InputBgBrush}" />
-    <Setter Property="CornerRadius" Value="6" />
-    <Setter Property="Padding" Value="10,5" />
-  </Style>
-  <Style Selector="Border.changeRow TextBlock">
-    <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
-    <Setter Property="FontSize" Value="12" />
-    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-  </Style>
-  <Style Selector="Border.changeRow TextBlock.to">
-    <Setter Property="Foreground" Value="{StaticResource DevTextBrush}" />
-  </Style>
-  <Style Selector="Border.changeRow TextBlock.to.prod">
-    <Setter Property="Foreground" Value="{StaticResource ProdTextBrush}" />
-  </Style>
-  <Style Selector="Border.backupNote">
-    <Setter Property="Background" Value="{StaticResource ChipOnBgBrush}" />
-    <Setter Property="BorderBrush" Value="#22394F" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="10" />
-    <Setter Property="Padding" Value="14,12" />
-  </Style>
-  <Style Selector="Border.backupNote TextBlock">
-    <Setter Property="Foreground" Value="{StaticResource DevTextBrush}" />
-    <Setter Property="FontSize" Value="13" />
-    <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
 </Styles>

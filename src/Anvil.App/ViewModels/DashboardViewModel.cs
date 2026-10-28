@@ -15,24 +15,16 @@ namespace Anvil.App.ViewModels;
 
 public sealed record FindingItem(string Message, string? Fix, bool IsBlocking);
 
-/// <summary>The Dashboard: the Apache, PHP and database cards, problems found before start, where to open the sites, and the mode.</summary>
+/// <summary>The Dashboard: the Apache, PHP and database cards, problems found before start, where to open the sites, and the development settings.</summary>
 public sealed partial class DashboardViewModel : ObservableObject
 {
-    // Copy from the mockup's "Current mode" card.
-    private static readonly IReadOnlyList<string> DevelopmentLines =
+    /// <summary>What a new php.ini and my.ini start with, and what Apache always runs with.</summary>
+    public static IReadOnlyList<string> DevelopmentLines { get; } =
     [
         "PHP errors shown in the page, every notice reported",
         "Scripts may run 300 s, 1 GB memory, 512 MB uploads",
         "OPcache re-checks files on every request",
-        "Xdebug loaded, directory listings on",
-    ];
-
-    private static readonly IReadOnlyList<string> ProductionLines =
-    [
-        "Errors logged, never shown; version headers hidden",
-        "Scripts stopped at 30 s, 256 MB memory, 32 MB uploads",
-        "Slow clients cut off (request read timeout), queries capped at 60 s",
-        "Shell functions disabled, directory listings off",
+        "Xdebug on once installed, directory listings on",
     ];
 
     private readonly IAgentApi _api;
@@ -53,7 +45,7 @@ public sealed partial class DashboardViewModel : ObservableObject
             _ = ReloadSettingsAsync();
         };
         ApplySettings();
-        Apply(new AgentStatus(ServerMode.Development, [], [], ""));
+        Apply(new AgentStatus([], [], ""));
     }
 
     [ObservableProperty]
@@ -141,23 +133,11 @@ public sealed partial class DashboardViewModel : ObservableObject
     public partial string NetworkNote { get; set; } = "";
 
     [ObservableProperty]
-    public partial string ModeName { get; set; } = "Development";
-
-    [ObservableProperty]
-    public partial bool ModeIsProduction { get; set; }
-
-    [ObservableProperty]
-    public partial IReadOnlyList<string> ModeLines { get; set; } = DevelopmentLines;
-
-    [ObservableProperty]
     public partial bool HasFindings { get; set; }
 
     public string StartStopLabel => ApacheRunning ? "Stop" : "Start";
 
     public ObservableCollection<FindingItem> Findings { get; } = [];
-
-    /// <summary>Raised by the mode card's button; the shell navigates.</summary>
-    public event EventHandler? CompareProfilesRequested;
 
     public async Task LoadAsync(CancellationToken ct = default)
     {
@@ -197,9 +177,6 @@ public sealed partial class DashboardViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenUrl(string url) => EditorLauncher.OpenUrl(url);
-
-    [RelayCommand]
-    private void CompareProfiles() => CompareProfilesRequested?.Invoke(this, EventArgs.Empty);
 
     private static async Task RunAsync(Func<Task<ApplyResult>> call, Action<string?> show)
     {
@@ -282,10 +259,6 @@ public sealed partial class DashboardViewModel : ObservableObject
 
         _db = status.Services.FirstOrDefault(s => s.Id == ServiceId.Database);
         ApplyDb();
-
-        ModeName = status.Mode.ToString();
-        ModeIsProduction = status.Mode == ServerMode.Production;
-        ModeLines = ModeIsProduction ? ProductionLines : DevelopmentLines;
 
         Findings.Clear();
         foreach (var f in status.Findings) Findings.Add(new FindingItem(f.Message, f.Fix, f.Severity == Severity.Blocking));

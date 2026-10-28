@@ -9,7 +9,6 @@ using Anvil.Core.Certificates;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
 using Anvil.Core.Elevation;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Preflight;
@@ -36,11 +35,10 @@ public sealed class RpcTests
         await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
 
         var status = await client.Api.GetStatusAsync(ct);
-        var saved = await client.Api.SaveSettingsAsync(new AppSettings { HttpPort = 8080, Mode = ServerMode.Production }, ct);
+        var saved = await client.Api.SaveSettingsAsync(new AppSettings { HttpPort = 8080 }, ct);
         var started = await client.Api.StartAsync(null, ct);
         var test = await client.Api.TestConfigAsync(ct);
 
-        Assert.Equal(ServerMode.Production, status.Mode);
         var apache = Assert.Single(status.Services);
         Assert.Equal(new ServiceStatus(ServiceId.Apache, ProcessState.Running, "2.4.69", null), apache);
         Assert.Equal(new PreflightFinding("port-443", Severity.Blocking, "Port 443 is used by Skype (PID 7).", "Close Skype."), Assert.Single(status.Findings));
@@ -48,7 +46,6 @@ public sealed class RpcTests
         Assert.True(saved.Ok);
         Assert.Equal(["anvil.conf"], saved.ChangedFiles);
         Assert.Equal(8080, fake.Saved?.HttpPort);
-        Assert.Equal(ServerMode.Production, fake.Saved?.Mode);
         Assert.Equal([(ServiceId?)null], fake.Started);
         Assert.True(started.Ok);
         Assert.Equal(new ConfigTestResult(true, "Syntax OK"), test);
@@ -117,7 +114,7 @@ public sealed class RpcTests
         var saved = await client.Api.SaveDbSettingsAsync(new Dictionary<string, string?> { ["max_connections"] = null, ["wait_timeout"] = "600" }, ct);
         var error = await Assert.ThrowsAnyAsync<Exception>(() => client.Api.BackupDatabaseAsync(ct));
 
-        Assert.Equal(new DbSettingRow("max_connections", "300", "151", "Clients at once", true, false, false, false), Assert.Single(rows));
+        Assert.Equal(new DbSettingRow("max_connections", "300", "151", "Clients at once", true, false, false), Assert.Single(rows));
         Assert.True(saved.Ok);
         Assert.True(fake.DbChanges!.ContainsKey("max_connections"));
         Assert.Null(fake.DbChanges["max_connections"]);
@@ -125,40 +122,6 @@ public sealed class RpcTests
         Assert.Contains("Start the database first.", error.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task Mode_calls_round_trip_with_changes_and_options()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var fake = new FakeApi();
-        var name = UniquePipe();
-        await using var server = new PipeServer(name, fake);
-        server.Start();
-        await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
-
-        var preview = await client.Api.PreviewModeAsync(ServerMode.Production, ct);
-        var applied = await client.Api.ApplyModeAsync(ServerMode.Production, new ModeOptions(KeepXdebug: true), ct);
-        var profiles = await client.Api.GetModeProfilesAsync(ct);
-        var saved = await client.Api.SaveModeProfileAsync(ServerMode.Production,
-            new ModeProfileOverrides(new Dictionary<string, string> { ["memory_limit"] = "512M" }, null, null, null, true, null), ct);
-
-        Assert.Equal((ServerMode.Development, ServerMode.Production), (preview.From, preview.To));
-        Assert.Equal(new SettingChange("PHP", @"php\8.5.12\conf.d\99-anvil-mode.ini", "display_errors", "On", "Off"), Assert.Single(preview.Changes));
-        Assert.Equal([ServiceId.Php, ServiceId.Apache], preview.Restarts);
-        Assert.Equal(@"D:\Anvil\data\backups\2026-10-27-120000", preview.BackupPreviewPath);
-        Assert.Equal(FirewallScope.Internet, applied.RequiredFirewall);
-        Assert.Equal((ServerMode.Production, new ModeOptions(KeepXdebug: true)), fake.ModeApplied);
-        Assert.Equal([ServerMode.Development, ServerMode.Production], profiles.Select(p => p.Mode));
-        Assert.Equal(BuiltInProfiles.Production.Php.ToList(), profiles[1].Php.ToList());
-        Assert.False(profiles[1].DirectoryListing);
-        Assert.True(saved.Ok);
-        Assert.Equal(ServerMode.Production, fake.ProfileSaved!.Value.Mode);
-        Assert.Equal("512M", fake.ProfileSaved.Value.Overrides.Php!["memory_limit"]);
-        Assert.Null(fake.ProfileSaved.Value.Overrides.Apache);
-        Assert.True(fake.ProfileSaved.Value.Overrides.SecurityHeaders);
-    }
-
-    // Another Anvil folder, or another account's program, may own the pipe: the window talks only to its own Agent,
-    // and sends it no passwords before it knows.
     [Fact]
     public async Task Connect_refuses_a_pipe_another_program_serves()
     {
@@ -228,10 +191,10 @@ public sealed class RpcTests
         client.Api.StatusChanged += (_, s) => received.TrySetResult(s);
         await client.Api.GetStatusAsync(ct);
 
-        fake.Raise(FakeApi.Status with { Mode = ServerMode.Development });
+        fake.Raise(FakeApi.Status with { AgentVersion = "4.0.1-test" });
 
         var status = await received.Task.WaitAsync(Wait, ct);
-        Assert.Equal(ServerMode.Development, status.Mode);
+        Assert.Equal("4.0.1-test", status.AgentVersion);
         Assert.Equal(ServiceId.Apache, Assert.Single(status.Services).Id);
     }
 
@@ -284,13 +247,13 @@ public sealed class RpcTests
 
     private sealed class FakeApi : IAgentApi
     {
-        public static readonly AgentStatus Status = new(ServerMode.Production,
+        public static readonly AgentStatus Status = new(
             [new ServiceStatus(ServiceId.Apache, ProcessState.Running, "2.4.69", null)],
             [new PreflightFinding("port-443", Severity.Blocking, "Port 443 is used by Skype (PID 7).", "Close Skype.")],
             "4.0.0-test");
 
         public static readonly PhpVersionInfo Php = new("8.5.12", "vs17", 4, 1000, 9100, ["htdocs"], ProcessState.Running, true, false);
-        public static readonly PhpExtension Intl = new("intl", true, true, false, false);
+        public static readonly PhpExtension Intl = new("intl", true, true, false);
 
         public AppSettings? Saved { get; private set; }
         public List<ServiceId?> Started { get; } = [];
@@ -375,7 +338,7 @@ public sealed class RpcTests
             Task.FromResult(ApplyResult.Success());
 
         public Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<DbSettingRow>>([new DbSettingRow("max_connections", "300", "151", "Clients at once", true, false, false, false)]);
+            Task.FromResult<IReadOnlyList<DbSettingRow>>([new DbSettingRow("max_connections", "300", "151", "Clients at once", true, false, false)]);
 
         public Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default)
         {
@@ -387,30 +350,6 @@ public sealed class RpcTests
 
         public Task<string> BackupDatabaseAsync(CancellationToken ct = default) =>
             Task.FromException<string>(new InvalidOperationException("Start the database first."));
-
-        public (ServerMode Target, ModeOptions Options)? ModeApplied { get; private set; }
-
-        public Task<ModeChangeSet> PreviewModeAsync(ServerMode target, CancellationToken ct = default) =>
-            Task.FromResult(new ModeChangeSet(ServerMode.Development, target,
-                [new SettingChange("PHP", @"php\8.5.12\conf.d\99-anvil-mode.ini", "display_errors", "On", "Off")],
-                [ServiceId.Php, ServiceId.Apache], @"D:\Anvil\data\backups\2026-10-27-120000"));
-
-        public Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default)
-        {
-            ModeApplied = (target, options);
-            return Task.FromResult(ApplyResult.Success() with { RequiredFirewall = FirewallScope.Internet });
-        }
-
-        public (ServerMode Mode, ModeProfileOverrides Overrides)? ProfileSaved { get; private set; }
-
-        public Task<IReadOnlyList<ModeProfile>> GetModeProfilesAsync(CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<ModeProfile>>([BuiltInProfiles.Development, BuiltInProfiles.Production]);
-
-        public Task<ApplyResult> SaveModeProfileAsync(ServerMode mode, ModeProfileOverrides overrides, CancellationToken ct = default)
-        {
-            ProfileSaved = (mode, overrides);
-            return Task.FromResult(ApplyResult.Success());
-        }
 
         public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate> { ["shop.test"] = Cert });

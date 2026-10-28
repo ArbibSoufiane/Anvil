@@ -11,7 +11,7 @@ using Scriban;
 
 namespace Anvil.Core.Apache;
 
-/// <summary>Renders data\conf: the global include, the mode profile, the PHP pools, the htdocs virtual hosts and one file per site.</summary>
+/// <summary>Renders data\conf: the global include, the development defaults, the PHP pools, the htdocs virtual hosts and one file per site.</summary>
 public sealed partial class ConfigRenderer(AppPaths paths)
 {
     /// <summary>Loopback, RFC 1918, IPv6 unique-local and link-local.</summary>
@@ -20,9 +20,9 @@ public sealed partial class ConfigRenderer(AppPaths paths)
     public RenderedConfig Render(RenderInput input)
     {
         var s = input.Settings;
-        var profile = input.Profile;
+        var defaults = DevelopmentDefaults.Apache;
         var htdocs = AppPaths.ForApache(s.HtdocsPath ?? paths.Htdocs);
-        var options = profile.DirectoryListing ? "Indexes FollowSymLinks" : "FollowSymLinks";
+        const string options = "Indexes FollowSymLinks";
 
         var modules = ApacheModules.Required.Concat(s.OptionalModules)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -55,37 +55,34 @@ public sealed partial class ConfigRenderer(AppPaths paths)
                 keep_alive_timeout = s.Apache.KeepAliveTimeout,
                 ssl_session_cache = AppPaths.ForApache(Path.Combine(paths.Run, "ssl_scache")),
                 http2 = s.OptionalModules.Contains("http2", StringComparer.OrdinalIgnoreCase),
-                mode_conf = AppPaths.ForApache(Path.Combine(paths.Conf, "mode.conf")),
+                defaults_conf = AppPaths.ForApache(Path.Combine(paths.Conf, "defaults.conf")),
                 php_pools_conf = AppPaths.ForApache(Path.Combine(paths.Conf, "php-pools.conf")),
                 data = AppPaths.ForApache(paths.Data),
                 vhosts = AppPaths.ForApache(paths.Vhosts),
             }),
-            ["mode.conf"] = Templates.Render("mode.conf.sbn", new
+            ["defaults.conf"] = Templates.Render("defaults.conf.sbn", new
             {
-                mode = profile.Mode.ToString(),
-                timeout = profile.Apache["Timeout"],
-                request_read_timeout = profile.Apache["RequestReadTimeout"],
-                limit_request_body = profile.Apache["LimitRequestBody"],
-                server_tokens = profile.Apache["ServerTokens"],
-                server_signature = profile.Apache["ServerSignature"],
-                trace_enable = profile.Apache["TraceEnable"],
-                log_level = profile.Apache["LogLevel"],
-                security_headers = profile.SecurityHeaders,
+                timeout = defaults["Timeout"],
+                request_read_timeout = defaults["RequestReadTimeout"],
+                limit_request_body = defaults["LimitRequestBody"],
+                server_tokens = defaults["ServerTokens"],
+                server_signature = defaults["ServerSignature"],
+                trace_enable = defaults["TraceEnable"],
+                log_level = defaults["LogLevel"],
             }),
             ["php-pools.conf"] = Templates.Render("php-pools.conf.sbn", new
             {
                 pools = input.Pools.Select(p => new { version = p.Version, port = p.Port }).ToList(),
-                timeout = profile.Apache["PhpBackendTimeout"],
+                timeout = defaults["PhpBackendTimeout"],
             }),
             [Path.Combine("vhosts", "00-catchall.conf")] = Templates.Render("00-catchall.conf.sbn", new
             {
                 port = s.HttpPort,
-                deny_all = profile.Mode == ServerMode.Production,
                 htdocs,
                 options,
                 require = s.Network.HtdocsOnNetwork ? $"ip {PrivateRanges}" : "local",
-                php_handler = profile.Mode == ServerMode.Production ? null : htdocsPhp,
-                entries = profile.Mode == ServerMode.Production ? null : networkEntries.Blocks,
+                php_handler = htdocsPhp,
+                entries = networkEntries.Blocks,
                 root_guard = RootGuard(networkEntries.Folders),
             }),
             [Path.Combine("vhosts", "01-localhost.conf")] = Templates.Render("01-localhost.conf.sbn", new
@@ -98,8 +95,7 @@ public sealed partial class ConfigRenderer(AppPaths paths)
                 root_guard = RootGuard(localEntries.Folders),
             }),
         };
-        // The first HTTPS virtual host answers every name no site claims, so it refuses them, as the HTTP catch-all does in
-        // Production. It borrows a site's certificate only to finish the handshake; that name is public in the site's
+        // The first HTTPS virtual host answers every name no site claims, so it refuses them. It borrows a site's certificate only to finish the handshake; that name is public in the site's
         // certificate anyway.
         if (httpsCert is not null)
             files[Path.Combine("vhosts", "00-catchall-https.conf")] = Templates.Render("00-catchall-https.conf.sbn", new

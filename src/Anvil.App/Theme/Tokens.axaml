@@ -18,10 +18,7 @@
   <Color x:Key="OnAccent">#15100B</Color>
   <Color x:Key="OkBg">#12321F</Color>
   <Color x:Key="OkText">#7BE3AC</Color>
-  <Color x:Key="DevBg">#17324F</Color>
   <Color x:Key="DevText">#CFE3FF</Color>
-  <Color x:Key="ProdBg">#4A2A12</Color>
-  <Color x:Key="ProdText">#FFD2AD</Color>
   <Color x:Key="Link">#8CC4FF</Color>
 
   <Color x:Key="OkDot">#4CC38A</Color>
@@ -53,10 +50,7 @@
   <SolidColorBrush x:Key="OnAccentBrush" Color="{StaticResource OnAccent}" />
   <SolidColorBrush x:Key="OkBgBrush" Color="{StaticResource OkBg}" />
   <SolidColorBrush x:Key="OkTextBrush" Color="{StaticResource OkText}" />
-  <SolidColorBrush x:Key="DevBgBrush" Color="{StaticResource DevBg}" />
   <SolidColorBrush x:Key="DevTextBrush" Color="{StaticResource DevText}" />
-  <SolidColorBrush x:Key="ProdBgBrush" Color="{StaticResource ProdBg}" />
-  <SolidColorBrush x:Key="ProdTextBrush" Color="{StaticResource ProdText}" />
   <SolidColorBrush x:Key="LinkBrush" Color="{StaticResource Link}" />
 
   <SolidColorBrush x:Key="OkDotBrush" Color="{StaticResource OkDot}" />

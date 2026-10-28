@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Sockets;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Processes;
@@ -61,7 +60,9 @@ public sealed class AccentedRootTests : IAsyncDisposable
         new HttpdConfBootstrap(_paths).EnsureUserConf(apache);
         Runtimes.ListenOnLoopback(_paths, Port);
         new PhpIniBootstrap(_paths).EnsureIni(php.Version);
-        File.WriteAllText(PhpModeIniRenderer.FilePath(_paths, php.Version), PhpModeIniRenderer.Render(BuiltInProfiles.Production, php.Version, null));
+        var confD = Path.Combine(_paths.PhpConfigDir(php.Version), "conf.d");
+        Directory.CreateDirectory(confD);
+        File.WriteAllText(Path.Combine(confD, "50-test.ini"), "memory_limit = 256M\r\ndisable_functions = exec\r\n");
 
         File.WriteAllText(Path.Combine(_paths.Htdocs, "ini.php"),
             "<?php echo ini_get('memory_limit'), '|', ini_get('max_execution_time'), '|', function_exists('exec') ? 'exec' : 'no exec';");
@@ -92,7 +93,6 @@ public sealed class AccentedRootTests : IAsyncDisposable
         {
             Settings = settings,
             Stock = StockConfScanner.Scan(File.ReadAllText(_paths.HttpdConf)),
-            Profile = BuiltInProfiles.Development,
             ApacheVersion = apache,
             Pools = pools,
             Sites = sites,
@@ -111,13 +111,13 @@ public sealed class AccentedRootTests : IAsyncDisposable
         return (response.StatusCode, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
-    // PHPRC and PHP_INI_SCAN_DIR carry the accented path: when php-cgi reads them wrongly, the mode file's values are lost.
+    // PHPRC and PHP_INI_SCAN_DIR carry the accented path: when php-cgi reads them wrongly, php.ini's or conf.d's values are lost.
     [Fact]
     public async Task Php_reads_its_ini_files_under_an_accented_folder()
     {
         await StartAsync();
 
-        Assert.Equal((HttpStatusCode.OK, "256M|30|no exec"), await GetAsync("/ini.php"));
+        Assert.Equal((HttpStatusCode.OK, "256M|300|no exec"), await GetAsync("/ini.php"));
     }
 
     [Fact]

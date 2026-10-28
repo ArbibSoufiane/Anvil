@@ -10,7 +10,6 @@ using Anvil.Core.Database;
 using Anvil.Core.Elevation;
 using Anvil.Core.Hosts;
 using Anvil.Core.IO;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Preflight;
@@ -43,7 +42,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private AppSettings _settings = new();
     private readonly TimeProvider _time = time ?? TimeProvider.System;
     private IReadOnlyList<PreflightFinding> _findings = [];
-    private IReadOnlyList<PreflightFinding> _productionFindings = [];
     private string? _apacheUnderTest;
 
     public event EventHandler<AgentStatus>? StatusChanged;
@@ -139,8 +137,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             PhpStatus(),
             DbStatus(),
         ];
-        var findings = _findings.Concat(_productionFindings).ToList();
-        return new AgentStatus(_settings.Mode, services, findings, BuildInfo.Version);
+        return new AgentStatus(services, _findings, BuildInfo.Version);
     }
 
     /// <summary>
@@ -215,15 +212,13 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     public Task<ApplyResult> SaveSettingsAsync(AppSettings s, CancellationToken ct) => Locked(async () =>
     {
         var previous = _settings;
-        // Versions, pools and the mode change through their own calls, so a page holding older settings cannot undo them.
+        // Versions and pools change through their own calls, so a page holding older settings cannot undo them.
         s = s with
         {
             ActiveApache = previous.ActiveApache,
             DefaultPhp = previous.DefaultPhp,
             PhpPools = previous.PhpPools,
             PhpPoolPorts = previous.PhpPoolPorts,
-            Mode = previous.Mode,
-            XdebugInProduction = previous.XdebugInProduction,
         };
         if (Validate(s) is { } invalid) return ApplyResult.Failure(invalid);
         // A port another program holds would take the sites down: refuse it while they still run.
@@ -290,6 +285,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             await installer.InstallAsync(bundle, null, ct);
         }
         var installed = await installer.InstallAsync(r, null, ct);
+        if (r.Kind == ComponentKind.Xdebug) await TurnOnXdebugAsync(installed, ct);
         if (r.Kind != ComponentKind.Php) return installed;
 
         ComponentUpdater.CarryPhpConfig(paths, r.Version, installer.Installed(ComponentKind.Php).Select(i => i.Version));
@@ -300,6 +296,20 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             if (!made.Ok) Log.Warning("PHP {Version} installed but not made the default: {Error}", r.Version, made.Error);
         }
         return installed;
+    }
+
+    private PhpExtensionManager Extensions() => new(paths, installer.Installed(ComponentKind.Xdebug));
+
+    /// <summary>A new Xdebug build loads into every installed PHP of its branch; their running pools restart.</summary>
+    private async Task TurnOnXdebugAsync(InstalledComponent xdebug, CancellationToken ct)
+    {
+        var extensions = Extensions();
+        foreach (var version in installer.Installed(ComponentKind.Php).Select(i => i.Version).Where(v => PhpSupport.Minor(v) == xdebug.AppliesTo))
+        {
+            new PhpIniBootstrap(paths).EnsureIni(version);
+            extensions.Set(version, "xdebug", enabled: true);
+            if (php.Running.FirstOrDefault(p => SameVersion(p.Version, version)) is { } pool) await php.RestartAsync(pool.Key, ct);
+        }
     }
 
     public IReadOnlyList<PhpVersionInfo> GetPhp()
@@ -558,7 +568,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     }, ct);
 
     public IReadOnlyList<PhpExtension> GetExtensions(string version) =>
-        InstalledPhp(version) is null ? [] : new PhpExtensionManager(paths).List(version);
+        InstalledPhp(version) is null ? [] : Extensions().List(version);
 
     /// <summary>Edits php.ini, then restarts that version's pool only.</summary>
     public Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct) => Locked(async () =>
@@ -567,7 +577,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         try
         {
             new PhpIniBootstrap(paths).EnsureIni(version);
-            new PhpExtensionManager(paths).Set(version, name, enabled);
+            Extensions().Set(version, name, enabled);
         }
         catch (Exception e) when (e is InvalidOperationException or ArgumentException)
         {
@@ -756,12 +766,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private async Task StartPoolsAsync(IReadOnlyList<PhpPool> pools, CancellationToken ct)
     {
         var ini = new PhpIniBootstrap(paths);
-        var profile = Profile(_settings);
-        foreach (var pool in pools)
-        {
-            ini.EnsureIni(pool.Version);
-            WritePhpMode(pool.Version, profile);
-        }
+        foreach (var pool in pools) ini.EnsureIni(pool.Version);
         try
         {
             await php.ApplyAsync(pools, ct);
@@ -778,11 +783,9 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private async Task RestartPoolsAsync(CancellationToken ct)
     {
         var ini = new PhpIniBootstrap(paths);
-        var profile = Profile(_settings);
         foreach (var pool in php.Running)
         {
             ini.EnsureIni(pool.Version);
-            WritePhpMode(pool.Version, profile);
             await php.RestartAsync(pool.Key, ct);
         }
     }
@@ -826,38 +829,12 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         {
             Settings = s,
             Stock = StockConfScanner.Scan(File.ReadAllText(paths.HttpdConf)),
-            Profile = Profile(s),
             ApacheVersion = version,
             Pools = pools,
             Sites = sites,
             Htdocs = HtdocsOf(s, sites),
             Certificates = new CertificateStore(paths).All(),
         };
-    }
-
-    /// <summary>
-    /// The settings' mode profile: built-in values with the user's edits from data\profiles, and Xdebug kept in
-    /// Production when the switch asked for it.
-    /// </summary>
-    private ModeProfile Profile(AppSettings s) => WithXdebugChoice(s, Profile(s.Mode));
-
-    private ModeProfile Profile(ServerMode mode)
-    {
-        var profiles = new ProfileStore(paths);
-        var profile = profiles.Get(mode);
-        if (profiles.LastLoadWarning is { } warning) Log.Warning("{Warning}", warning);
-        return profile;
-    }
-
-    private static ModeProfile WithXdebugChoice(AppSettings s, ModeProfile p) =>
-        s.Mode == ServerMode.Production && s.XdebugInProduction ? p with { Xdebug = true } : p;
-
-    /// <summary>Writes conf.d\99-anvil-mode.ini for a PHP version; untouched when it already says the same.</summary>
-    private void WritePhpMode(string version, ModeProfile profile)
-    {
-        var text = PhpModeIniRenderer.Render(profile, version, PhpModeIniRenderer.XdebugDll(installer.Installed(ComponentKind.Xdebug), version));
-        var file = PhpModeIniRenderer.FilePath(paths, version);
-        if (!File.Exists(file) || File.ReadAllText(file) != text) AtomicFile.WriteAllText(file, text);
     }
 
     private static async Task<ApplyResult> Guard(Func<Task> action, ApplyOutcome? applied = null)
@@ -908,36 +885,10 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         }
         finally
         {
-            try
-            {
-                RefreshProductionFindings();
-            }
-            finally
-            {
-                _gate.Release();
-            }
+            _gate.Release();
             RaiseStatus();
         }
     }
 
     private void RaiseStatus() => StatusChanged?.Invoke(this, Status());
-
-    /// <summary>Read again after every operation: settings, sites, the Production profile and my.ini can all change.</summary>
-    private void RefreshProductionFindings()
-    {
-        if (_settings.Mode != ServerMode.Production)
-        {
-            _productionFindings = [];
-            return;
-        }
-        try
-        {
-            _productionFindings = ProductionChecks.Run(_settings, new ProfileStore(paths).Get(ServerMode.Production),
-                new SiteStore(paths).All(), EffectiveDbIni(), ProductionChecks.LooksLikePhpMyAdmin);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            Log.Warning("Production checks could not run: {Message}", e.Message);
-        }
-    }
 }

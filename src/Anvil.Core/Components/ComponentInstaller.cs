@@ -22,8 +22,6 @@ public sealed class ComponentInstaller(AppPaths paths, Downloader dl, Func<Compo
         ComponentKind.MySql => paths.DbRuntime(DbEngine.MySql, version),
         ComponentKind.Xdebug => Path.Combine(paths.Runtime, "xdebug", appliesTo is null ? version : $"{version}-php{appliesTo}"),
         ComponentKind.CaBundle => Path.Combine(paths.Runtime, "cabundle", version),
-        ComponentKind.ModSecurity => Path.Combine(paths.Runtime, "modsecurity", version),
-        ComponentKind.CoreRuleSet => Path.Combine(paths.Runtime, "crs", version),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 

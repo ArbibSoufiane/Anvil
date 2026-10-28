@@ -1,6 +1,6 @@
 namespace Anvil.Core.Components;
 
-public enum ComponentKind { Apache, Php, MariaDb, MySql, Xdebug, CaBundle, ModSecurity, CoreRuleSet }
+public enum ComponentKind { Apache, Php, MariaDb, MySql, Xdebug, CaBundle }
 
 /// <summary>One downloadable build, pinned by SHA-256.</summary>
 /// <param name="Toolset">Compiler toolset of the build, e.g. "VS18" or "vs17".</param>

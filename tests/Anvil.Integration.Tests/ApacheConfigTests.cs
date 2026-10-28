@@ -3,7 +3,6 @@ using System.Security.Cryptography.X509Certificates;
 using Anvil.Core.Apache;
 using Anvil.Core.Certificates;
 using Anvil.Core.Components;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
@@ -23,7 +22,7 @@ public sealed class ApacheConfigTests : IDisposable
     }
 
     private async Task<(AppPaths Paths, ApplyOutcome Outcome)> ApplyAsync(
-        string rootName, ServerMode mode, Action<AppPaths>? beforeApply = null, Func<AppPaths, RenderInput, RenderInput>? shape = null)
+        string rootName, Action<AppPaths>? beforeApply = null, Func<AppPaths, RenderInput, RenderInput>? shape = null)
     {
         var paths = Runtimes.NewRoot(rootName);
         _roots.Add(paths);
@@ -34,9 +33,8 @@ public sealed class ApacheConfigTests : IDisposable
 
         var input = new RenderInput
         {
-            Settings = new AppSettings { Mode = mode, ActiveApache = version },
+            Settings = new AppSettings { ActiveApache = version },
             Stock = StockConfScanner.Scan(File.ReadAllText(paths.HttpdConf)),
-            Profile = BuiltInProfiles.For(mode),
             ApacheVersion = version,
         };
         if (shape is not null) input = shape(paths, input);
@@ -47,34 +45,24 @@ public sealed class ApacheConfigTests : IDisposable
     [Fact]
     public async Task Real_httpd_accepts_rendered_development_config()
     {
-        var (_, outcome) = await ApplyAsync("ap-it-dev", ServerMode.Development);
+        var (_, outcome) = await ApplyAsync("ap-it-dev");
 
         Assert.True(outcome.Ok, outcome.TestOutput);
         Assert.Contains("Syntax OK", outcome.TestOutput);
     }
 
     [Fact]
-    public async Task Real_httpd_accepts_rendered_production_config()
+    public async Task Real_httpd_accepts_unicode_root()
     {
-        var (_, outcome) = await ApplyAsync("ap-it-prod", ServerMode.Production);
+        var (_, outcome) = await ApplyAsync("ap it Mes Sites café");
 
         Assert.True(outcome.Ok, outcome.TestOutput);
     }
 
     [Fact]
-    public async Task Real_httpd_accepts_unicode_root()
+    public async Task Real_httpd_accepts_every_site_kind()
     {
-        var (_, outcome) = await ApplyAsync("ap it Mes Sites café", ServerMode.Development);
-
-        Assert.True(outcome.Ok, outcome.TestOutput);
-    }
-
-    [Theory]
-    [InlineData(ServerMode.Development)]
-    [InlineData(ServerMode.Production)]
-    public async Task Real_httpd_accepts_every_site_kind(ServerMode mode)
-    {
-        var (_, outcome) = await ApplyAsync($"ap-it-sites-{mode}", mode, shape: (paths, input) =>
+        var (_, outcome) = await ApplyAsync("ap-it-sites", shape: (paths, input) =>
         {
             string Folder(string name)
             {
@@ -133,7 +121,7 @@ public sealed class ApacheConfigTests : IDisposable
     [Fact]
     public async Task Real_httpd_rejection_rolls_back()
     {
-        var (paths, outcome) = await ApplyAsync("ap-it-bad", ServerMode.Development,
+        var (paths, outcome) = await ApplyAsync("ap-it-bad",
             p => File.AppendAllText(p.HttpdConf, "BogusDirective on\r\n"));
 
         Assert.False(outcome.Ok);

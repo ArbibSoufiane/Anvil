@@ -30,13 +30,13 @@ public sealed class ShellTests
         window.Show();
 
         Assert.Equal(
-            [AppPage.Dashboard, AppPage.Sites, AppPage.Apache, AppPage.Php, AppPage.Database, AppPage.Mode, AppPage.Logs, AppPage.Settings],
+            [AppPage.Dashboard, AppPage.Sites, AppPage.Apache, AppPage.Php, AppPage.Database, AppPage.Logs, AppPage.Settings],
             vm.NavItems.Select(n => n.Page));
         Assert.Equal(
-            ["Dashboard", "Sites", "Apache", "PHP", "Database", "Dev / Production", "Logs", "Settings"],
+            ["Dashboard", "Sites", "Apache", "PHP", "Database", "Logs", "Settings"],
             vm.NavItems.Select(n => n.Label));
         var nav = window.FindControl<ItemsControl>("Nav")!;
-        Assert.Equal(8, nav.GetVisualDescendants().OfType<Button>().Count());
+        Assert.Equal(7, nav.GetVisualDescendants().OfType<Button>().Count());
     }
 
     [AvaloniaFact]
@@ -93,14 +93,5 @@ public sealed class ShellTests
         vm.ShowAndActivate();
 
         Assert.True(window.IsVisible);
-    }
-
-    [AvaloniaFact]
-    public void Mode_chip_follows_settings()
-    {
-        var vm = new ShellViewModel(new AppSettings { Mode = ServerMode.Production });
-
-        Assert.Equal("Production mode", vm.ModeLabel);
-        Assert.True(vm.IsProduction);
     }
 }

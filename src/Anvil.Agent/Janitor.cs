@@ -6,14 +6,13 @@ namespace Anvil.Agent;
 
 /// <summary>
 /// Once a day, starting a few minutes after the Agent: deletes logs nobody wrote for 14 days (Apache's rotatelogs starts a
-/// new file every day) and mode-switch snapshots beyond the newest 30. Database dumps keep their own count.
+/// new file every day). Database dumps keep their own count.
 /// </summary>
 public sealed class Janitor(AppPaths paths, TimeProvider time)
 {
     public static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan Every = TimeSpan.FromDays(1);
     public static readonly TimeSpan LogAge = TimeSpan.FromDays(14);
-    public const int KeepSnapshots = 30;
 
     public async Task RunAsync(CancellationToken ct)
     {
@@ -42,8 +41,6 @@ public sealed class Janitor(AppPaths paths, TimeProvider time)
             foreach (var file in Retention.Expired(files, time.GetUtcNow(), LogAge)) Delete(() => File.Delete(file), file);
         }
 
-        foreach (var snapshot in Retention.BeyondNewest(new BackupService(paths, time).List(), KeepSnapshots))
-            Delete(() => Directory.Delete(snapshot, recursive: true), snapshot);
     }
 
     private static void Delete(Action delete, string path)

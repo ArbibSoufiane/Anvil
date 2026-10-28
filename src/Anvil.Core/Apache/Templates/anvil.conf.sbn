@@ -35,7 +35,7 @@ MaxKeepAliveRequests 100
 </IfModule>
 {{~ end ~}}
 
-Include "{{ mode_conf }}"
+Include "{{ defaults_conf }}"
 Include "{{ php_pools_conf }}"
 
 # Settings, keys and logs: never served, even by a site whose folder holds Anvil's.

@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Sockets;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Preflight;
 using Anvil.Core.Processes;
@@ -33,7 +32,7 @@ public sealed class ApacheControlTests : IAsyncDisposable
     }
 
     private async Task<(ApacheControl Apache, string Version)> PrepareAsync(
-        ServerMode mode = ServerMode.Development, IReadOnlyList<SiteDefinition>? sites = null)
+        IReadOnlyList<SiteDefinition>? sites = null)
     {
         var ct = TestContext.Current.CancellationToken;
         var version = await Runtimes.InstallAsync(_paths, ComponentKind.Apache, ct);
@@ -43,9 +42,8 @@ public sealed class ApacheControlTests : IAsyncDisposable
 
         var input = new RenderInput
         {
-            Settings = new AppSettings { Mode = mode, HttpPort = Port, HttpsPort = Port, ActiveApache = version },
+            Settings = new AppSettings { HttpPort = Port, HttpsPort = Port, ActiveApache = version },
             Stock = StockConfScanner.Scan(File.ReadAllText(_paths.HttpdConf)),
-            Profile = BuiltInProfiles.For(mode),
             ApacheVersion = version,
             Sites = sites ?? [],
         };
@@ -76,9 +74,9 @@ public sealed class ApacheControlTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Host_header_picks_the_site_in_production()
+    public async Task Host_header_picks_the_site()
     {
-        var (apache, version) = await PrepareAsync(ServerMode.Production,
+        var (apache, version) = await PrepareAsync(
         [
             StaticSite(SiteKind.Domain, "shop.test", "hello from shop"),
             StaticSite(SiteKind.Domain, "blog.test", "hello from blog"),
@@ -89,7 +87,7 @@ public sealed class ApacheControlTests : IAsyncDisposable
         Assert.Equal((HttpStatusCode.OK, "hello from shop"), await GetAsHostAsync("shop.test"));
         Assert.Equal((HttpStatusCode.OK, "hello from blog"), await GetAsHostAsync("blog.test"));
         Assert.Equal((HttpStatusCode.OK, "hello from htdocs"), await GetAsHostAsync("[::1]"));
-        Assert.Equal(HttpStatusCode.Forbidden, (await GetAsHostAsync("unknown.example")).Status);
+        Assert.Equal((HttpStatusCode.OK, "hello from htdocs"), await GetAsHostAsync("unknown.example"));
     }
 
     // A site saved before Anvil refused such folders, or one whose .htaccess grants everything, still cannot serve data\.
@@ -105,7 +103,7 @@ public sealed class ApacheControlTests : IAsyncDisposable
             Id = SiteSet.IdFor(SiteKind.Domain, "shop.test"), Kind = SiteKind.Domain, Type = SiteType.Static, Name = "shop.test",
             Root = _paths.Root, Index = ["index.html"],
         };
-        var (apache, version) = await PrepareAsync(ServerMode.Production, [site]);
+        var (apache, version) = await PrepareAsync([site]);
 
         await apache.StartAsync(version, Port, TestContext.Current.CancellationToken);
 

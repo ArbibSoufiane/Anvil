@@ -3,7 +3,6 @@ using Anvil.Core.Apache;
 using Anvil.Core.Certificates;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
-using Anvil.Core.Modes;
 using Anvil.Core.Php;
 using Anvil.Core.Processes;
 using Anvil.Core.Settings;
@@ -14,7 +13,7 @@ namespace Anvil.App.Tests.Support;
 /// <summary>An Agent that answers from fields and records what it was asked.</summary>
 public sealed class FakeAgentApi : IAgentApi
 {
-    public AgentStatus Status { get; set; } = new(ServerMode.Development,
+    public AgentStatus Status { get; set; } = new(
         [new ServiceStatus(ServiceId.Apache, ProcessState.Stopped, "2.4.69", null)], [], "4.0.0");
 
     public AppSettings Settings { get; set; } = new() { ActiveApache = "2.4.69", Apache = new ApacheTuning(256, 0, 5) };
@@ -40,11 +39,6 @@ public sealed class FakeAgentApi : IAgentApi
     public List<DbSettingRow> DbRows { get; } = [];
     public IReadOnlyDictionary<string, string?>? DbSaved { get; private set; }
     public Exception? BackupError { get; set; }
-    public ModeChangeSet? ModePreview { get; set; }
-    public Exception? PreviewError { get; set; }
-    public (ServerMode Target, ModeOptions Options)? ModeApplied { get; private set; }
-    public List<ModeProfile> Profiles { get; } = [BuiltInProfiles.Development, BuiltInProfiles.Production];
-    public (ServerMode Mode, ModeProfileOverrides Overrides)? ProfileSaved { get; private set; }
     public string BackupFile { get; set; } = @"D:\Anvil\data\backups\db\2026-10-27-120000.sql.gz";
 
     public event EventHandler<AgentStatus>? StatusChanged;
@@ -185,28 +179,6 @@ public sealed class FakeAgentApi : IAgentApi
     {
         Calls.Add("backup db");
         return BackupError is { } error ? Task.FromException<string>(error) : Task.FromResult(BackupFile);
-    }
-
-    public Task<ModeChangeSet> PreviewModeAsync(ServerMode target, CancellationToken ct = default)
-    {
-        Calls.Add($"preview mode {target}");
-        if (PreviewError is { } error) return Task.FromException<ModeChangeSet>(error);
-        return Task.FromResult(ModePreview ?? new ModeChangeSet(Status.Mode, target, [], [], @"D:\Anvil\data\backups\2026-10-27-120000"));
-    }
-
-    public Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default)
-    {
-        ModeApplied = (target, options);
-        return Record($"apply mode {target}");
-    }
-
-    public Task<IReadOnlyList<ModeProfile>> GetModeProfilesAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<ModeProfile>>(Profiles.ToList());
-
-    public Task<ApplyResult> SaveModeProfileAsync(ServerMode mode, ModeProfileOverrides overrides, CancellationToken ct = default)
-    {
-        ProfileSaved = (mode, overrides);
-        return Record($"save profile {mode}");
     }
 
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)

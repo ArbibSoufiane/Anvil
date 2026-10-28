@@ -33,7 +33,6 @@ public sealed class SettingsStoreTests : IDisposable
 
         Assert.Equal(80, s.HttpPort);
         Assert.Equal(443, s.HttpsPort);
-        Assert.Equal(ServerMode.Development, s.Mode);
         Assert.True(s.CloseToTray);
         Assert.True(s.StartServicesOnLaunch);
         Assert.Equal(3306, s.DbPort);
@@ -46,7 +45,6 @@ public sealed class SettingsStoreTests : IDisposable
         var saved = new AppSettings
         {
             HttpPort = 8080,
-            Mode = ServerMode.Production,
             ActiveApache = "2.4.65",
             DefaultPhp = "8.5.5",
             DbEngine = DbEngine.MariaDb,
@@ -62,7 +60,17 @@ public sealed class SettingsStoreTests : IDisposable
         var loaded = new SettingsStore(_paths).Load();
 
         Assert.Equal(JsonSerializer.Serialize(saved), JsonSerializer.Serialize(loaded));
-        Assert.Contains("\"mode\": \"Production\"", File.ReadAllText(Path.Combine(_paths.Data, "anvil.json")));
+        Assert.Contains("\"httpPort\": 8080", File.ReadAllText(Path.Combine(_paths.Data, "anvil.json")));
+    }
+
+    [Fact]
+    public void Settings_from_a_build_with_modes_still_load()
+    {
+        File.WriteAllText(Path.Combine(_paths.Data, "anvil.json"), "{\"httpPort\": 8080, \"mode\": \"Production\", \"xdebugInProduction\": true}");
+        var store = new SettingsStore(_paths);
+
+        Assert.Equal(8080, store.Load().HttpPort);
+        Assert.Null(store.LastLoadWarning);
     }
 
     [Fact]

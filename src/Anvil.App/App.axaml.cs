@@ -63,12 +63,7 @@ public partial class App : Application
                 settings = s;
                 vm.CloseToTray = s.CloseToTray;
             }, () => _ = sites.LoadAsync(), appUpdate, editorChoice);
-            var mode = new ModeViewModel(_agent.Api);
-            var followUp = new ElevationFollowUp(elevator);
-            vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage, database, mode,
-                (from, to) => new ModeSwitchViewModel(_agent.Api, followUp, paths, from, to));
-            dashboard.CompareProfilesRequested += (_, _) => vm.NavigateCommand.Execute(AppPage.Mode);
-            _agent.Api.StatusChanged += (_, s) => Dispatcher.UIThread.Post(() => vm.Mode = s.Mode);
+            vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage, database);
 
             var icon = AppIcon.Create();
             window = new MainWindow(vm) { Icon = icon };
@@ -88,7 +83,7 @@ public partial class App : Application
             Program.Activated = _ => vm.ShowAndActivate();
 
             if (!(desktop.Args ?? []).Contains("--minimized")) window.Show();
-            var pages = new Pages(dashboard, apache, php, database, sites, settingsPage, mode);
+            var pages = new Pages(dashboard, apache, php, database, sites, settingsPage);
             _agent.Reconnected += (_, _) => Dispatcher.UIThread.Post(() => _ = LoadPagesAsync(pages));
             _ = ConnectAsync(pages);
         }
@@ -109,7 +104,7 @@ public partial class App : Application
     }
 
     private sealed record Pages(DashboardViewModel Dashboard, ApacheViewModel Apache, PhpViewModel Php, DatabaseViewModel Database, SitesViewModel Sites,
-        SettingsViewModel Settings, ModeViewModel Mode);
+        SettingsViewModel Settings);
 
     private async Task ConnectAsync(Pages pages)
     {
@@ -137,7 +132,6 @@ public partial class App : Application
             await pages.Database.LoadAsync();
             await pages.Sites.LoadAsync();
             await pages.Settings.LoadAsync();
-            await pages.Mode.LoadAsync();
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

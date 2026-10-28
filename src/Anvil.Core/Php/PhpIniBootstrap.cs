@@ -1,16 +1,24 @@
 using Anvil.Core.IO;
 using Anvil.Core.Paths;
+using Anvil.Core.Settings;
 
 namespace Anvil.Core.Php;
 
 /// <summary>
-/// Creates data\php\&lt;v&gt;\php.ini from the version's php.ini-development once. Later calls keep the
-/// user's edits and only re-point the paths Anvil manages, so the folder stays portable.
+/// Creates data\php\&lt;v&gt;\php.ini from the version's php.ini-development once, with the development values. Later
+/// calls keep the user's edits and only re-point the paths Anvil manages, so the folder stays portable.
 /// </summary>
 public sealed class PhpIniBootstrap(AppPaths paths)
 {
     public static readonly IReadOnlyList<string> DefaultExtensions =
         ["curl", "exif", "fileinfo", "gd", "intl", "mbstring", "mysqli", "openssl", "pdo_mysql", "sodium", "zip"];
+
+    // Older builds wrote the mode's values into conf.d, loaded after php.ini.
+    private static readonly (string File, string Marker)[] OldOverlays =
+    [
+        ("99-arbipache-mode.ini", "; Written by ArbiPache"), // legacy-name
+        ("99-anvil-mode.ini", "; Written by Anvil"),
+    ];
 
     public void EnsureIni(string version)
     {
@@ -22,6 +30,8 @@ public sealed class PhpIniBootstrap(AppPaths paths)
         var created = !File.Exists(file);
         var doc = IniDocument.Parse(created ? Template(version) : File.ReadAllText(file));
         var before = doc.ToString();
+        // The overlay's values were the ones PHP ran with, so they move into php.ini.
+        var overlayRemoved = DeleteOldOverlays(dir);
 
         // PHP reads \\ and \$ inside double quotes as escapes; forward slashes avoid both.
         var runtime = paths.PhpRuntime(version);
@@ -39,6 +49,8 @@ public sealed class PhpIniBootstrap(AppPaths paths)
         doc.Set("curl", "curl.cainfo", Quote(caBundle));
         doc.Set("openssl", "openssl.cafile", Quote(caBundle));
 
+        if (created || overlayRemoved)
+            foreach (var (key, value) in DevelopmentDefaults.Php) doc.Set("PHP", key, value);
         if (created)
         {
             foreach (var extension in DefaultExtensions) doc.AddValue("PHP", "extension", extension);
@@ -47,6 +59,20 @@ public sealed class PhpIniBootstrap(AppPaths paths)
 
         var text = doc.ToString();
         if (created || text != before) AtomicFile.WriteAllText(file, text);
+    }
+
+    /// <summary>Deletes the overlay files an older build generated; a file of the same name the user wrote stays.</summary>
+    private static bool DeleteOldOverlays(string dir)
+    {
+        var removed = false;
+        foreach (var (name, marker) in OldOverlays)
+        {
+            var file = Path.Combine(dir, "conf.d", name);
+            if (!File.Exists(file) || !(File.ReadLines(file).FirstOrDefault() ?? "").StartsWith(marker, StringComparison.Ordinal)) continue;
+            File.Delete(file);
+            removed = true;
+        }
+        return removed;
     }
 
     private string Template(string version)

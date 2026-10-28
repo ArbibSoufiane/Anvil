@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using Anvil.App.Services;
 using Anvil.Core.Agent;
 using Anvil.Core.Components;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Processes;
@@ -37,20 +36,18 @@ public sealed partial class PhpVersionRow : ObservableObject
     public partial bool IsSelected { get; set; }
 }
 
-/// <summary>An extension chip. Xdebug is locked: the mode decides whether it loads.</summary>
+/// <summary>An extension chip.</summary>
 public sealed partial class ExtensionChip : ObservableObject
 {
-    public ExtensionChip(string name, bool isOn, bool isLocked, string? hint, Func<ExtensionChip, Task> toggle)
+    public ExtensionChip(string name, bool isOn, string? hint, Func<ExtensionChip, Task> toggle)
     {
         Name = name;
         IsOn = isOn;
-        IsLocked = isLocked;
         Hint = hint;
-        ToggleCommand = new AsyncRelayCommand(() => toggle(this), () => !IsLocked);
+        ToggleCommand = new AsyncRelayCommand(() => toggle(this));
     }
 
     public string Name { get; }
-    public bool IsLocked { get; }
     public string? Hint { get; }
 
     [ObservableProperty]
@@ -65,7 +62,7 @@ public sealed record InstallChoice(string Label, ComponentRelease Release);
 /// <summary>The PHP page: installed versions, the selected version's pool and extensions, Xdebug and new versions.</summary>
 public sealed partial class PhpViewModel : ObservableObject
 {
-    public const string XdebugHint = "Xdebug follows the mode: loaded in Development, not loaded in Production.";
+    public const string XdebugHint = "Xdebug starts on a trigger: add XDEBUG_TRIGGER to a request, or use a browser extension.";
 
     private readonly IAgentApi _api;
     private readonly AppPaths _paths;
@@ -83,8 +80,8 @@ public sealed partial class PhpViewModel : ObservableObject
         Updates = new UpdatesPanel(api, k => k == ComponentKind.Php, LoadAsync);
         var cores = Environment.ProcessorCount;
         WorkersHint = $"Suggested: half your cores ({Suggest.PhpWorkers(cores)} of {cores})";
-        api.StatusChanged += (_, s) => _ui(() => ApplyMode(s.Mode));
-        ApplyMode(ServerMode.Development);
+        MaxExecutionTime = DevelopmentDefaults.Php["max_execution_time"];
+        MaxExecutionTimeHint = "In a new php.ini. Edit php.ini to change it.";
     }
 
     public ObservableCollection<PhpVersionRow> Versions { get; } = [];
@@ -145,7 +142,6 @@ public sealed partial class PhpViewModel : ObservableObject
     {
         try
         {
-            ApplyMode((await _api.GetStatusAsync(ct)).Mode);
             await RefreshVersionsAsync(Selected?.Version, ct);
             await RefreshInstallChoicesAsync(ct);
             await Updates.RefreshAsync(ct);
@@ -199,7 +195,7 @@ public sealed partial class PhpViewModel : ObservableObject
         try
         {
             await _api.InstallAsync(release);
-            ExtensionsMessage = $"Xdebug {release.Version} installed. It loads in Development mode.";
+            ExtensionsMessage = $"Xdebug {release.Version} installed and turned on for PHP {minor}.";
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -295,9 +291,9 @@ public sealed partial class PhpViewModel : ObservableObject
         var hasXdebug = _xdebug.Any(x => x.AppliesTo == minor);
         Extensions.Clear();
         foreach (var e in list.Where(e => e.Name != "xdebug"))
-            Extensions.Add(new ExtensionChip(e.Name, e.Enabled, isLocked: false, hint: null, ToggleAsync));
+            Extensions.Add(new ExtensionChip(e.Name, e.Enabled, hint: null, ToggleAsync));
         if (hasXdebug)
-            Extensions.Add(new ExtensionChip("xdebug", list.Any(e => e.Name == "xdebug" && e.Enabled), isLocked: true, XdebugHint, ToggleAsync));
+            Extensions.Add(new ExtensionChip("xdebug", list.Any(e => e.Name == "xdebug" && e.Enabled), XdebugHint, ToggleAsync));
         CanGetXdebug = !hasXdebug && _xdebugAvailable.Any(r => r.AppliesTo == minor);
     }
 
@@ -324,13 +320,6 @@ public sealed partial class PhpViewModel : ObservableObject
             InstallChoices.Add(new InstallChoice($"PHP {branch.Key} · {newest.Version}{eol}", newest));
         }
         SelectedInstall = InstallChoices.FirstOrDefault();
-    }
-
-    private void ApplyMode(ServerMode mode)
-    {
-        var profile = BuiltInProfiles.For(mode);
-        MaxExecutionTime = profile.Php.TryGetValue("max_execution_time", out var value) ? value : "";
-        MaxExecutionTimeHint = $"Set by {mode} profile";
     }
 
     private async Task<ApplyResult?> CallAsync(Func<Task<ApplyResult>> call)

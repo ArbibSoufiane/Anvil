@@ -7,7 +7,6 @@ using Anvil.Core.Agent;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Preflight;
 using Anvil.Core.Processes;
@@ -89,9 +88,9 @@ public sealed class PageViewTests
         _api.Status = _api.Status with { Services = [new ServiceStatus(ServiceId.Database, ProcessState.Running, "MariaDB 11.8.9", null)] };
         _api.DbRows.AddRange(
         [
-            new("innodb_buffer_pool_size", "1G", "134217728", "Memory for table and index data", true, false, false, false),
-            new("max_connections", null, "151", "Most clients connected at once", false, false, false, false),
-            new("max_statement_time", "60", "0", "Seconds before a query is stopped", true, true, false, false),
+            new("innodb_buffer_pool_size", "1G", "134217728", "Memory for table and index data", true, false, false),
+            new("max_connections", null, "151", "Most clients connected at once", false, false, false),
+            new("lower_case_table_names", "1", "0", "How table names are stored", true, false, true),
         ]);
     }
 
@@ -121,10 +120,10 @@ public sealed class PageViewTests
         Assert.False(Named<Border>(window, "DbSetup").IsVisible);
         var table = Named<ItemsControl>(window, "DbSettings");
         var boxes = table.GetVisualDescendants().OfType<TextBox>().ToList();
-        Assert.Equal(["1G", "", "60"], boxes.Select(b => b.Text));
+        Assert.Equal(["1G", "", "1"], boxes.Select(b => b.Text));
         Assert.Equal([false, false, true], boxes.Select(b => b.IsReadOnly));
         Assert.Contains(table.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "134217728");
-        Assert.Contains(table.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Set by Development mode. Change it on the Dev / Production page.");
+        Assert.Contains(table.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Fixed when the database is created.");
         var resets = table.GetVisualDescendants().OfType<Button>().Where(b => (string?)b.Content == "Reset").ToList();
         Assert.Single(resets, b => b.IsEffectivelyVisible);
         Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Save and restart MariaDB");
@@ -144,11 +143,11 @@ public sealed class PageViewTests
     }
 
     [AvaloniaFact]
-    public void Php_view_lists_versions_with_tags_and_locks_xdebug()
+    public void Php_view_lists_versions_with_tags_and_extension_chips()
     {
         _api.Php.Add(new PhpVersionInfo("8.5.12", "vs17", 4, 1000, 9100, ["htdocs"], ProcessState.Running, IsDefault: true, EndOfLife: false));
         _api.Php.Add(new PhpVersionInfo("7.4.33", "vc15", 2, 1000, 0, [], ProcessState.Stopped, IsDefault: false, EndOfLife: true));
-        _api.Extensions["8.5.12"] = [new("intl", true, true, false, false)];
+        _api.Extensions["8.5.12"] = [new("intl", true, true, false)];
         _api.Installed.Add(new InstalledComponent(ComponentKind.Xdebug, "3.5.3", @"D:\Anvil\runtime\xdebug\3.5.3-php8.5", new string('b', 64),
             DateTimeOffset.Now, AppliesTo: "8.5"));
         var (window, shell) = Show();
@@ -162,7 +161,7 @@ public sealed class PageViewTests
         Assert.Contains("Default", texts);
         Assert.Contains("End of life", texts);
         var chips = Named<ItemsControl>(window, "Extensions").GetVisualDescendants().OfType<Button>().ToList();
-        Assert.False(chips.Single(b => (string?)b.Content == "xdebug").IsEffectivelyEnabled);
+        Assert.True(chips.Single(b => (string?)b.Content == "xdebug").IsEffectivelyEnabled);
         Assert.True(chips.Single(b => (string?)b.Content == "intl").IsEffectivelyEnabled);
         Assert.Equal("4", Named<TextBox>(window, "Workers").Text);
     }
@@ -318,72 +317,5 @@ public sealed class PageViewTests
         Assert.Equal("Install 4.1.0", Named<Button>(window, "InstallUpdate").Content);
         Assert.Equal("Faster starts.", Named<TextBlock>(window, "UpdateNotes").Text);
         Assert.StartsWith("Anvil 4.1.0 is available.", Named<TextBlock>(window, "UpdateMessage").Text);
-    }
-
-    private (MainWindow Window, ShellViewModel Shell, ModeViewModel Mode) ShowModePage()
-    {
-        _api.ModePreview = new ModeChangeSet(ServerMode.Development, ServerMode.Production,
-            [new SettingChange("PHP", @"php\8.5.12\conf.d\99-anvil-mode.ini", "display_errors", "On", "Off")],
-            [ServiceId.Php], Path.Combine(Paths.Backups, "2026-10-27-140209"));
-        var mode = new ModeViewModel(_api, ui: a => a());
-        mode.LoadAsync().GetAwaiter().GetResult();
-        var shell = new ShellViewModel(_api.Settings, mode: mode,
-            modeSwitch: (from, to) => new ModeSwitchViewModel(_api, new ElevationFollowUp(new FakeElevator()), Paths, from, to));
-        var window = new MainWindow(shell);
-        window.Show();
-        window.UpdateLayout();
-        return (window, shell, mode);
-    }
-
-    [AvaloniaFact]
-    public void Mode_view_shows_the_mode_cards_and_both_profiles()
-    {
-        var (window, shell, _) = ShowModePage();
-
-        shell.NavigateCommand.Execute(AppPage.Mode);
-        window.UpdateLayout();
-
-        Assert.IsType<ModeView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
-        Assert.Contains("selected", Named<Button>(window, "CardDev").Classes);
-        Assert.DoesNotContain("selected", Named<Button>(window, "CardProd").Classes);
-        var rows = Named<ItemsControl>(window, "ModeRows").GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
-        Assert.Contains("display_errors", rows);
-        Assert.Contains("Not loaded", rows);
-        Assert.Contains("selected", Named<Button>(window, "ModeDev").Classes);
-    }
-
-    [AvaloniaFact]
-    public async Task Header_switch_shows_the_dialog_with_the_changes()
-    {
-        var (window, shell, _) = ShowModePage();
-
-        await shell.RequestModeCommand.ExecuteAsync(ServerMode.Production);
-        window.UpdateLayout();
-
-        var dialog = Named<ModeSwitchDialog>(window, "ModeSwitch");
-        Assert.True(dialog.IsEffectivelyVisible);
-        var texts = dialog.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
-        Assert.Contains("Switch to Production mode?", texts);
-        Assert.Contains("display_errors", texts);
-        Assert.Contains(@"php\8.5.12\conf.d\99-anvil-mode.ini", texts);
-        Assert.Equal(@"Current files are backed up to data\backups\2026-10-27-140209. Switch back any time and you get them exactly as they were.",
-            Named<TextBlock>(window, "BackupNote").Inlines!.Text);
-        Assert.True(Named<Button>(window, "ApplySwitch").IsEffectivelyVisible);
-        Assert.Contains(dialog.GetVisualDescendants().OfType<CheckBox>(), c => c.Content as string == "Keep Xdebug loaded" && c.IsEffectivelyVisible);
-    }
-
-    [AvaloniaFact]
-    public void Profile_editor_lists_values_next_to_built_in_ones()
-    {
-        var (window, shell, mode) = ShowModePage();
-        shell.NavigateCommand.Execute(AppPage.Mode);
-
-        mode.EditProfileCommand.Execute(ServerMode.Production);
-        window.UpdateLayout();
-
-        Assert.True(Named<Border>(window, "ProfileEditor").IsEffectivelyVisible);
-        var boxes = Named<ItemsControl>(window, "ProfileValues").GetVisualDescendants().OfType<TextBox>().ToList();
-        Assert.Contains(boxes, b => b.Text == "256M");
-        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Save" && b.IsEffectivelyVisible);
     }
 }

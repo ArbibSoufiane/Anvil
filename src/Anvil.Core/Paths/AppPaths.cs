@@ -26,7 +26,6 @@ public sealed class AppPaths(string root)
     public string Run => Path.Combine(Data, "run");
     public string Tmp => Path.Combine(Data, "tmp");
     public string Secrets => Path.Combine(Data, "secrets");
-    public string Profiles => Path.Combine(Data, "profiles");
 
     private string RootMarker => Path.Combine(Data, ".root");
 
@@ -74,7 +73,7 @@ public sealed class AppPaths(string root)
     public void EnsureCreated()
     {
         foreach (var dir in new[] { Runtime, Catalog, Htdocs, Data, Conf, Vhosts, Sites, ApacheConfDir,
-                     PhpConfRoot, Certs, Logs, Backups, Run, Tmp, Secrets, Profiles })
+                     PhpConfRoot, Certs, Logs, Backups, Run, Tmp, Secrets })
             Directory.CreateDirectory(dir);
     }
 

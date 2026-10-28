@@ -18,14 +18,12 @@ public sealed partial class DbSettingItem : ObservableObject
 {
     private readonly Action _edited;
 
-    public DbSettingItem(DbSettingRow row, ServerMode mode, Action edited)
+    public DbSettingItem(DbSettingRow row, Action edited)
     {
         Row = row;
         _edited = edited;
         Value = row.Current ?? "";
-        Hint = row.SetByMode ? $"Set by {mode} mode. Change it on the Dev / Production page."
-            : row.InitOnly ? "Fixed when the database is created."
-            : null;
+        Hint = row.InitOnly ? "Fixed when the database is created." : null;
     }
 
     public DbSettingRow Row { get; }
@@ -33,7 +31,7 @@ public sealed partial class DbSettingItem : ObservableObject
     public string Default => Row.Default ?? "";
     public string Description => Row.Description;
     public bool IsChanged => Row.Changed;
-    public bool IsReadOnly => Row.SetByMode || Row.InitOnly;
+    public bool IsReadOnly => Row.InitOnly;
     public string? Hint { get; }
 
     [ObservableProperty]
@@ -72,7 +70,6 @@ public sealed partial class DatabaseViewModel : ObservableObject
     private readonly Action<Action> _ui;
     private AppSettings _settings = new();
     private ServiceStatus? _status;
-    private ServerMode _mode = ServerMode.Development;
 
     public DatabaseViewModel(IAgentApi api, AppPaths paths, EditorLauncher editor, Action<Action>? ui = null)
     {
@@ -289,7 +286,7 @@ public sealed partial class DatabaseViewModel : ObservableObject
     {
         var rows = ActiveEngine is null ? [] : await _api.GetDbSettingsAsync(ct);
         Rows.Clear();
-        foreach (var row in rows) Rows.Add(new DbSettingItem(row, _mode, SaveCommand.NotifyCanExecuteChanged));
+        foreach (var row in rows) Rows.Add(new DbSettingItem(row, SaveCommand.NotifyCanExecuteChanged));
         var changed = Rows.Count(r => r.IsChanged);
         ChangedText = changed == 0 ? "Every setting is at its default" : $"{changed} changed from default";
         ApplyFilter();
@@ -330,7 +327,6 @@ public sealed partial class DatabaseViewModel : ObservableObject
 
     private void ApplyStatus(AgentStatus status)
     {
-        _mode = status.Mode;
         _status = status.Services.FirstOrDefault(s => s.Id == ServiceId.Database);
         var state = _status?.State ?? ProcessState.Stopped;
         IsRunning = state is ProcessState.Starting or ProcessState.Running or ProcessState.Restarting;

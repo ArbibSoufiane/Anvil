@@ -1,5 +1,4 @@
 using Anvil.Core.Apache;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
@@ -17,11 +16,10 @@ public sealed class ConfigApplierTests : IDisposable
 
     private ConfigApplier Applier() => new(new ConfigRenderer(_paths), new ConfigWriter(_paths), _tester);
 
-    private static RenderInput Input(ServerMode mode = ServerMode.Development, int port = 80) => new()
+    private static RenderInput Input(int port = 80, string? htdocs = null) => new()
     {
-        Settings = new AppSettings { Mode = mode, HttpPort = port, Apache = new ApacheTuning(256, 0, 5) },
+        Settings = new AppSettings { HttpPort = port, HtdocsPath = htdocs, Apache = new ApacheTuning(256, 0, 5) },
         Stock = new StockConfState(new HashSet<string>(), new HashSet<int>()),
-        Profile = BuiltInProfiles.For(mode),
     };
 
     private Dictionary<string, byte[]> Snapshot() =>
@@ -86,12 +84,12 @@ public sealed class ConfigApplierTests : IDisposable
     {
         await Applier().ApplyAsync(Input(), TestContext.Current.CancellationToken);
 
-        var outcome = await Applier().ApplyAsync(Input(ServerMode.Production), TestContext.Current.CancellationToken);
+        var outcome = await Applier().ApplyAsync(Input(htdocs: @"E:\www"), TestContext.Current.CancellationToken);
 
         Assert.True(outcome.Ok);
-        Assert.Contains("mode.conf", outcome.ChangedFiles);
-        Assert.Contains(Path.Combine("vhosts", "00-catchall.conf"), outcome.ChangedFiles);
+        Assert.Contains(Path.Combine("vhosts", "01-localhost.conf"), outcome.ChangedFiles);
         Assert.DoesNotContain("anvil.conf", outcome.ChangedFiles);
+        Assert.DoesNotContain("defaults.conf", outcome.ChangedFiles);
     }
 
     [Fact]

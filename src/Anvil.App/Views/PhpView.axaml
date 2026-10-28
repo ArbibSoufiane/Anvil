@@ -116,7 +116,7 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
             <TextBlock Classes="note"
-                       Text="A change edits php.ini and restarts this version's workers one at a time. Xdebug follows the mode: loaded in Development, not loaded in Production." />
+                       Text="A change edits php.ini and restarts this version's workers one at a time." />
             <Button Classes="ghost" Content="Get Xdebug" Command="{Binding GetXdebugCommand}" IsVisible="{Binding CanGetXdebug}" />
             <TextBlock Classes="result" Text="{Binding ExtensionsMessage}"
                        IsVisible="{Binding ExtensionsMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

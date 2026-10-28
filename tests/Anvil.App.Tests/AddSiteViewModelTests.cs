@@ -21,8 +21,8 @@ public sealed class AddSiteViewModelTests
         new("8.4.23", "vs17", 4, 1000, 0, [], ProcessState.Stopped, IsDefault: false, EndOfLife: false),
     ];
 
-    private AddSiteViewModel Make(SiteDefinition? editing = null, ServerMode mode = ServerMode.Development) =>
-        new(_api, _picker, new SiteFormContext(Php, new AppSettings { Mode = mode }, Htdocs, "192.168.10.2"),
+    private AddSiteViewModel Make(SiteDefinition? editing = null) =>
+        new(_api, _picker, new SiteFormContext(Php, new AppSettings(), Htdocs, "192.168.10.2"),
             (site, result) =>
             {
                 _done.Add((site, result));

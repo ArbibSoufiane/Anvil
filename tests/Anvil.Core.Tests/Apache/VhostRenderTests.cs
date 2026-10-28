@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using Anvil.Core.Apache;
 using Anvil.Core.Certificates;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
@@ -35,13 +34,12 @@ public sealed class VhostRenderTests
             $@"D:\Anvil\data\certs\{id}\key.pem", chain ? $@"D:\Anvil\data\certs\{id}\chain.pem" : null);
 
     private static RenderedConfig RenderConfig(
-        IReadOnlyList<SiteDefinition> sites, ServerMode mode = ServerMode.Development, IReadOnlyList<HtdocsEntry>? htdocs = null,
+        IReadOnlyList<SiteDefinition> sites, IReadOnlyList<HtdocsEntry>? htdocs = null,
         IReadOnlyDictionary<string, SiteCertificate>? certs = null) =>
         new ConfigRenderer(Paths).Render(new RenderInput
         {
-            Settings = new AppSettings { Mode = mode, DefaultPhp = "8.5.12" },
+            Settings = new AppSettings { DefaultPhp = "8.5.12" },
             Stock = Stock,
-            Profile = BuiltInProfiles.For(mode),
             Pools = [Php85, Php84],
             Sites = sites,
             Htdocs = htdocs ?? [],
@@ -49,9 +47,9 @@ public sealed class VhostRenderTests
         });
 
     private static IReadOnlyDictionary<string, string> Render(
-        IReadOnlyList<SiteDefinition> sites, ServerMode mode = ServerMode.Development, IReadOnlyList<HtdocsEntry>? htdocs = null,
+        IReadOnlyList<SiteDefinition> sites, IReadOnlyList<HtdocsEntry>? htdocs = null,
         IReadOnlyDictionary<string, SiteCertificate>? certs = null) =>
-        RenderConfig(sites, mode, htdocs, certs).Files.ToDictionary(f => f.Key, f => f.Value.ReplaceLineEndings("\n"));
+        RenderConfig(sites, htdocs, certs).Files.ToDictionary(f => f.Key, f => f.Value.ReplaceLineEndings("\n"));
 
     private static string SiteFile(string id) => $@"vhosts\site-{id}.conf";
 
@@ -260,15 +258,6 @@ public sealed class VhostRenderTests
         Assert.DoesNotContain("Alias \"/legacy\"", catchall);
         Assert.Contains("proxy:fcgi://127.0.0.1:9101/", files[@"vhosts\01-localhost.conf"]);
         Assert.DoesNotContain(SiteFile("htdocs-legacy"), files.Keys);
-    }
-
-    [Fact]
-    public void Production_catchall_has_no_htdocs_entries()
-    {
-        var files = Render([], ServerMode.Production, [new("pma", @"D:\Tools\phpMyAdmin", true, null, AccessLevel.ThisPc)]);
-
-        Assert.DoesNotContain("phpMyAdmin", files[@"vhosts\00-catchall.conf"]);
-        Assert.Contains("Alias \"/pma\" \"D:/Tools/phpMyAdmin\"", files[@"vhosts\01-localhost.conf"]);
     }
 
     [Fact]

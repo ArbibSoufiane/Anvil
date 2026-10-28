@@ -2,7 +2,6 @@ using Anvil.Core.Apache;
 using Anvil.Core.Certificates;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
-using Anvil.Core.Modes;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
@@ -97,24 +96,6 @@ public partial interface IAgentApi
 
     /// <summary>Dumps every database to data\backups\db; returns the file.</summary>
     Task<string> BackupDatabaseAsync(CancellationToken ct = default);
-
-    /// <summary>What switching to the mode would change and restart. Writes nothing.</summary>
-    Task<ModeChangeSet> PreviewModeAsync(ServerMode target, CancellationToken ct = default);
-
-    /// <summary>
-    /// Backs up the files, switches to the mode and restarts what changed. Any failure puts the previous mode and its
-    /// files back. RequiredFirewall names the scope the web ports need in the new mode.
-    /// </summary>
-    Task<ApplyResult> ApplyModeAsync(ServerMode target, ModeOptions options, CancellationToken ct = default);
-
-    /// <summary>Development, then Production: the built-in values with the user's edits.</summary>
-    Task<IReadOnlyList<ModeProfile>> GetModeProfilesAsync(CancellationToken ct = default);
-
-    /// <summary>
-    /// Stores the user's edits to a profile (replacing earlier ones). For the active mode it also rewrites the mode's files
-    /// and restarts what changed, with the same backup and rollback as a switch.
-    /// </summary>
-    Task<ApplyResult> SaveModeProfileAsync(ServerMode mode, ModeProfileOverrides overrides, CancellationToken ct = default);
 
     /// <summary>Ends the Agent. With stopServices false, its processes still end with it (they live in its job).</summary>
     Task ShutdownAsync(bool stopServices, CancellationToken ct = default);

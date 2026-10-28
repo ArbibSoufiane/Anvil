@@ -3,7 +3,6 @@ using System.Net;
 using System.Net.Sockets;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Processes;
@@ -51,7 +50,7 @@ public sealed class PhpPoolTests : IAsyncDisposable
         }
     }
 
-    private async Task StartAsync(ModeProfile? profile = null)
+    private async Task StartAsync()
     {
         var ct = TestContext.Current.CancellationToken;
         var apache = await Runtimes.InstallAsync(_paths, ComponentKind.Apache, ct);
@@ -60,7 +59,6 @@ public sealed class PhpPoolTests : IAsyncDisposable
         new HttpdConfBootstrap(_paths).EnsureUserConf(apache);
         Runtimes.ListenOnLoopback(_paths, Port);
         new PhpIniBootstrap(_paths).EnsureIni(php.Version);
-        if (profile is not null) File.WriteAllText(PhpModeIniRenderer.FilePath(_paths, php.Version), PhpModeIniRenderer.Render(profile, php.Version, null));
 
         File.WriteAllText(Path.Combine(_paths.Htdocs, "info.php"),
             "<?php echo $_SERVER['SCRIPT_FILENAME'], '|', $_SERVER['PATH_INFO'] ?? '', '|', $_SERVER['SCRIPT_NAME'];");
@@ -85,7 +83,6 @@ public sealed class PhpPoolTests : IAsyncDisposable
         {
             Settings = settings,
             Stock = StockConfScanner.Scan(File.ReadAllText(_paths.HttpdConf)),
-            Profile = BuiltInProfiles.Development,
             ApacheVersion = apache,
             Pools = pools,
         };
@@ -113,14 +110,14 @@ public sealed class PhpPoolTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Mode_file_values_win_over_php_ini()
+    public async Task New_php_ini_runs_with_development_values()
     {
-        await StartAsync(BuiltInProfiles.Production);
+        await StartAsync();
 
         var body = await (await GetAsync("/ini.php")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-        // php.ini comes from php.ini-development (128M, E_ALL); Production's values come from conf.d. 22527 is E_ALL & ~E_DEPRECATED on PHP 8.4+.
-        Assert.Equal("256M|30|22527|no exec", body);
+        // php.ini-development has 128M; Anvil's development values replace it. 30719 is E_ALL on PHP 8.4+.
+        Assert.Equal("1G|300|30719|exec", body);
     }
 
     [Fact]

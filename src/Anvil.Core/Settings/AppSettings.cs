@@ -2,8 +2,6 @@ using Anvil.Core.Database;
 
 namespace Anvil.Core.Settings;
 
-public enum ServerMode { Development, Production }
-
 public sealed record ApacheTuning(int ThreadsPerChild, int MaxConnectionsPerChild, int KeepAliveTimeout);
 
 public sealed record PhpPoolSettings(int Workers, int MaxRequests);
@@ -16,9 +14,6 @@ public sealed record AppSettings
     public int SchemaVersion { get; init; } = 1;
     public int HttpPort { get; init; } = 80;
     public int HttpsPort { get; init; } = 443;
-    public ServerMode Mode { get; init; } = ServerMode.Development;
-    /// <summary>Production keeps Xdebug loaded: the mode switch's "Keep Xdebug loaded".</summary>
-    public bool XdebugInProduction { get; init; }
     public string? ActiveApache { get; init; }
     public string? DefaultPhp { get; init; }
     public DbEngine? DbEngine { get; init; }

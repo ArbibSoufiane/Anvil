@@ -114,6 +114,74 @@ public sealed class PhpIniBootstrapTests : IDisposable
     }
 
     [Fact]
+    public void New_ini_carries_development_values()
+    {
+        InstallPhp("8.5.12");
+
+        new PhpIniBootstrap(_paths).EnsureIni("8.5.12");
+
+        var ini = Ini("8.5.12");
+        Assert.Equal("1G", ini.Get("PHP", "memory_limit"));
+        Assert.Equal("On", ini.Get("PHP", "display_errors"));
+        Assert.Equal("300", ini.Get("PHP", "max_execution_time"));
+        Assert.Equal("512M", ini.Get("PHP", "upload_max_filesize"));
+    }
+
+    [Fact]
+    public void User_edit_survives_later_starts()
+    {
+        InstallPhp("8.5.12");
+        var bootstrap = new PhpIniBootstrap(_paths);
+        bootstrap.EnsureIni("8.5.12");
+        var file = Path.Combine(_paths.PhpConfigDir("8.5.12"), "php.ini");
+        var edited = Ini("8.5.12");
+        edited.Set("PHP", "memory_limit", "2G");
+        File.WriteAllText(file, edited.ToString());
+
+        bootstrap.EnsureIni("8.5.12");
+
+        Assert.Equal("2G", Ini("8.5.12").Get("PHP", "memory_limit"));
+    }
+
+    [Theory]
+    [InlineData("99-arbipache-mode.ini", "; Written by ArbiPache for Development mode (PHP 8.5.12).")] // legacy-name
+    [InlineData("99-anvil-mode.ini", "; Written by Anvil for Development mode (PHP 8.5.12).")]
+    public void Old_mode_overlay_is_deleted_but_a_user_file_is_kept(string name, string header)
+    {
+        InstallPhp("8.5.12");
+        var overlay = Path.Combine(_paths.PhpConfigDir("8.5.12"), "conf.d", name);
+        Directory.CreateDirectory(Path.GetDirectoryName(overlay)!);
+        File.WriteAllText(overlay, header + "\r\n[PHP]\r\nmemory_limit = 1G\r\n");
+        var bootstrap = new PhpIniBootstrap(_paths);
+
+        bootstrap.EnsureIni("8.5.12");
+        Assert.False(File.Exists(overlay));
+
+        File.WriteAllText(overlay, "; mine\r\nmemory_limit = 4G\r\n");
+        bootstrap.EnsureIni("8.5.12");
+        Assert.True(File.Exists(overlay));
+    }
+
+    // The overlay's values were the ones PHP used: they move into php.ini so nothing changes for the running sites.
+    [Fact]
+    public void Deleting_the_old_overlay_moves_the_development_values_into_an_existing_ini()
+    {
+        InstallPhp("8.5.12");
+        var bootstrap = new PhpIniBootstrap(_paths);
+        bootstrap.EnsureIni("8.5.12");
+        var file = Path.Combine(_paths.PhpConfigDir("8.5.12"), "php.ini");
+        var old = Ini("8.5.12");
+        old.Set("PHP", "memory_limit", "128M");
+        File.WriteAllText(file, old.ToString());
+        File.WriteAllText(Path.Combine(_paths.PhpConfigDir("8.5.12"), "conf.d", "99-anvil-mode.ini"),
+            "; Written by Anvil for Development mode (PHP 8.5.12).\r\n[PHP]\r\nmemory_limit = 1G\r\n");
+
+        bootstrap.EnsureIni("8.5.12");
+
+        Assert.Equal("1G", Ini("8.5.12").Get("PHP", "memory_limit"));
+    }
+
+    [Fact]
     public void EnsureIni_repoints_paths_after_the_folder_moves()
     {
         InstallPhp("8.5.12");

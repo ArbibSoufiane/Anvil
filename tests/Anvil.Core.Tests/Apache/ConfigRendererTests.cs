@@ -1,7 +1,6 @@
 using System.Text;
 using Anvil.Core.Apache;
 using Anvil.Core.Certificates;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
@@ -21,14 +20,12 @@ public sealed class ConfigRendererTests
             "headers", "setenvif", "version"], StringComparer.OrdinalIgnoreCase),
         new HashSet<int>([80]));
 
-    private static AppSettings Settings(ServerMode mode = ServerMode.Development) =>
-        new() { Mode = mode, Apache = new ApacheTuning(256, 0, 5) };
+    private static AppSettings Settings() => new() { Apache = new ApacheTuning(256, 0, 5) };
 
-    private static RenderInput Input(ServerMode mode = ServerMode.Development) => new()
+    private static RenderInput Input() => new()
     {
-        Settings = Settings(mode),
+        Settings = Settings(),
         Stock = Stock,
-        Profile = BuiltInProfiles.For(mode),
         ApacheVersion = "2.4.69",
     };
 
@@ -55,8 +52,14 @@ public sealed class ConfigRendererTests
         Snapshot.Match(Flatten(new ConfigRenderer(Paths).Render(Input())), "development");
 
     [Fact]
-    public void Renders_production_snapshot() =>
-        Snapshot.Match(Flatten(new ConfigRenderer(Paths).Render(Input(ServerMode.Production))), "production");
+    public void Defaults_conf_has_development_values_and_no_security_headers()
+    {
+        var conf = new ConfigRenderer(Paths).Render(new RenderInput { Settings = new AppSettings(), Stock = Stock }).Files["defaults.conf"];
+
+        Assert.Contains("Timeout 300", conf, StringComparison.Ordinal);
+        Assert.Contains("LogLevel info", conf, StringComparison.Ordinal);
+        Assert.DoesNotContain("X-Frame-Options", conf, StringComparison.Ordinal);
+    }
 
     [Fact]
     public void Renders_php_snapshot() =>
@@ -75,7 +78,7 @@ public sealed class ConfigRendererTests
     {
         var files = new ConfigRenderer(Paths).Render(Input()).Files.Keys.Order(StringComparer.Ordinal);
 
-        Assert.Equal(["anvil.conf", "mode.conf", "php-pools.conf", @"vhosts\00-catchall.conf", @"vhosts\01-localhost.conf"], files);
+        Assert.Equal(["anvil.conf", "defaults.conf", "php-pools.conf", @"vhosts\00-catchall.conf", @"vhosts\01-localhost.conf"], files);
     }
 
     // A site or htdocs folder set wider than its own folder must still never serve data\: settings, keys and logs.
@@ -126,7 +129,7 @@ public sealed class ConfigRendererTests
     [Fact]
     public void Https_refuses_names_no_site_claims()
     {
-        var files = new ConfigRenderer(Paths).Render(WithHttpsSite(Input(ServerMode.Production))).Files;
+        var files = new ConfigRenderer(Paths).Render(WithHttpsSite(Input())).Files;
 
         var conf = files[@"vhosts\00-catchall-https.conf"].ReplaceLineEndings("\n");
         Assert.Contains("<VirtualHost *:443>", conf);
@@ -138,7 +141,7 @@ public sealed class ConfigRendererTests
     [Fact]
     public void Without_https_sites_nothing_listens_on_the_https_port()
     {
-        var files = new ConfigRenderer(Paths).Render(Input(ServerMode.Production)).Files;
+        var files = new ConfigRenderer(Paths).Render(Input()).Files;
 
         Assert.DoesNotContain("Listen 443", files["anvil.conf"]);
         Assert.DoesNotContain(@"vhosts\00-catchall-https.conf", files.Keys);
@@ -161,16 +164,6 @@ public sealed class ConfigRendererTests
         var conf = new ConfigRenderer(Paths).Render(input).Files[@"vhosts\01-localhost.conf"];
 
         Assert.Contains("DocumentRoot \"E:/www\"", conf);
-    }
-
-    [Fact]
-    public void Production_catchall_denies_all()
-    {
-        var conf = new ConfigRenderer(Paths).Render(Input(ServerMode.Production)).Files[@"vhosts\00-catchall.conf"];
-
-        Assert.Contains("Require all denied", conf);
-        Assert.Contains("ErrorDocument 403 \" \"", conf);
-        Assert.DoesNotContain("Indexes", conf);
     }
 
     [Fact]

@@ -1,5 +1,4 @@
 using Anvil.Core.Certificates;
-using Anvil.Core.Modes;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
@@ -11,7 +10,6 @@ public sealed record RenderInput
 {
     public required AppSettings Settings { get; init; }
     public required StockConfState Stock { get; init; }
-    public ModeProfile Profile { get; init; } = BuiltInProfiles.Development;
     public string? ApacheVersion { get; init; }
 
     /// <summary>The PHP pools that will run, from <see cref="PhpPoolPlanner"/>. Empty means no PHP handler anywhere.</summary>

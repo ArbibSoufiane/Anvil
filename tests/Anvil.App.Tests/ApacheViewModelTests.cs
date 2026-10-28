@@ -4,7 +4,6 @@ using Anvil.App.ViewModels;
 using Anvil.Core.Agent;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
-using Anvil.Core.Modes;
 using Anvil.Core.Paths;
 using Anvil.Core.Processes;
 using Anvil.Core.Settings;
@@ -46,17 +45,14 @@ public sealed class ApacheViewModelTests
     }
 
     [Fact]
-    public async Task Request_timeout_shows_the_users_profile_value()
+    public async Task Request_timeout_shows_the_development_value()
     {
-        _api.Profiles[0] = BuiltInProfiles.Development with
-        {
-            Apache = new Dictionary<string, string>(BuiltInProfiles.Development.Apache) { ["Timeout"] = "120" },
-        };
         var vm = Make();
 
         await vm.LoadAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("120", vm.RequestTimeout);
+        Assert.Equal("300", vm.RequestTimeout);
+        Assert.Equal("Fixed for development", vm.RequestTimeoutHint);
     }
 
     [Fact]
@@ -68,7 +64,7 @@ public sealed class ApacheViewModelTests
         Assert.Equal(256, vm.ThreadsPerChild);
         Assert.Equal($"{Environment.ProcessorCount} cores detected · suggested {Suggest.Threads(Environment.ProcessorCount)}", vm.ThreadsHint);
         Assert.Equal("300", vm.RequestTimeout);
-        Assert.Equal("Set by Development profile", vm.RequestTimeoutHint);
+        Assert.Equal("Fixed for development", vm.RequestTimeoutHint);
 
         vm.ThreadsPerChild = 512;
         vm.KeepAliveTimeout = 15;
@@ -142,7 +138,7 @@ public sealed class ApacheViewModelTests
     {
         var vm = Make();
 
-        Assert.Equal(["httpd.conf", "anvil.conf", "mode.conf", @"vhosts\"], vm.ConfigFiles.Select(f => f.Name));
+        Assert.Equal(["httpd.conf", "anvil.conf", "defaults.conf", @"vhosts\"], vm.ConfigFiles.Select(f => f.Name));
         Assert.Equal(["Open", "View", "View", "Open folder"], vm.ConfigFiles.Select(f => f.ActionLabel));
         Assert.Equal(@"D:\Anvil\data\apache\httpd.conf", vm.ConfigFiles[0].Path);
         Assert.Equal(@"D:\Anvil\data\conf\vhosts", vm.ConfigFiles[3].Path);

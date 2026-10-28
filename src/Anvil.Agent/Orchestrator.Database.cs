@@ -3,14 +3,13 @@ using Anvil.Core.Agent;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
 using Anvil.Core.IO;
-using Anvil.Core.Modes;
 using Anvil.Core.Processes;
 
 namespace Anvil.Agent;
 
 /// <summary>
-/// The database: one engine active at a time, its settings in the user's my.ini, Development/Production values in
-/// mode.cnf. A settings change the server will not start with is put back, and the server runs on as before.
+/// The database: one engine active at a time, its settings in the user's my.ini. A settings change the server will not
+/// start with is put back, and the server runs on as before.
 /// </summary>
 public sealed partial class Orchestrator
 {
@@ -60,7 +59,6 @@ public sealed partial class Orchestrator
         {
             if (previous is { } old && !same && DbRunning) await db.StopAsync(old.Engine, old.Version, ct);
             MyIni.EnsureCreated(e, _settings.DbPort);
-            WriteDbMode(e);
             if (!db.Initialized(e))
             {
                 await db.InitializeAsync(e, version, rootPassword, ct);
@@ -86,20 +84,18 @@ public sealed partial class Orchestrator
         return ApplyResult.Success();
     }, ct);
 
-    /// <summary>Every setting the page manages, with its value in my.ini (or the mode file) and the server's own default.</summary>
+    /// <summary>Every setting the page manages, with its value in my.ini and the server's own default.</summary>
     public Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct) => Locked<IReadOnlyList<DbSettingRow>>(async () =>
     {
         if (ActiveDb is not { } a) return [];
         var defaults = new Dictionary<string, string>(await db!.DefaultsAsync(a.Engine, a.Version, ct), OptionNames.Comparer);
         var ini = MyIni.Read(a.Engine);
-        var mode = ModeValues(a.Engine);
         return _dbSettings.For(a.Engine).Select(d =>
         {
-            var setByMode = mode.TryGetValue(d.Key, out var modeValue);
-            var current = setByMode ? modeValue : ini.GetValueOrDefault(d.Key);
+            var current = ini.GetValueOrDefault(d.Key);
             var fallback = defaults.GetValueOrDefault(d.Key);
             var changed = current is not null && !SameSetting(d.Kind, current, fallback);
-            return new DbSettingRow(d.Key, current, fallback, d.Description, changed, setByMode, d.RequiresRestart, d.InitOnly);
+            return new DbSettingRow(d.Key, current, fallback, d.Description, changed, d.RequiresRestart, d.InitOnly);
         }).ToList();
     }, ct);
 
@@ -108,12 +104,9 @@ public sealed partial class Orchestrator
     {
         if (ActiveDb is not { } a) return ApplyResult.Failure(NoDatabase);
         var defs = _dbSettings.For(a.Engine).ToDictionary(d => d.Key, OptionNames.Comparer);
-        var mode = ModeValues(a.Engine);
         foreach (var (key, value) in changes)
         {
             if (!defs.TryGetValue(key, out var def)) return ApplyResult.Failure($"{key} is not a setting Anvil manages. Edit my.ini for it.");
-            if (mode.ContainsKey(key))
-                return ApplyResult.Failure($"{key} is set by Production or Development mode. Change it on the Dev / Production page.");
             if (def.InitOnly) return ApplyResult.Failure($"{key} is fixed when the database is created.");
             // A line break would let a value add its own lines to my.ini.
             if (value is not null && value.Any(char.IsControl)) return ApplyResult.Failure($"{key} cannot contain line breaks.");
@@ -170,7 +163,6 @@ public sealed partial class Orchestrator
         try
         {
             MyIni.EnsureCreated(a.Engine, _settings.DbPort);
-            WriteDbMode(a.Engine);
             await db!.StartAsync(a.Engine, a.Version, ct);
             return ApplyResult.Success();
         }
@@ -185,32 +177,6 @@ public sealed partial class Orchestrator
         if (ActiveDb is not { } a) return ApplyResult.Failure(NoDatabase);
         await db!.StopAsync(a.Engine, a.Version, ct);
         return ApplyResult.Success();
-    }
-
-    /// <summary>Writes the engine's mode.cnf from the mode's profile; untouched when it already says the same.</summary>
-    private void WriteDbMode(DbEngine e)
-    {
-        var text = DbModeRenderer.Render(Profile(_settings), e);
-        var file = MyIni.ModeFile(e);
-        if (!File.Exists(file) || File.ReadAllText(file) != text) AtomicFile.WriteAllText(file, text);
-    }
-
-    /// <summary>The [mysqld] values the server runs with: my.ini, then the mode file on top. Null without a database.</summary>
-    private Dictionary<string, string>? EffectiveDbIni()
-    {
-        if (ActiveDb is not { } a || !File.Exists(MyIni.PathFor(a.Engine))) return null;
-        var values = new Dictionary<string, string>(MyIni.Read(a.Engine), OptionNames.Comparer);
-        foreach (var (key, value) in ModeValues(a.Engine)) values[key] = value;
-        return values;
-    }
-
-    private Dictionary<string, string> ModeValues(DbEngine e)
-    {
-        var values = new Dictionary<string, string>(OptionNames.Comparer);
-        var file = MyIni.ModeFile(e);
-        if (!File.Exists(file)) return values;
-        foreach (var (key, value) in IniDocument.Parse(File.ReadAllText(file)).Pairs("mysqld")) values[key] = value;
-        return values;
     }
 
     /// <summary>"ON" equals "TRUE" and "1", and "128M" equals "134217728", so only real differences count as changed.</summary>

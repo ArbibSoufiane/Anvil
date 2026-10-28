@@ -154,13 +154,8 @@
 
         <Border Classes="card" Grid.Column="1">
           <StackPanel Spacing="12">
-            <DockPanel>
-              <Border Classes="modeChip" Classes.prod="{Binding ModeIsProduction}" DockPanel.Dock="Right">
-                <TextBlock Text="{Binding ModeName}" />
-              </Border>
-              <TextBlock Classes="h2" Text="Current mode" />
-            </DockPanel>
-            <ItemsControl ItemsSource="{Binding ModeLines}">
+            <TextBlock Classes="h2" Text="Development settings" />
+            <ItemsControl x:Name="DevelopmentLines" ItemsSource="{x:Static vm:DashboardViewModel.DevelopmentLines}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                   <StackPanel Spacing="6" />
@@ -175,7 +170,7 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
-            <Button Classes="ghost" Content="Compare profiles" Command="{Binding CompareProfilesCommand}" />
+            <TextBlock Classes="note" Text="New php.ini and my.ini files start with these values. Your edits to them stay." />
           </StackPanel>
         </Border>
       </Grid>
