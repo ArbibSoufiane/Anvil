@@ -1,6 +1,7 @@
 namespace Anvil.Core.Apache;
 
-public sealed record ApplyOutcome(bool Ok, IReadOnlyList<string> ChangedFiles, string TestOutput);
+/// <summary>WriteError says why the configuration could not be written at all; then nothing changed and nothing was tested.</summary>
+public sealed record ApplyOutcome(bool Ok, IReadOnlyList<string> ChangedFiles, string TestOutput, string? WriteError = null);
 
 /// <summary>Render, write, test; a configuration Apache rejects is rolled back before anything restarts.</summary>
 public sealed class ConfigApplier(ConfigRenderer renderer, ConfigWriter writer, IConfigTester tester)

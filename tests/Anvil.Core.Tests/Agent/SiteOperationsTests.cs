@@ -412,4 +412,24 @@ public sealed class SiteOperationsTests : IDisposable
         return (cert.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem());
     }
 
+    [Theory]
+    [InlineData(FileShare.None)] // nothing can even read it
+    [InlineData(FileShare.Read)] // an editor has it open: the folder cannot move
+    public async Task Locked_conf_folder_rolls_the_site_back(FileShare share)
+    {
+        var o = await StartedAsync();
+        Assert.True((await o.SaveSiteAsync(Site("shop.test"), Ct)).Ok);
+        var catchAll = File.ReadAllText(Path.Combine(_paths.Vhosts, "00-catchall.conf"));
+
+        ApplyResult r;
+        using (new FileStream(Path.Combine(_paths.Vhosts, "00-catchall.conf"), FileMode.Open, FileAccess.Read, share))
+            r = await o.SaveSiteAsync(Site("new.test"), Ct);
+
+        Assert.False(r.Ok);
+        Assert.StartsWith("Anvil could not write the Apache configuration (", r.Error);
+        Assert.EndsWith("). Nothing was changed.", r.Error);
+        Assert.False(File.Exists(Path.Combine(_paths.Sites, SiteSet.IdFor(SiteKind.Domain, "new.test") + ".json")));
+        Assert.Equal(catchAll, File.ReadAllText(Path.Combine(_paths.Vhosts, "00-catchall.conf")));
+        Assert.True((await o.SaveSiteAsync(Site("new.test"), Ct)).Ok);
+    }
 }

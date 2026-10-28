@@ -96,7 +96,8 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
                 configOk = applied.Ok;
                 if (!configOk)
                     findings.Add(new PreflightFinding("apache-config", Severity.Blocking,
-                        "Apache rejected the configuration, so it was not started.", applied.TestOutput));
+                        applied.WriteError ?? "Apache rejected the configuration, so it was not started.",
+                        applied.WriteError is null ? applied.TestOutput : null));
             }
             if (configOk)
             {
@@ -852,7 +853,17 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         try
         {
             var input = RenderInputFor(s, version, pools);
-            var outcome = await new ConfigApplier(new ConfigRenderer(paths), new ConfigWriter(paths), tester).ApplyAsync(input, ct);
+            ApplyOutcome outcome;
+            try
+            {
+                outcome = await new ConfigApplier(new ConfigRenderer(paths), new ConfigWriter(paths), tester).ApplyAsync(input, ct);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // The writer swaps whole folders, so a file it cannot read or a folder it cannot move leaves data\conf as it was.
+                Log.Warning(e, "Writing the Apache configuration failed");
+                return new ApplyOutcome(false, [], "", $"Anvil could not write the Apache configuration ({e.Message}). Nothing was changed.");
+            }
             if (!alwaysTest || outcome.ChangedFiles.Count > 0) return outcome;
             var test = await tester.TestAsync(ct);
             return outcome with { Ok = test.Ok, TestOutput = test.Output };
@@ -891,8 +902,9 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         }
     }
 
-    private static ApplyResult Rejected(ApplyOutcome applied, string consequence) =>
-        ApplyResult.Failure($"Apache rejected the configuration. {consequence}", applied.TestOutput, applied.ChangedFiles);
+    private static ApplyResult Rejected(ApplyOutcome applied, string consequence) => applied.WriteError is { } writeError
+        ? ApplyResult.Failure(writeError)
+        : ApplyResult.Failure($"Apache rejected the configuration. {consequence}", applied.TestOutput, applied.ChangedFiles);
 
 
     private static string? Validate(AppSettings s)
