@@ -171,7 +171,7 @@ public sealed class RpcTests
         var addresses = await client.Api.ResolveAsync("shop.example.com", ct);
         var certificates = await client.Api.GetCertificatesAsync(ct);
         var error = await Assert.ThrowsAnyAsync<Exception>(() =>
-            client.Api.ImportCertificateAsync("shop.test", new CertImportRequest("D:/client.pfx", "guess", null, null, null), ct));
+            client.Api.ImportCertificateAsync("shop.test", new CertImportRequest(new CertImportFile("client.pfx", [1, 2, 3]), "guess", null, null, null), ct));
 
         Assert.Equal(FakeApi.Cert, issued with { Names = FakeApi.Cert.Names });
         Assert.Equal(["shop.test"], issued.Names);

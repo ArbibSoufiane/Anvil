@@ -6,7 +6,26 @@ using ArbiPache.Core.Sites;
 namespace ArbiPache.Core.Certificates;
 
 /// <summary>A certificate a client sent: a .pfx file with its password, or a certificate file, its private key file and an optional chain file.</summary>
-public sealed record CertImportRequest(string? PfxPath, string? PfxPassword, string? CertPath, string? KeyPath, string? ChainPath);
+public sealed record CertImportRequest(CertImportFile? Pfx, string? PfxPassword, CertImportFile? Cert, CertImportFile? Key, CertImportFile? Chain);
+
+/// <summary>
+/// A file the person chose, read by the GUI: the Agent may run as a service account that cannot open their folders, and
+/// never opens a path a pipe client names.
+/// </summary>
+public sealed record CertImportFile(string Name, byte[] Content)
+{
+    public static CertImportFile Read(string path)
+    {
+        try
+        {
+            return new CertImportFile(Path.GetFileName(path), File.ReadAllBytes(path));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new CertificateImportException("unreadable", $"Cannot read {Path.GetFileName(path)}: {e.Message}");
+        }
+    }
+}
 
 /// <summary>Checks a client's certificate against the site and stores it as PEM: certificate, PKCS#8 key and the chain in issuer order.</summary>
 public sealed class CertImporter(CertificateStore store, TimeProvider time)
@@ -15,7 +34,7 @@ public sealed class CertImporter(CertificateStore store, TimeProvider time)
 
     public SiteCertificate Import(string siteId, IReadOnlyList<string> siteNames, CertImportRequest r)
     {
-        var (certs, key) = r.PfxPath is not null ? FromPfx(r.PfxPath, r.PfxPassword) : FromPem(r);
+        var (certs, key) = r.Pfx is not null ? FromPfx(r.Pfx, r.PfxPassword) : FromPem(r);
         try
         {
             var publicKey = key.ExportSubjectPublicKeyInfo();
@@ -41,12 +60,12 @@ public sealed class CertImporter(CertificateStore store, TimeProvider time)
         }
     }
 
-    private static (List<X509Certificate2> Certs, AsymmetricAlgorithm Key) FromPfx(string path, string? password)
+    private static (List<X509Certificate2> Certs, AsymmetricAlgorithm Key) FromPfx(CertImportFile file, string? password)
     {
         X509Certificate2Collection all;
         try
         {
-            all = X509CertificateLoader.LoadPkcs12Collection(Read(path), password, X509KeyStorageFlags.Exportable | X509KeyStorageFlags.EphemeralKeySet);
+            all = X509CertificateLoader.LoadPkcs12Collection(file.Content, password, X509KeyStorageFlags.Exportable | X509KeyStorageFlags.EphemeralKeySet);
         }
         catch (CryptographicException e) when (e.HResult == ErrorInvalidPassword)
         {
@@ -54,7 +73,7 @@ public sealed class CertImporter(CertificateStore store, TimeProvider time)
         }
         catch (CryptographicException)
         {
-            throw Unreadable(path, "is not a .pfx certificate file");
+            throw Unreadable(file, "is not a .pfx certificate file");
         }
 
         var certs = all.ToList();
@@ -62,22 +81,22 @@ public sealed class CertImporter(CertificateStore store, TimeProvider time)
         AsymmetricAlgorithm? key = holder?.GetRSAPrivateKey() ?? (AsymmetricAlgorithm?)holder?.GetECDsaPrivateKey();
         if (key is not null) return (certs, key);
         foreach (var cert in certs) cert.Dispose();
-        throw Unreadable(path, "holds no RSA or ECDSA private key");
+        throw Unreadable(file, "holds no RSA or ECDSA private key");
     }
 
     private static (List<X509Certificate2> Certs, AsymmetricAlgorithm Key) FromPem(CertImportRequest r)
     {
-        if (r.CertPath is null || r.KeyPath is null)
+        if (r.Cert is null || r.Key is null)
             throw new CertificateImportException("unreadable", "Choose a .pfx file, or the certificate file together with its private key file.");
-        var certs = Certificates(r.CertPath);
-        if (r.ChainPath is not null) certs.AddRange(Certificates(r.ChainPath));
-        return (certs, PrivateKey(r.KeyPath));
+        var certs = Certificates(r.Cert);
+        if (r.Chain is not null) certs.AddRange(Certificates(r.Chain));
+        return (certs, PrivateKey(r.Key));
     }
 
     /// <summary>Every certificate in a PEM file, or the single certificate in a DER (.cer) file.</summary>
-    private static List<X509Certificate2> Certificates(string path)
+    private static List<X509Certificate2> Certificates(CertImportFile file)
     {
-        var bytes = Read(path);
+        var bytes = file.Content;
         try
         {
             var text = Encoding.UTF8.GetString(bytes);
@@ -88,16 +107,16 @@ public sealed class CertImporter(CertificateStore store, TimeProvider time)
         }
         catch (CryptographicException)
         {
-            throw Unreadable(path, "is not a certificate");
+            throw Unreadable(file, "is not a certificate");
         }
     }
 
-    private static AsymmetricAlgorithm PrivateKey(string path)
+    private static AsymmetricAlgorithm PrivateKey(CertImportFile file)
     {
-        var text = Encoding.UTF8.GetString(Read(path));
+        var text = Encoding.UTF8.GetString(file.Content);
         if (text.Contains("ENCRYPTED PRIVATE KEY", StringComparison.Ordinal))
             throw new CertificateImportException("unreadable",
-                $"{Path.GetFileName(path)} is protected with a password. Ask for the key without one, or for a .pfx file.");
+                $"{file.Name} is protected with a password. Ask for the key without one, or for a .pfx file.");
         foreach (var create in new Func<AsymmetricAlgorithm>[] { RSA.Create, ECDsa.Create })
         {
             var key = create();
@@ -112,7 +131,7 @@ public sealed class CertImporter(CertificateStore store, TimeProvider time)
             }
         }
 
-        throw Unreadable(path, "is not an RSA or ECDSA private key");
+        throw Unreadable(file, "is not an RSA or ECDSA private key");
     }
 
     /// <summary>The certificates other than the leaf, each issuer after the certificate it signed; unrelated ones go last.</summary>
@@ -130,17 +149,5 @@ public sealed class CertImporter(CertificateStore store, TimeProvider time)
         return ordered;
     }
 
-    private static byte[] Read(string path)
-    {
-        try
-        {
-            return File.ReadAllBytes(path);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            throw new CertificateImportException("unreadable", $"Cannot read {Path.GetFileName(path)}: {e.Message}");
-        }
-    }
-
-    private static CertificateImportException Unreadable(string path, string what) => new("unreadable", $"{Path.GetFileName(path)} {what}.");
+    private static CertificateImportException Unreadable(CertImportFile file, string what) => new("unreadable", $"{Path.GetFileName(file.Name)} {what}.");
 }

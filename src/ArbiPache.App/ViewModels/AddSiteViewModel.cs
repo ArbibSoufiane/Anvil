@@ -586,9 +586,11 @@ public sealed partial class AddSiteViewModel : ObservableObject
         }
     }
 
+    /// <summary>Reads the chosen files here: the Agent may run as a service account that cannot open the person's folders.</summary>
     private CertImportRequest ImportRequest() => IsPfx
-        ? new CertImportRequest(CertFile.Trim(), CertPassword, null, null, null)
-        : new CertImportRequest(null, null, CertFile.Trim(), KeyFile.Trim(), ChainFile.Trim() is { Length: > 0 } chain ? chain : null);
+        ? new CertImportRequest(CertImportFile.Read(CertFile.Trim()), CertPassword, null, null, null)
+        : new CertImportRequest(null, null, CertImportFile.Read(CertFile.Trim()), CertImportFile.Read(KeyFile.Trim()),
+            ChainFile.Trim() is { Length: > 0 } chain ? CertImportFile.Read(chain) : null);
 
     private SiteCertificate? Current(string siteId) =>
         _context.Certificates.TryGetValue(siteId, out var c) && c.Source == Cert ? c : null;

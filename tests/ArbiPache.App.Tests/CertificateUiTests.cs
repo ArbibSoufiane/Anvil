@@ -10,9 +10,10 @@ using ArbiPache.Core.Sites;
 
 namespace ArbiPache.App.Tests;
 
-public sealed class CertificateUiTests
+public sealed class CertificateUiTests : IDisposable
 {
     private const string Htdocs = @"D:\ArbiPache\htdocs";
+    private readonly string _inbox = Directory.CreateTempSubdirectory("ap-inbox-").FullName;
     private readonly FakeAgentApi _api = new();
     private readonly FakeFolderPicker _picker = new();
     private readonly List<(SiteDefinition? Site, ApplyResult Result)> _done = [];
@@ -24,6 +25,16 @@ public sealed class CertificateUiTests
     ];
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    public void Dispose() => Directory.Delete(_inbox, recursive: true);
+
+    /// <summary>A file the client sent, in a folder the Agent's service account may not be able to open.</summary>
+    private string Inbox(string name, string text = "-----BEGIN CERTIFICATE-----")
+    {
+        var path = Path.Combine(_inbox, name);
+        File.WriteAllText(path, text);
+        return path;
+    }
 
     private AddSiteViewModel Make(SiteDefinition? editing = null, AppSettings? settings = null,
         IReadOnlyDictionary<string, SiteCertificate>? certificates = null) =>
@@ -57,13 +68,13 @@ public sealed class CertificateUiTests
     {
         _api.CertificateError = new CertificateImportException("key-mismatch", "raw text the GUI does not show");
         var vm = ImportedSite();
-        vm.CertFile = @"D:\inbox\portal.crt";
-        vm.KeyFile = @"D:\inbox\portal.key";
+        vm.CertFile = Inbox("portal.crt");
+        vm.KeyFile = Inbox("portal.key");
 
         await vm.SaveCommand.ExecuteAsync(null);
 
         Assert.Equal("The private key does not belong to this certificate.", vm.CertError);
-        Assert.Equal(["save site portal.clientco.com", @"import cert portal.clientco.com D:\inbox\portal.crt"], _api.Calls);
+        Assert.Equal(["save site portal.clientco.com", "import cert portal.clientco.com portal.crt"], _api.Calls);
         Assert.Empty(_done);
         Assert.True(vm.IsEditing);
         Assert.Equal("Close", vm.CancelLabel);
@@ -74,7 +85,7 @@ public sealed class CertificateUiTests
     {
         _api.CertificateError = new CertificateImportException("bad-password", "The password does not open this .pfx file.");
         var vm = ImportedSite();
-        vm.CertFile = @"D:\inbox\portal.pfx";
+        vm.CertFile = Inbox("portal.pfx");
         vm.CertPassword = "guess";
         await vm.SaveCommand.ExecuteAsync(null);
 
@@ -83,6 +94,37 @@ public sealed class CertificateUiTests
         Assert.Equal("The password does not open this .pfx file.", vm.CertError);
         Assert.Equal("portal.clientco.com", Assert.Single(_done).Site?.Id);
         Assert.Equal(0, _cancelled);
+    }
+
+    // The Agent may run as a service account that cannot open the person's Downloads: the GUI reads the files and sends them.
+    [Fact]
+    public async Task Import_sends_the_files_the_person_chose()
+    {
+        var vm = ImportedSite();
+        vm.CertFile = Inbox("portal.crt", "certificate text");
+        vm.KeyFile = Inbox("portal.key", "key text");
+        vm.ChainFile = Inbox("chain.pem", "chain text");
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        var sent = _api.LastImport!;
+        Assert.Equal(("portal.crt", "certificate text"), (sent.Cert!.Name, System.Text.Encoding.UTF8.GetString(sent.Cert.Content)));
+        Assert.Equal(("portal.key", "key text"), (sent.Key!.Name, System.Text.Encoding.UTF8.GetString(sent.Key.Content)));
+        Assert.Equal(("chain.pem", "chain text"), (sent.Chain!.Name, System.Text.Encoding.UTF8.GetString(sent.Chain.Content)));
+        Assert.Null(sent.Pfx);
+    }
+
+    [Fact]
+    public async Task Missing_certificate_file_is_reported_before_the_agent_is_asked()
+    {
+        var vm = ImportedSite();
+        vm.CertFile = Path.Combine(_inbox, "gone.crt");
+        vm.KeyFile = Inbox("portal.key");
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        Assert.StartsWith("Cannot read gone.crt:", vm.CertError);
+        Assert.Equal(["save site portal.clientco.com"], _api.Calls);
     }
 
     [Fact]

@@ -60,7 +60,7 @@ public sealed class CertImporterTests : IDisposable
         return new Issued(signed.CopyWithPrivateKey(leafKey), intermediate, root);
     }
 
-    private string Pfx(Issued issued, string password)
+    private CertImportFile Pfx(Issued issued, string password)
     {
         // Root first on purpose: the importer orders the chain by issuer, not by file order.
         var collection = new X509Certificate2Collection
@@ -71,14 +71,14 @@ public sealed class CertImporterTests : IDisposable
         };
         var path = Path.Combine(_inbox, "client.pfx");
         File.WriteAllBytes(path, collection.Export(X509ContentType.Pfx, password)!);
-        return path;
+        return CertImportFile.Read(path);
     }
 
-    private string Write(string name, string text)
+    private CertImportFile Write(string name, string text)
     {
         var path = Path.Combine(_inbox, name);
         File.WriteAllText(path, text);
-        return path;
+        return CertImportFile.Read(path);
     }
 
     private static string KeyPem(X509Certificate2 cert) => cert.GetRSAPrivateKey()!.ExportPkcs8PrivateKeyPem();

@@ -563,7 +563,7 @@ public sealed class SiteOperationsTests : IDisposable
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, "site.crt"), cert);
         File.WriteAllText(Path.Combine(dir, "site.key"), key);
-        return new CertImportRequest(null, null, Path.Combine(dir, "site.crt"), Path.Combine(dir, "site.key"), null);
+        return new CertImportRequest(null, null, CertImportFile.Read(Path.Combine(dir, "site.crt")), CertImportFile.Read(Path.Combine(dir, "site.key")), null);
     }
 
     [Fact]

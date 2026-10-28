@@ -166,9 +166,12 @@ public sealed class FakeAgentApi : IAgentApi
     public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate>(Certificates));
 
+    public CertImportRequest? LastImport { get; private set; }
+
     public Task<SiteCertificate> ImportCertificateAsync(string siteId, CertImportRequest r, CancellationToken ct = default)
     {
-        Calls.Add($"import cert {siteId} {r.PfxPath ?? r.CertPath}");
+        LastImport = r;
+        Calls.Add($"import cert {siteId} {(r.Pfx ?? r.Cert)?.Name}");
         return Issue(siteId, CertSource.Imported);
     }
 
