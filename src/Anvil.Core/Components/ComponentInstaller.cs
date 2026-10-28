@@ -51,6 +51,8 @@ public sealed partial class ComponentInstaller(AppPaths paths, Downloader dl, Fu
         await dl.FetchAsync(r.Url, r.Sha256, download, bytes, ct);
 
         var staging = target + ".staging";
+        var aside = target + ".old";
+        var movedAside = false;
         if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
         try
         {
@@ -64,13 +66,34 @@ public sealed partial class ComponentInstaller(AppPaths paths, Downloader dl, Fu
             {
                 ZipExtractor.Extract(download, staging, r.StripRoot);
             }
-            if (Directory.Exists(target)) Directory.Delete(target, recursive: true);
+            if (Directory.Exists(target))
+            {
+                // A folder installed.json does not list: a half install, or a registry lost or copied from elsewhere, so
+                // it may be the version that is running. A rename fails as a whole while any file in it is open, where a
+                // delete would remove everything but the files in use.
+                if (Directory.Exists(aside)) Directory.Delete(aside, recursive: true);
+                try
+                {
+                    Directory.Move(target, aside);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    throw new InvalidOperationException($"{r.Kind} {r.Version} is in use, so Anvil cannot install it again. Stop it, then try again.", e);
+                }
+                movedAside = true;
+            }
             Directory.Move(staging, target);
         }
         catch
         {
+            if (movedAside && !Directory.Exists(target)) Directory.Move(aside, target);
             if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
             throw;
+        }
+        if (movedAside)
+        {
+            try { Directory.Delete(aside, recursive: true); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { } // the next install of this version clears it
         }
 
         var entry = new InstalledComponent(r.Kind, r.Version, target, r.Sha256.ToLowerInvariant(), DateTimeOffset.UtcNow, r.Toolset, r.AppliesTo);

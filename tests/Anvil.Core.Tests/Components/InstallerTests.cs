@@ -189,5 +189,29 @@ public sealed class InstallerTests : IDisposable
 
         Assert.True(File.Exists(Path.Combine(installed.Path, "bin", "httpd.exe")));
         Assert.False(File.Exists(Path.Combine(installed.Path, "half.txt")));
+        Assert.False(Directory.Exists(installed.Path + ".old"));
+    }
+
+    [Fact]
+    public async Task An_unlisted_folder_in_use_is_left_whole()
+    {
+        // installed.json lost or copied from elsewhere while this version runs: its httpd.exe is open.
+        var ct = TestContext.Current.CancellationToken;
+        var body = Zip("Apache24/bin/httpd.exe");
+        var bin = Path.Combine(_paths.ApacheRuntime("2.4.69"), "bin");
+        Directory.CreateDirectory(bin);
+        File.WriteAllText(Path.Combine(bin, "apr.dll"), "x");
+        using (new FileStream(Path.Combine(bin, "httpd.exe"), FileMode.Create, FileAccess.ReadWrite, FileShare.Read))
+        {
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                Installer(body).InstallAsync(Release(ComponentKind.Apache, "2.4.69", "httpd.zip", body, "Apache24"), null, ct));
+
+            Assert.Contains("in use", e.Message);
+        }
+
+        Assert.True(File.Exists(Path.Combine(bin, "apr.dll")));
+        Assert.True(File.Exists(Path.Combine(bin, "httpd.exe")));
+        Assert.False(Directory.Exists(_paths.ApacheRuntime("2.4.69") + ".staging"));
+        Assert.Empty(Installer(body).Installed(ComponentKind.Apache));
     }
 }
