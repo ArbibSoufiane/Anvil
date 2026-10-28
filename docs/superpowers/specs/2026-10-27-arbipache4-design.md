@@ -96,7 +96,8 @@ Three executables, one shared library, all in the app folder:
 - **ArbiPache.exe** (Avalonia GUI, `asInvoker`, never elevated). Control panel. Talks to the Agent.
 - **ArbiPache.Agent.exe** (headless). Owns everything that runs: renders config, supervises
   httpd / php-cgi pools / mariadbd, renews certificates, rotates logs. It is the **only writer** of
-  `data/`. Runs either as a child process started by the GUI (default, Development) or as a Windows
+  `data/`, except `data/logs/app/` (the window's own log) and `data/tmp/elevation/` (requests the window
+  hands to the Elevator). Runs either as a child process started by the GUI (default, Development) or as a Windows
   service under the virtual account `NT SERVICE\ArbiPacheAgent` (Production: survives reboot with
   nobody logged in). All its children live in a Job Object so none are orphaned.
 - **ArbiPache.Elevator.exe** (`requireAdministrator`). Tiny. Started through UAC only when needed.

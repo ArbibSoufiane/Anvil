@@ -6,7 +6,7 @@ using Anvil.Core.Paths;
 namespace Anvil.Core.Elevation;
 
 /// <summary>
-/// Writes the request to data\tmp, starts Anvil.Elevator.exe through UAC ("runas"), waits for it and reads the
+/// Writes the request to data\tmp\elevation, starts Anvil.Elevator.exe through UAC ("runas"), waits for it and reads the
 /// result it wrote beside the request. Both files are deleted afterwards.
 /// </summary>
 public sealed class UacElevator(AppPaths paths) : IElevator
@@ -16,8 +16,8 @@ public sealed class UacElevator(AppPaths paths) : IElevator
 
     public async Task<ElevatedResult> RunAsync(ElevatedRequest r, CancellationToken ct)
     {
-        Directory.CreateDirectory(paths.Tmp);
-        var request = Path.Combine(paths.Tmp, $"elevate-{Guid.NewGuid():N}.json");
+        Directory.CreateDirectory(paths.ElevationRequests);
+        var request = Path.Combine(paths.ElevationRequests, $"elevate-{Guid.NewGuid():N}.json");
         var result = request + ".result.json";
         try
         {

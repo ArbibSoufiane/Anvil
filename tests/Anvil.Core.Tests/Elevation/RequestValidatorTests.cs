@@ -19,7 +19,8 @@ public sealed class RequestValidatorTests : IDisposable
 
     private string RequestFile(string json, string? dir = null)
     {
-        var file = Path.Combine(dir ?? _paths.Tmp, $"elevate-{Guid.NewGuid():N}.json");
+        var folder = Directory.CreateDirectory(dir ?? _paths.ElevationRequests).FullName;
+        var file = Path.Combine(folder, $"elevate-{Guid.NewGuid():N}.json");
         File.WriteAllText(file, json);
         return file;
     }
@@ -155,5 +156,25 @@ public sealed class RequestValidatorTests : IDisposable
         Assert.NotNull(RequestValidator.Validate(valid, Path.Combine(_paths.Tmp, "other.json"), _paths));
         Assert.NotNull(RequestValidator.PathError(Path.Combine(_paths.Data, "x.json"), _paths));
         Assert.Null(RequestValidator.Validate(valid, RequestFile("{}"), _paths));
+    }
+
+    [Fact]
+    public void Request_outside_the_elevation_folder_is_refused()
+    {
+        const string name = "elevate-0123456789abcdef0123456789abcdef.json";
+
+        Assert.Equal("Requests must sit in data\\tmp\\elevation.", RequestValidator.PathError(Path.Combine(_paths.Tmp, name), _paths));
+        Assert.Null(RequestValidator.PathError(Path.Combine(_paths.Tmp, "elevation", name), _paths));
+        Assert.Equal("The request must be an Anvil request file.", RequestValidator.PathError(Path.Combine(_paths.Tmp, "elevation", "r.json"), _paths));
+    }
+
+    [Fact]
+    public void Elevation_folder_that_links_elsewhere_is_refused()
+    {
+        var elsewhere = Directory.CreateDirectory(Path.Combine(_paths.Root, "elsewhere")).FullName;
+        Directory.CreateSymbolicLink(_paths.ElevationRequests, elsewhere);
+
+        Assert.Equal($"{_paths.ElevationRequests} is a link to another folder; the request is refused.",
+            RequestValidator.PathError(Path.Combine(_paths.ElevationRequests, "elevate-0123456789abcdef0123456789abcdef.json"), _paths));
     }
 }

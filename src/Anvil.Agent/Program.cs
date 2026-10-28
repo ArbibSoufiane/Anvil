@@ -11,7 +11,7 @@ internal static class Program
     private static async Task<int> Main(string[] args)
     {
         var paths = AppPaths.FromBaseDirectory();
-        Logging.Configure(paths, "agent");
+        Logging.Configure(paths.AgentLogs, "agent");
         var options = AgentOptions.FromArgs(args);
         try
         {

@@ -22,9 +22,16 @@ public sealed class AppPaths(string root)
     public string PhpConfRoot => Path.Combine(Data, "php");
     public string Certs => Path.Combine(Data, "certs");
     public string Logs => Path.Combine(Data, "logs");
+    public string AgentLogs => Path.Combine(Logs, "anvil");
+
+    /// <summary>The window's own log: with <see cref="ElevationRequests"/>, the only part of data\ the window writes.</summary>
+    public string AppLogs => Path.Combine(Logs, "app");
     public string Backups => Path.Combine(Data, "backups");
     public string Run => Path.Combine(Data, "run");
     public string Tmp => Path.Combine(Data, "tmp");
+
+    /// <summary>Where the window hands requests to Anvil.Elevator.exe, and the only folder the Elevator reads them from.</summary>
+    public string ElevationRequests => Path.Combine(Tmp, "elevation");
     public string Secrets => Path.Combine(Data, "secrets");
 
     private string RootMarker => Path.Combine(Data, ".root");

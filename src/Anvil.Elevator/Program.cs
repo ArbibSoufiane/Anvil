@@ -6,8 +6,8 @@ using Anvil.Elevator.Handlers;
 namespace Anvil.Elevator;
 
 /// <summary>
-/// Runs one request written by the GUI: Anvil.Elevator.exe --request &lt;root&gt;\data\tmp\elevate-&lt;guid&gt;.json.
-/// The result goes to &lt;request&gt;.result.json. A request outside data\tmp gets no result file at all.
+/// Runs one request written by the GUI: Anvil.Elevator.exe --request &lt;root&gt;\data\tmp\elevation\elevate-&lt;guid&gt;.json.
+/// The result goes to &lt;request&gt;.result.json. A request outside data\tmp\elevation gets no result file at all.
 /// </summary>
 internal static class Program
 {

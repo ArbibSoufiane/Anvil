@@ -34,12 +34,11 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var paths = AppPaths.FromBaseDirectory();
-            Logging.Configure(paths, "app");
+            Logging.Configure(paths.AppLogs, "app");
             Log.Information("Anvil {Version} started from {Root}", BuildInfo.Version, paths.Root);
-            // The Agent is the only writer of data\; the GUI reads settings once for the window's first paint.
-            var store = new SettingsStore(paths);
-            var settings = store.Load();
-            if (store.LastLoadWarning is { } warning) Log.Warning("{Warning}", warning);
+            // The Agent writes data\, except the window's log and its Elevator requests. The window reads settings once for
+            // its first paint and leaves a damaged file for the Agent to move aside and report.
+            var settings = new SettingsStore(paths).TryRead() ?? new AppSettings();
 
             _agent = new AgentConnection(paths);
             var http = new HttpClient();

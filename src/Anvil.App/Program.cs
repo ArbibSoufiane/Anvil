@@ -59,7 +59,7 @@ internal static class Program
     /// <summary>Replaces the program files once the old window has closed, then opens whichever version is in place.</summary>
     private static int ApplyUpdate(ApplyUpdateArgs update)
     {
-        Logging.Configure(new AppPaths(update.Target), "update");
+        Logging.Configure(new AppPaths(update.Target).AppLogs, "update");
         try
         {
             Updater.Swap(update.Staged, update.Target, update.Pid);

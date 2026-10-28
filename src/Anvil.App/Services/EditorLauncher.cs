@@ -45,12 +45,20 @@ public sealed class EditorLauncher(Func<string> editorSetting, IRegistryReader r
         Process.Start(psi)?.Dispose();
     }
 
+    /// <summary>Opens the folder in Explorer, or its nearest parent while it does not exist yet: the window creates nothing in data\.</summary>
     public static void OpenFolder(string folder)
     {
-        Directory.CreateDirectory(folder);
         var psi = new ProcessStartInfo("explorer.exe") { UseShellExecute = false };
-        psi.ArgumentList.Add(folder);
+        psi.ArgumentList.Add(ExistingFolder(folder));
         Process.Start(psi)?.Dispose();
+    }
+
+    /// <summary>The folder, or its nearest parent that exists.</summary>
+    public static string ExistingFolder(string folder)
+    {
+        var dir = Path.GetFullPath(folder);
+        while (!Directory.Exists(dir) && Path.GetDirectoryName(dir) is { } parent) dir = parent;
+        return dir;
     }
 
     public static void OpenUrl(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();

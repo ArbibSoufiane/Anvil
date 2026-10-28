@@ -124,6 +124,24 @@ public sealed class LogTailTests : IDisposable
     }
 
     [Fact]
+    public void Discover_lists_the_window_log_after_the_agent_log()
+    {
+        var paths = new AppPaths(_dir);
+        Directory.CreateDirectory(paths.AgentLogs);
+        File.WriteAllText(Path.Combine(paths.AgentLogs, "agent-20261027.log"), "");
+        Directory.CreateDirectory(paths.AppLogs);
+        File.WriteAllText(Path.Combine(paths.AppLogs, "app-20261026.log"), "");
+        File.WriteAllText(Path.Combine(paths.AppLogs, "app-20261027.log"), "");
+
+        var sources = LogSources.Discover(paths);
+
+        Assert.Equal(["apache", "anvil", "app"], sources.Select(s => s.Id));
+        Assert.Equal("Anvil window", sources[^1].Label);
+        Assert.Equal(Path.Combine(_dir, "data", "logs", "app", "app-20261027.log"), sources[^1].Path);
+        Assert.Equal(Path.Combine(_dir, "data", "logs", "anvil"), paths.AgentLogs);
+    }
+
+    [Fact]
     public void Discover_lists_apache_before_its_log_exists_and_prefers_newest_rotated_file()
     {
         var paths = new AppPaths(_dir);

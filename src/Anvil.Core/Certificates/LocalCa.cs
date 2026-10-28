@@ -88,10 +88,12 @@ public sealed class LocalCa(AppPaths paths, CertificateStore store, TimeProvider
         return root.Certificates.Find(X509FindType.FindByThumbprint, ca.Thumbprint, validOnly: false).Count > 0;
     }
 
-    /// <summary>Adds the CA to CurrentUser\Root. Windows asks the user to confirm.</summary>
+    /// <summary>
+    /// Adds the existing CA to CurrentUser\Root; Windows asks the user to confirm. It never creates the CA: the window calls
+    /// this, and only the Agent writes data\certs.
+    /// </summary>
     public void Trust()
     {
-        EnsureCa();
         using var ca = X509CertificateLoader.LoadCertificateFromFile(CertFile);
         using var root = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
         root.Open(OpenFlags.ReadWrite);

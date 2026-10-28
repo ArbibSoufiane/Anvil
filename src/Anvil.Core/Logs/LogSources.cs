@@ -10,7 +10,7 @@ public static class LogSources
 {
     /// <summary>
     /// Every log under data\logs: Apache's error log (listed even before it exists), one per PHP version, the database,
-    /// one per site and Anvil's own Agent log. A rotated log is represented by its newest file.
+    /// one per site, Anvil's Agent log and the window's log. A rotated log is represented by its newest file.
     /// </summary>
     public static IReadOnlyList<LogSource> Discover(AppPaths paths)
     {
@@ -37,7 +37,8 @@ public static class LogSources
                     sources.Add(new LogSource($"site-{id}", id, site));
                 }
 
-        if (Newest(Path.Combine(logs, "anvil"), "agent-*.log") is { } agent) sources.Add(new LogSource("anvil", "Anvil", agent));
+        if (Newest(paths.AgentLogs, "agent-*.log") is { } agent) sources.Add(new LogSource("anvil", "Anvil", agent));
+        if (Newest(paths.AppLogs, "app-*.log") is { } app) sources.Add(new LogSource("app", "Anvil window", app));
         return sources;
     }
 

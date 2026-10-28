@@ -68,4 +68,22 @@ public sealed class EditorLauncherTests
         public object? GetValue(RegistryHive hive, string path, string name) =>
             hive == RegistryHive.LocalMachine && path == @"SOFTWARE\Notepad++" && name == "" ? nppDir : null;
     }
+
+    [Fact]
+    public void A_missing_folder_opens_its_nearest_existing_parent_and_creates_nothing()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "ap-open-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var missing = Path.Combine(root, "data", "logs");
+
+            Assert.Equal(root, EditorLauncher.ExistingFolder(missing));
+            Assert.Equal(root, EditorLauncher.ExistingFolder(root));
+            Assert.False(Directory.Exists(Path.Combine(root, "data")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }
