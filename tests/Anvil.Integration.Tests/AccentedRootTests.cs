@@ -33,7 +33,7 @@ public sealed class AccentedRootTests : IAsyncDisposable
         await _pools.DisposeAsync();
         await _supervisor.DisposeAsync();
         _job.Dispose();
-        try { Directory.Delete(_paths.Root, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { } // rotatelogs may still be exiting
+        await Runtimes.DeleteRootAsync(_paths);
     }
 
     private static bool IsFree(int port)

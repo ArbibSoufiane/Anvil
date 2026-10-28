@@ -60,6 +60,28 @@ internal static class Runtimes
     }
 
     /// <summary>
+    /// Deletes a throwaway root. Processes the job just ended (Apache's rotatelogs, php-cgi, the database) hold their
+    /// files for a moment after it closes, so this tries again for up to 10 seconds; a root still held after that fails
+    /// the test rather than staying behind in %TEMP%.
+    /// </summary>
+    public static async Task DeleteRootAsync(AppPaths paths)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            try
+            {
+                if (Directory.Exists(paths.Root)) Directory.Delete(paths.Root, recursive: true);
+                return;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(100);
+            }
+        }
+    }
+
+    /// <summary>
     /// Puts httpd on 127.0.0.1:<paramref name="port"/> in place of the stock Listen line Anvil commented out, so a test
     /// never listens on every interface (which would also raise a Windows Firewall prompt).
     /// </summary>

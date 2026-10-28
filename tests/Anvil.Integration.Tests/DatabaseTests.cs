@@ -22,10 +22,7 @@ public sealed class DatabaseTests : IAsyncDisposable
         await _supervisor.DisposeAsync();
         _job.Dispose();
         // Each root holds a whole MariaDB or MySQL install: about 0.5 GB per test.
-        foreach (var root in _roots)
-        {
-            try { Directory.Delete(root.Root, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-        }
+        foreach (var root in _roots) await Runtimes.DeleteRootAsync(root);
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
