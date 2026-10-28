@@ -58,6 +58,16 @@ public static partial class SiteSet
     }
 
     /// <summary>
+    /// The folders in htdocs that <see cref="DiscoverHtdocs"/> leaves out because their name cannot be a URL path
+    /// segment, sorted. Names starting with a dot (.git, .vscode) are hidden folders, not mistakes, and are not listed.
+    /// </summary>
+    public static IReadOnlyList<string> UnservedFolders(string htdocsDir) =>
+        Directory.Exists(htdocsDir)
+            ? [.. Directory.GetDirectories(htdocsDir).Select(d => Path.GetFileName(d))
+                .Where(n => !n.StartsWith('.') && !FolderName().IsMatch(n)).Order(StringComparer.OrdinalIgnoreCase)]
+            : [];
+
+    /// <summary>
     /// The folders in htdocs plus the enabled htdocs sites that point elsewhere, sorted by name. A saved htdocs site
     /// supplies the PHP version and access of the folder it names; a disabled one hides it.
     /// </summary>

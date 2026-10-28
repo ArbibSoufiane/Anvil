@@ -116,6 +116,10 @@ public sealed partial class SitesViewModel : ObservableObject
     public string LocalPattern => $"{Host("localhost")}/<folder>";
     public string NetworkPattern => Lan() is { } lan ? $"{Host(lan)}/<folder>" : "this PC's IP/<folder>";
 
+    /// <summary>The htdocs folders Apache does not serve because of their name, and the rule; null when there are none.</summary>
+    [ObservableProperty]
+    public partial string? UnservedNote { get; set; }
+
     [ObservableProperty]
     public partial string SearchText { get; set; } = "";
 
@@ -143,12 +147,33 @@ public sealed partial class SitesViewModel : ObservableObject
             _php = await _api.GetPhpAsync(ct);
             var sites = await _api.GetSitesAsync(ct);
             var htdocs = await _api.GetHtdocsAsync(ct);
-            _ui(() => Fill(sites, htdocs));
+            var unserved = Unserved();
+            _ui(() =>
+            {
+                Fill(sites, htdocs);
+                UnservedNote = unserved;
+            });
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             Log.Warning(e, "Loading the sites page failed");
             _ui(() => Say($"The Anvil Agent did not answer: {e.Message}", ok: false));
+        }
+    }
+
+    private string? Unserved()
+    {
+        try
+        {
+            var names = SiteSet.UnservedFolders(HtdocsPath);
+            return names.Count == 0 ? null
+                : $"Not served: {string.Join(", ", names)}. A folder name starts with a letter or digit and uses only letters, "
+                  + "digits, dots, hyphens and underscores.";
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log.Warning(e, "Reading the htdocs folder failed");
+            return null;
         }
     }
 

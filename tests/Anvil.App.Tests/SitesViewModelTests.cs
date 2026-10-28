@@ -50,6 +50,33 @@ public sealed class SitesViewModelTests
     }
 
     [Fact]
+    public async Task Htdocs_folders_that_cannot_be_served_are_named()
+    {
+        var htdocs = Directory.CreateTempSubdirectory("anvil-sites-").FullName;
+        try
+        {
+            foreach (var name in (string[])["blog", "my app", "café"]) Directory.CreateDirectory(Path.Combine(htdocs, name));
+            _api.Settings = _api.Settings with { HtdocsPath = htdocs };
+            var vm = Make();
+
+            await vm.LoadAsync(Ct);
+
+            Assert.Equal("Not served: café, my app. A folder name starts with a letter or digit and uses only letters, digits, "
+                + "dots, hyphens and underscores.", vm.UnservedNote);
+
+            Directory.Delete(Path.Combine(htdocs, "my app"));
+            Directory.Delete(Path.Combine(htdocs, "café"));
+            await vm.LoadAsync(Ct);
+
+            Assert.Null(vm.UnservedNote);
+        }
+        finally
+        {
+            Directory.Delete(htdocs, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Rows_describe_each_site()
     {
         _api.Sites.Add(Site("shop.test") with { Aliases = ["www.shop.test"], Cert = CertSource.LocalDev, Access = AccessLevel.ThisPc });

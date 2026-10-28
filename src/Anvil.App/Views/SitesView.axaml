@@ -121,6 +121,8 @@
               <Run Text="{Binding NetworkPattern}" />
               <Run Text=". Drop a folder in, it is live." />
             </TextBlock>
+            <TextBlock x:Name="UnservedNote" Classes="error" TextWrapping="Wrap" Text="{Binding UnservedNote}"
+                       IsVisible="{Binding UnservedNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             <Grid ColumnDefinitions="1.4*,1.4*,1.6*,*,200" Margin="8,4,8,0">
               <TextBlock Classes="dt" Text="Folder" />
               <TextBlock Classes="dt" Grid.Column="1" Text="On this PC" />

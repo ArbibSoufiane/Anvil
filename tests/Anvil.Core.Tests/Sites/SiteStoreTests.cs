@@ -160,4 +160,15 @@ public sealed class SiteStoreTests : IDisposable
             new HtdocsEntry("tools", @"D:\Tools\phpMyAdmin", true, null, AccessLevel.ThisPc),
         ], entries);
     }
+
+    [Fact]
+    public void Folders_htdocs_cannot_serve_are_listed()
+    {
+        foreach (var name in (string[])["blog", "old_site", "my app", "café", "a${b}", ".git"])
+            Directory.CreateDirectory(Path.Combine(_paths.Htdocs, name));
+        File.WriteAllText(Path.Combine(_paths.Htdocs, "read me.txt"), "x");
+
+        Assert.Equal(["a${b}", "café", "my app"], SiteSet.UnservedFolders(_paths.Htdocs));
+        Assert.Empty(SiteSet.UnservedFolders(Path.Combine(_paths.Htdocs, "missing")));
+    }
 }

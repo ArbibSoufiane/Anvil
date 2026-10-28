@@ -8,6 +8,7 @@ Settings → Import from ArbiPache 3 brings your sites over.
 ### Added
 - Every folder in `htdocs\` answers at `http://localhost/<folder>`, and domain sites such as
   `shop.test` get their own folder and PHP version. Anvil adds their names to the hosts file.
+  The Sites page names any `htdocs` folder it cannot serve because of its name, such as `my app`.
 - PHP, static and proxy sites, with Laravel, Symfony, WordPress, Composer and Vite detection.
 - HTTPS for domain sites from Anvil's own local certificate authority, which Windows trusts after
   one click.
