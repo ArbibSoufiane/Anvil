@@ -28,7 +28,7 @@ public sealed class ApacheControlTests : IAsyncDisposable
     {
         await _supervisor.DisposeAsync();
         _job.Dispose();
-        try { Directory.Delete(_paths.Root, recursive: true); } catch (IOException) { }
+        try { Directory.Delete(_paths.Root, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { } // rotatelogs may still be exiting
     }
 
     private async Task<(ApacheControl Apache, string Version)> PrepareAsync(
@@ -66,9 +66,9 @@ public sealed class ApacheControlTests : IAsyncDisposable
         return new SiteDefinition { Id = SiteSet.IdFor(kind, name), Kind = kind, Type = SiteType.Static, Name = name, Root = root, Index = ["index.html"] };
     }
 
-    private static async Task<(HttpStatusCode Status, string Body)> GetAsHostAsync(string host)
+    private static async Task<(HttpStatusCode Status, string Body)> GetAsHostAsync(string host, string path = "/")
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{Port}/");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{Port}{path}");
         request.Headers.Host = $"{host}:{Port}";
         using var response = await Http.SendAsync(request, TestContext.Current.CancellationToken);
         return (response.StatusCode, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
@@ -91,6 +91,28 @@ public sealed class ApacheControlTests : IAsyncDisposable
         Assert.Equal((HttpStatusCode.OK, "hello from ipv6 site"), await GetAsHostAsync("[2001:db8::10]"));
         Assert.Equal((HttpStatusCode.OK, "hello from htdocs"), await GetAsHostAsync("[::1]"));
         Assert.Equal(HttpStatusCode.Forbidden, (await GetAsHostAsync("unknown.example")).Status);
+    }
+
+    // A site saved before ArbiPache refused such folders, or one whose .htaccess grants everything, still cannot serve data\.
+    [Fact]
+    public async Task Site_over_the_arbipache_folder_never_serves_data()
+    {
+        File.WriteAllText(Path.Combine(_paths.Root, ".htaccess"), "Require all granted\r\n");
+        File.WriteAllText(Path.Combine(_paths.Data, ".htaccess"), "Require all granted\r\n");
+        File.WriteAllText(Path.Combine(_paths.Data, "secret.txt"), "secret");
+        File.WriteAllText(Path.Combine(_paths.Root, "index.html"), "hello from shop");
+        var site = new SiteDefinition
+        {
+            Id = SiteSet.IdFor(SiteKind.Domain, "shop.test"), Kind = SiteKind.Domain, Type = SiteType.Static, Name = "shop.test",
+            Root = _paths.Root, Index = ["index.html"],
+        };
+        var (apache, version) = await PrepareAsync(ServerMode.Production, [site]);
+
+        await apache.StartAsync(version, Port, TestContext.Current.CancellationToken);
+
+        Assert.Equal((HttpStatusCode.OK, "hello from shop"), await GetAsHostAsync("shop.test"));
+        Assert.Equal(HttpStatusCode.Forbidden, (await GetAsHostAsync("shop.test", "/data/secret.txt")).Status);
+        Assert.Equal(HttpStatusCode.Forbidden, (await GetAsHostAsync("shop.test", "/DATA/secret.txt")).Status);
     }
 
     [Fact]

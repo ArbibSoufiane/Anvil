@@ -1,3 +1,4 @@
+using ArbiPache.Core.Paths;
 using ArbiPache.Core.Sites;
 
 namespace ArbiPache.Core.Tests.Sites;
@@ -164,5 +165,40 @@ public sealed class SiteValidatorTests
         var shop = Domain("shop.example.com", "www.shop.example.com");
 
         Assert.Empty(Fields(shop with { Root = @"D:\Sites\shop2" }, shop));
+    }
+
+    private static readonly AppPaths App = new(@"D:\ArbiPache");
+
+    // data\ holds the settings, keys and logs: a site must not publish it, nor ArbiPache's binaries.
+    [Theory]
+    [InlineData(@"D:\ArbiPache")]
+    [InlineData(@"D:\arbipache\")]
+    [InlineData(@"D:\")]
+    [InlineData(@"D:\ArbiPache\data\sites")]
+    [InlineData(@"D:\ArbiPache\runtime\php")]
+    [InlineData(@"D:/ArbiPache/catalog")]
+    public void Rejects_a_root_that_would_publish_arbipache_files(string root)
+    {
+        var errors = SiteValidator.Validate(Domain("shop.example.com") with { Root = root }, [], App);
+
+        var error = Assert.Single(errors);
+        Assert.Equal("Root", error.Field);
+        Assert.Equal("This folder holds ArbiPache's own files, so the site would publish its settings and keys. Choose the site's own folder.",
+            error.Message);
+    }
+
+    [Theory]
+    [InlineData(@"D:\ArbiPache\htdocs\shop")]
+    [InlineData(@"D:\ArbiPache\projects\shop")]
+    [InlineData(@"D:\ArbiPacheSites\shop")]
+    public void Accepts_a_root_beside_arbipache_files(string root) =>
+        Assert.Empty(SiteValidator.Validate(Domain("shop.example.com") with { Root = root }, [], App));
+
+    [Fact]
+    public void Rejects_a_mount_that_would_publish_arbipache_files()
+    {
+        var site = Domain("shop.example.com") with { Mounts = [new SiteMount("/demo", @"D:\ArbiPache\data", SiteType.Static, null)] };
+
+        Assert.Equal(["Mounts"], SiteValidator.Validate(site, [], App).Select(e => e.Field));
     }
 }

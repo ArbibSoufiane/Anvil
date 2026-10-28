@@ -735,7 +735,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
 
     private IReadOnlyList<ValidationError> ValidateAgainst(SiteDefinition site, IReadOnlyList<SiteDefinition> others)
     {
-        var errors = SiteValidator.Validate(site, others).ToList();
+        var errors = SiteValidator.Validate(site, others, paths).ToList();
         if (site.Type == SiteType.Php && site.PhpVersion is { } version && InstalledPhp(version) is null && errors.All(e => e.Field != "PhpVersion"))
             errors.Add(new ValidationError("PhpVersion", $"PHP {version} is not installed. Install it on the PHP page."));
         if (site.Mounts.FirstOrDefault(m => m.Type == SiteType.Php && m.PhpVersion is { } v && InstalledPhp(v) is null) is { } mount

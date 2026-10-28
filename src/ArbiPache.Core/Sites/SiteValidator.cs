@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
+using ArbiPache.Core.Paths;
 
 namespace ArbiPache.Core.Sites;
 
@@ -17,8 +18,11 @@ public static partial class SiteValidator
     [GeneratedRegex(@"^/[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)*$")]
     private static partial Regex MountPath();
 
-    /// <summary>Every problem with <paramref name="s"/>, at most one per field. <paramref name="others"/> may include the saved copy of s itself.</summary>
-    public static IReadOnlyList<ValidationError> Validate(SiteDefinition s, IReadOnlyList<SiteDefinition> others)
+    /// <summary>
+    /// Every problem with <paramref name="s"/>, at most one per field. <paramref name="others"/> may include the saved copy of s
+    /// itself. With <paramref name="app"/>, a folder that would publish ArbiPache's own files is a problem too.
+    /// </summary>
+    public static IReadOnlyList<ValidationError> Validate(SiteDefinition s, IReadOnlyList<SiteDefinition> others, AppPaths? app = null)
     {
         var rest = others.Where(o => o.Id != s.Id).ToList();
         var errors = new List<ValidationError>();
@@ -29,8 +33,8 @@ public static partial class SiteValidator
 
         Check(nameof(SiteDefinition.Name), NameError(s, rest));
         Check(nameof(SiteDefinition.Aliases), AliasError(s, rest));
-        Check(nameof(SiteDefinition.Root), RootError(s.Type, s.Root));
-        Check(nameof(SiteDefinition.Mounts), MountError(s));
+        Check(nameof(SiteDefinition.Root), RootError(s.Type, s.Root, app));
+        Check(nameof(SiteDefinition.Mounts), MountError(s, app));
         Check(nameof(SiteDefinition.Access), s.Kind == SiteKind.Htdocs && s.Access == AccessLevel.Everyone
             ? "An htdocs folder cannot be open to everyone. Add it as a domain or IP site to publish it."
             : null);
@@ -89,16 +93,39 @@ public static partial class SiteValidator
         return null;
     }
 
-    private static string? RootError(SiteType type, string root)
+    private static string? RootError(SiteType type, string root, AppPaths? app)
     {
         if (string.IsNullOrWhiteSpace(root)) return type == SiteType.Proxy ? "Enter the address to forward to." : "Choose the site's folder.";
-        if (type != SiteType.Proxy) return null;
+        if (type != SiteType.Proxy)
+            return app is not null && PublishesAppFiles(root, app)
+                ? "This folder holds ArbiPache's own files, so the site would publish its settings and keys. Choose the site's own folder."
+                : null;
         return Uri.TryCreate(root, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
             ? null
             : "Enter an address starting with http:// or https://, such as http://localhost:5173.";
     }
 
-    private static string? MountError(SiteDefinition s)
+    /// <summary>
+    /// True when <paramref name="root"/> is ArbiPache's folder, a folder above it, or one of the folders it keeps its data,
+    /// runtimes and catalog in. Folders the person adds beside them, htdocs among them, are theirs.
+    /// </summary>
+    private static bool PublishesAppFiles(string root, AppPaths app)
+    {
+        if (!Path.IsPathFullyQualified(root)) return false;
+        var full = Path.GetFullPath(root);
+        return IsWithin(app.Root, full) || IsWithin(full, app.Data) || IsWithin(full, app.Runtime) || IsWithin(full, app.Catalog);
+    }
+
+    /// <summary>True when <paramref name="path"/> is <paramref name="folder"/> or inside it. Windows paths ignore case.</summary>
+    private static bool IsWithin(string path, string folder)
+    {
+        var p = Path.TrimEndingDirectorySeparator(path);
+        var f = Path.TrimEndingDirectorySeparator(folder);
+        return string.Equals(p, f, StringComparison.OrdinalIgnoreCase)
+            || p.StartsWith(Path.EndsInDirectorySeparator(f) ? f : f + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? MountError(SiteDefinition s, AppPaths? app)
     {
         if (s.Mounts.Count == 0) return null;
         if (s.Kind == SiteKind.Htdocs) return "Sub-paths are available on domain and IP sites.";
@@ -107,7 +134,7 @@ public static partial class SiteValidator
         {
             if (!MountPath().IsMatch(mount.UrlPath)) return $"{mount.UrlPath} is not a valid path. Use lower case, such as /demo.";
             if (!paths.Add(mount.UrlPath)) return $"{mount.UrlPath} is listed twice.";
-            if (RootError(mount.Type, mount.Root) is { } rootError) return $"{mount.UrlPath}: {rootError}";
+            if (RootError(mount.Type, mount.Root, app) is { } rootError) return $"{mount.UrlPath}: {rootError}";
         }
 
         return null;

@@ -38,6 +38,13 @@ MaxKeepAliveRequests 100
 Include "{{ mode_conf }}"
 Include "{{ php_pools_conf }}"
 
+# Settings, keys and logs: never served, even by a site whose folder holds ArbiPache's.
+<Directory "{{ data }}">
+    Options None
+    AllowOverride None
+    Require all denied
+</Directory>
+
 # Let's Encrypt HTTP-01 challenges, answered on every site.
 Alias "/.well-known/acme-challenge/" "{{ acme_challenges }}/"
 <Directory "{{ acme_challenges }}">

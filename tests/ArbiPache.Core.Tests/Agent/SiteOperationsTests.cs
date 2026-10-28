@@ -173,6 +173,16 @@ public sealed class SiteOperationsTests : IDisposable
     }
 
     [Fact]
+    public async Task Validate_refuses_a_folder_that_holds_arbipache()
+    {
+        var orchestrator = await StartedAsync();
+
+        var errors = orchestrator.ValidateSite(Site("shop.example.com") with { Root = _paths.Root });
+
+        Assert.Equal(["Root"], errors.Select(e => e.Field));
+    }
+
+    [Fact]
     public async Task New_test_domain_requests_hosts_update()
     {
         var orchestrator = await StartedAsync();

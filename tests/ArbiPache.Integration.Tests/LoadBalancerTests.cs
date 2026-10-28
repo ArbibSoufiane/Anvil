@@ -35,7 +35,7 @@ public sealed class LoadBalancerTests : IAsyncDisposable
         await _pools.DisposeAsync();
         await _supervisor.DisposeAsync();
         _job.Dispose();
-        try { Directory.Delete(_paths.Root, recursive: true); } catch (IOException) { }
+        try { Directory.Delete(_paths.Root, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { } // rotatelogs may still be exiting
     }
 
     private static bool IsFree(int port)

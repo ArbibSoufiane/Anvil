@@ -45,6 +45,13 @@ MaxKeepAliveRequests 100
 Include "D:/ArbiPache/data/conf/mode.conf"
 Include "D:/ArbiPache/data/conf/php-pools.conf"
 
+# Settings, keys and logs: never served, even by a site whose folder holds ArbiPache's.
+<Directory "D:/ArbiPache/data">
+    Options None
+    AllowOverride None
+    Require all denied
+</Directory>
+
 # Let's Encrypt HTTP-01 challenges, answered on every site.
 Alias "/.well-known/acme-challenge/" "D:/ArbiPache/data/acme/.well-known/acme-challenge/"
 <Directory "D:/ArbiPache/data/acme/.well-known/acme-challenge">

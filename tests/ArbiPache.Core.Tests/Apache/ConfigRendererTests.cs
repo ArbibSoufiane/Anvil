@@ -78,6 +78,15 @@ public sealed class ConfigRendererTests
         Assert.Equal(["arbipache.conf", "mode.conf", "php-pools.conf", @"vhosts\00-catchall.conf", @"vhosts\01-localhost.conf"], files);
     }
 
+    // A site or htdocs folder set wider than its own folder must still never serve data\: settings, keys and logs.
+    [Fact]
+    public void Data_folder_is_never_served()
+    {
+        var conf = new ConfigRenderer(Paths).Render(Input()).Files["arbipache.conf"].ReplaceLineEndings("\n");
+
+        Assert.Contains("<Directory \"D:/ArbiPache/data\">\n    Options None\n    AllowOverride None\n    Require all denied\n</Directory>\n", conf);
+    }
+
     [Fact]
     public void Skips_modules_already_loaded_by_stock_conf()
     {
