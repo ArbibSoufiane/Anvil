@@ -72,6 +72,21 @@ public sealed class DnsMessageTests
     }
 
     [Fact]
+    public void Non_ascii_label_bytes_stay_under_the_domain_and_are_echoed_exactly()
+    {
+        // Resolvers send international names as xn-- labels; raw bytes above 127 never widen what counts as ours.
+        var packet = DnsPackets.With(DnsPackets.Query(4, "shop.arbib.pc", DnsMessage.TypeA), 14, 0xE9);
+        var q = DnsMessage.TryParse(packet)!;
+
+        Assert.Equal("s?op.arbib.pc", q.Name);
+        Assert.Equal((DnsReplyCode.NoError, true), DnsPolicy.Decide(q, "arbib.pc"));
+        var r = DnsMessage.Reply(q, DnsReplyCode.NoError, IPAddress.Loopback, 60);
+        Assert.Equal(packet.AsSpan(12, q.RawQuestion.Length).ToArray(), r.AsSpan(12, q.RawQuestion.Length).ToArray());
+        Assert.Equal(DnsReplyCode.Refused, DnsPolicy.Decide(DnsMessage.TryParse(
+            DnsPackets.With(DnsPackets.Query(4, "shop.arbib.pc", DnsMessage.TypeA), 20, 0xE9))!, "arbib.pc").Code);
+    }
+
+    [Fact]
     public void Query_with_edns_record_is_answered()
     {
         var q = DnsMessage.TryParse(DnsPackets.Query(3, "shop.arbib.pc", DnsMessage.TypeA, edns: true))!;
