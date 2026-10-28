@@ -92,4 +92,19 @@ public sealed class FirewallRulePlannerTests
         Assert.True(FirewallRulePlanner.Satisfied(planned,
             [exact with { Name = "ANVIL WEB SERVER", Program = planned[0].Program.ToUpperInvariant(), RemoteAddresses = "localsubnet" }], P));
     }
+
+    [Theory]
+    [InlineData("443,80", "LocalSubnet", true)]
+    [InlineData("80, 443", "LocalSubnet", true)]
+    [InlineData("80,443", " LocalSubnet ", true)]
+    [InlineData("80,443,8080", "LocalSubnet", false)]
+    [InlineData("80,443", "LocalSubnet,10.0.0.0/255.0.0.0", false)]
+    public void Lists_are_compared_the_way_windows_may_hand_them_back(string ports, string remote, bool satisfied)
+    {
+        // Windows Firewall keeps a rule's lists in its own order and spacing; the banner must still clear.
+        var planned = FirewallRulePlanner.Plan(new FirewallSetRequest("2.4.69", [80, 443], false), P);
+        var rule = new ExistingFirewallRule("Anvil web server", planned[0].Program, 6, ports, 3, remote, true, true);
+
+        Assert.Equal(satisfied, FirewallRulePlanner.Satisfied(planned, [rule], P));
+    }
 }

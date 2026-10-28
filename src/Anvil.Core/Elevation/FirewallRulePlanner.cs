@@ -100,7 +100,13 @@ public static partial class FirewallRulePlanner
         string.Equals(rule.Name, e.Name, StringComparison.OrdinalIgnoreCase)
         && string.Equals(rule.Program, e.Program, StringComparison.OrdinalIgnoreCase)
         && (int)rule.Protocol == e.Protocol
-        && string.Equals(rule.LocalPorts, e.LocalPorts, StringComparison.OrdinalIgnoreCase)
+        && SameList(rule.LocalPorts, e.LocalPorts)
         && rule.Profiles == e.Profiles
-        && string.Equals(rule.RemoteAddresses, e.RemoteAddresses, StringComparison.OrdinalIgnoreCase);
+        && SameList(rule.RemoteAddresses, e.RemoteAddresses);
+
+    // Windows Firewall hands a list back in its own order and spacing.
+    private static bool SameList(string planned, string? existing) => existing is not null && Items(planned).SetEquals(Items(existing));
+
+    private static HashSet<string> Items(string list) =>
+        new(list.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
 }
