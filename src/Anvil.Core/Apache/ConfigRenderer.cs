@@ -41,7 +41,8 @@ public sealed partial class ConfigRenderer(AppPaths paths)
         // htdocs runs on DefaultPhp; when that version has no pool, on the newest one that does.
         var htdocsPool = input.Pools.FirstOrDefault(p => string.Equals(p.Version, s.DefaultPhp, StringComparison.OrdinalIgnoreCase))
             ?? input.Pools.FirstOrDefault();
-        var htdocsPhp = htdocsPool is null ? null : PhpHandler(htdocsPool, "    ");
+        // Without any pool a .php file is refused, never sent as its source; index.html stays the index.
+        var htdocsPhp = PhpHandler(htdocsPool, "    ", withIndex: htdocsPool is not null);
         var networkEntries = HtdocsEntries(input, options, htdocsPool, local: false);
         var localEntries = HtdocsEntries(input, options, htdocsPool, local: true);
 
@@ -178,7 +179,7 @@ public sealed partial class ConfigRenderer(AppPaths paths)
             root = AppPaths.ForApache(entry.Root),
             options,
             require = $"ip {PrivateRanges}",
-            php_handler = htdocsPool is null ? null : PhpHandler(PoolFor(entry.PhpVersion, input.Pools, htdocsPool), "    "),
+            php_handler = PhpHandler(PoolFor(entry.PhpVersion, input.Pools, htdocsPool), "    ", withIndex: htdocsPool is not null),
         });
     }
 

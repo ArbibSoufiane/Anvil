@@ -37,6 +37,7 @@ Settings → Import from ArbiPache 3 brings your sites over.
 - A site's network setting holds even when an app ships a `.htaccess` that allows everyone.
 - HTTPS refuses host names no site claims, and Apache listens only on the ports set in Settings.
 - A site folder that would publish Anvil's own files is refused, and `data\` is never served.
+  Before a PHP version runs, `.php` files are refused rather than sent as their source.
 - A port another program uses is refused while your sites run. When Apache cannot serve new
   settings, Anvil goes back to the previous ones and starts Apache again.
 - Moving the Anvil folder re-points the database and the sites kept inside it.

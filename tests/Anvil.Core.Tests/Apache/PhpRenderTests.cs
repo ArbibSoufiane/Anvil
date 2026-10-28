@@ -3,6 +3,7 @@ using Anvil.Core.Apache;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
+using Anvil.Core.Sites;
 
 namespace Anvil.Core.Tests.Apache;
 
@@ -96,5 +97,21 @@ public sealed class PhpRenderTests
             Assert.DoesNotContain("ProxyFCGI", text, StringComparison.Ordinal);
             Assert.DoesNotContain("index.php", text, StringComparison.Ordinal);
         });
+    }
+
+    [Fact]
+    public void Without_a_pool_htdocs_serves_no_php_file_as_its_source()
+    {
+        // With no handler a .php file goes out as plain text, database passwords and all, to everyone it is open to.
+        var files = new ConfigRenderer(Paths).Render(new RenderInput
+        {
+            Settings = new AppSettings { DefaultPhp = "8.5.12", NetworkDomain = "arbib.pc" },
+            Stock = Stock,
+            Pools = [],
+            Htdocs = [new HtdocsEntry("blog", @"D:\Anvil\htdocs\blog", false, null, AccessLevel.Network)],
+        }).Files;
+
+        foreach (var vhost in new[] { @"vhosts\00-catchall.conf", @"vhosts\01-localhost.conf", @"vhosts\net-blog.conf" })
+            Assert.Contains("    <FilesMatch \"\\.php$\">\n        Require all denied\n    </FilesMatch>\n", files[vhost].ReplaceLineEndings("\n"));
     }
 }
