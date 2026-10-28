@@ -32,6 +32,8 @@ public sealed partial class ConfigRenderer(AppPaths paths)
             .Where(m => !input.Stock.LoadedModules.Contains(m))
             .ToList();
         var sites = input.Sites.Where(x => x.Enabled && x.Kind != SiteKind.Htdocs).ToList();
+        foreach (var site in sites) RefuseUnsafe(site);
+        foreach (var entry in input.Htdocs) RefuseUnsafe(entry);
         var httpsCert = sites.Select(x => CertificateOf(x, input)).FirstOrDefault(c => c is not null);
         // Nothing listens on the HTTPS port without an HTTPS site: Apache's main server would answer there.
         var listen = (httpsCert is null ? new[] { s.HttpPort } : [s.HttpPort, s.HttpsPort])
@@ -178,6 +180,32 @@ public sealed partial class ConfigRenderer(AppPaths paths)
             require = $"ip {PrivateRanges}",
             php_handler = htdocsPool is null ? null : PhpHandler(PoolFor(entry.PhpVersion, input.Pools, htdocsPool), "    "),
         });
+    }
+
+    /// <summary>
+    /// The validator refuses these values on save; a site file edited by hand still reaches here, and a quote, line break or
+    /// variable in it would rewrite the configuration around it.
+    /// </summary>
+    private static void RefuseUnsafe(SiteDefinition site)
+    {
+        var owner = $"site {site.Name}";
+        Refuse(site.Name, nameof(SiteDefinition.Name), owner);
+        Refuse(site.Root, nameof(SiteDefinition.Root), owner);
+        foreach (var alias in site.Aliases) Refuse(alias, nameof(SiteDefinition.Aliases), owner);
+        foreach (var index in site.Index) Refuse(index, nameof(SiteDefinition.Index), owner);
+    }
+
+    private static void RefuseUnsafe(HtdocsEntry entry)
+    {
+        var owner = $"htdocs folder {entry.Folder}";
+        Refuse(entry.Folder, nameof(HtdocsEntry.Folder), owner);
+        Refuse(entry.Root, nameof(HtdocsEntry.Root), owner);
+    }
+
+    private static void Refuse(string value, string field, string owner)
+    {
+        if (!SiteValidator.IsDirectiveSafe(value))
+            throw new ArgumentException($"{field} of {owner} contains quotes, line breaks, %{{ or ${{.");
     }
 
     /// <summary>The certificate a site serves HTTPS with, or null while it serves HTTP only.</summary>

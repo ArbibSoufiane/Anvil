@@ -117,4 +117,35 @@ public sealed class SiteValidatorTests
     [InlineData(@"D:\AnvilSites\shop")]
     public void Accepts_a_root_beside_anvil_files(string root) =>
         Assert.Empty(SiteValidator.Validate(Domain("shop.example.com") with { Root = root }, [], App));
+
+    [Theory]
+    [InlineData("C:\\a\"b")]
+    [InlineData("C:\\a\r\nInclude x")]
+    [InlineData("C:\\%{ENV:x}")]
+    [InlineData("C:\\${SRVROOT}")]
+    public void Root_with_directive_characters_is_refused(string root) =>
+        Assert.Contains(SiteValidator.Validate(Domain("shop.example.com") with { Root = root }, []), e => e.Field == "Root"
+            && e.Message == "The folder cannot contain quotes, line breaks, %{ or ${.");
+
+    [Fact]
+    public void Index_and_proxy_url_are_checked_too()
+    {
+        Assert.Contains(SiteValidator.Validate(Domain("shop.example.com") with { Index = ["index.php\"x"] }, []), e => e.Field == "Index");
+        Assert.Contains(SiteValidator.Validate(Domain("shop.example.com") with { Type = SiteType.Proxy, Root = "http://127.0.0.1:5173/${x}" }, []),
+            e => e.Field == "Root" && e.Message == "The address cannot contain quotes, line breaks, %{ or ${.");
+    }
+
+    [Fact]
+    public void Htdocs_folder_kept_elsewhere_is_checked_too() =>
+        Assert.Equal(["Root"], Fields(Htdocs("pma") with { Root = @"D:\Tools\pma${x}" }));
+
+    [Theory]
+    [InlineData(@"D:\Sites\shop\public", true)]
+    [InlineData(@"D:\Sites\50% off\{x}$", true)]
+    [InlineData("a\"b", false)]
+    [InlineData("a\tb", false)]
+    [InlineData("a\0b", false)]
+    [InlineData("a%{b", false)]
+    [InlineData("a${b", false)]
+    public void Directive_safety(string value, bool safe) => Assert.Equal(safe, SiteValidator.IsDirectiveSafe(value));
 }

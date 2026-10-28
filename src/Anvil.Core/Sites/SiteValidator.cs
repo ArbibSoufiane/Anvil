@@ -27,10 +27,20 @@ public static partial class SiteValidator
         Check(nameof(SiteDefinition.Name), NameError(s, rest));
         Check(nameof(SiteDefinition.Aliases), AliasError(s, rest));
         Check(nameof(SiteDefinition.Root), RootError(s.Type, s.Root, app));
+        Check(nameof(SiteDefinition.Index), s.Index.All(IsDirectiveSafe) ? null : "Index files cannot contain quotes, line breaks, %{ or ${.");
         Check(nameof(SiteDefinition.Access), Enum.IsDefined(s.Access) ? null : "Choose who can open the site.");
         Check(nameof(SiteDefinition.Cert), Enum.IsDefined(s.Cert) ? null : "Choose how the site is served.");
         return errors;
     }
+
+    /// <summary>
+    /// False when Apache would read <paramref name="value"/> as more than a value inside a quoted directive argument: a quote
+    /// ends the argument, a line break starts a new directive, and <c>%{</c> and <c>${</c> are expanded.
+    /// </summary>
+    public static bool IsDirectiveSafe(string value) =>
+        !value.Any(c => c == '"' || char.IsControl(c))
+        && !value.Contains("%{", StringComparison.Ordinal)
+        && !value.Contains("${", StringComparison.Ordinal);
 
     /// <summary>True for a domain already in punycode and lower case, other than localhost.</summary>
     public static bool IsDomain(string host) => host != "localhost" && SiteSet.NormalizeHost(host) == host && DomainName().IsMatch(host);
@@ -73,6 +83,8 @@ public static partial class SiteValidator
     private static string? RootError(SiteType type, string root, AppPaths? app)
     {
         if (string.IsNullOrWhiteSpace(root)) return type == SiteType.Proxy ? "Enter the address to forward to." : "Choose the site's folder.";
+        if (!IsDirectiveSafe(root))
+            return $"The {(type == SiteType.Proxy ? "address" : "folder")} cannot contain quotes, line breaks, %{{ or ${{.";
         if (type != SiteType.Proxy)
             return app is not null && PublishesAppFiles(root, app)
                 ? "This folder holds Anvil's own files, so the site would publish its settings and keys. Choose the site's own folder."

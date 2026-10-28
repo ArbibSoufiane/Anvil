@@ -432,4 +432,20 @@ public sealed class SiteOperationsTests : IDisposable
         Assert.Equal(catchAll, File.ReadAllText(Path.Combine(_paths.Vhosts, "00-catchall.conf")));
         Assert.True((await o.SaveSiteAsync(Site("new.test"), Ct)).Ok);
     }
+
+    [Fact]
+    public async Task Hand_edited_site_apache_would_misread_is_reported_not_thrown()
+    {
+        var o = await StartedAsync();
+        var shop = Site("shop.test");
+        Assert.True((await o.SaveSiteAsync(shop, Ct)).Ok);
+        new SiteStore(_paths).Save(shop with { Root = shop.Root + "${x}" });
+
+        var r = await o.SaveSiteAsync(Site("new.test"), Ct);
+
+        Assert.False(r.Ok);
+        Assert.Equal("Anvil could not build the Apache configuration: Root of site shop.test contains quotes, line breaks, %{ or ${. "
+            + "Nothing was changed.", r.Error);
+        Assert.False(File.Exists(SiteJson(SiteSet.IdFor(SiteKind.Domain, "new.test"))));
+    }
 }

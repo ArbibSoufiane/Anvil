@@ -196,4 +196,22 @@ public sealed class ConfigRendererTests
         Assert.Equal(["ssl"], state.LoadedModules);
         Assert.Equal([80, 8081, 8082], state.ListenPorts.Order());
     }
+
+    [Fact]
+    public void Renderer_refuses_an_unchecked_value()
+    {
+        var site = new SiteDefinition { Id = "shop", Kind = SiteKind.Domain, Type = SiteType.Static, Name = "shop.example.com", Root = "C:\\a\nb" };
+
+        var e = Assert.Throws<ArgumentException>(() => new ConfigRenderer(Paths).Render(Input() with { Sites = [site] }));
+        Assert.Equal("Root of site shop.example.com contains quotes, line breaks, %{ or ${.", e.Message);
+    }
+
+    [Fact]
+    public void Renderer_refuses_an_unchecked_htdocs_entry()
+    {
+        var input = Input() with { Htdocs = [new HtdocsEntry("pma", @"C:\Tools\${x}", true, null, AccessLevel.Network)] };
+
+        var e = Assert.Throws<ArgumentException>(() => new ConfigRenderer(Paths).Render(input));
+        Assert.Equal("Root of htdocs folder pma contains quotes, line breaks, %{ or ${.", e.Message);
+    }
 }

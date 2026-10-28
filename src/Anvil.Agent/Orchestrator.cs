@@ -869,6 +869,12 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
                 Log.Warning(e, "Writing the Apache configuration failed");
                 return new ApplyOutcome(false, [], "", $"Anvil could not write the Apache configuration ({e.Message}). Nothing was changed.");
             }
+            catch (ArgumentException e)
+            {
+                // The renderer refuses a value from a site file edited by hand before anything is written.
+                Log.Warning(e, "Building the Apache configuration failed");
+                return new ApplyOutcome(false, [], "", $"Anvil could not build the Apache configuration: {e.Message} Nothing was changed.");
+            }
             if (!alwaysTest || outcome.ChangedFiles.Count > 0) return outcome;
             var test = await tester.TestAsync(ct);
             return outcome with { Ok = test.Ok, TestOutput = test.Output };
