@@ -86,6 +86,9 @@ internal sealed class FakeApache(List<string> events) : IApacheControl
         return Task.CompletedTask;
     }
 
+    /// <summary>Apache crashed too often, so the supervisor stopped restarting it.</summary>
+    public void GiveUp() => Set(ProcessState.Failed);
+
     private void Set(ProcessState state)
     {
         Status = new ProcessStatus(ApacheControl.ProcessName, state, state == ProcessState.Running ? 42 : null, null, 0, null);

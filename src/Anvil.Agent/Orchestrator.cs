@@ -76,7 +76,11 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     /// </summary>
     public async Task InitializeAsync(CancellationToken ct)
     {
-        apache.StatusChanged += (_, _) => RaiseStatus();
+        apache.StatusChanged += (_, status) =>
+        {
+            RaiseStatus();
+            if (status.State == ProcessState.Failed) _ = FollowApacheFailureAsync();
+        };
         if (db is not null) db.StatusChanged += (_, _) => RaiseStatus();
         await Locked(async () =>
         {
@@ -497,6 +501,22 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         _retryNames = true;
         return Task.FromResult(true);
     }, ct);
+
+    /// <summary>
+    /// Apache that crashed too often fails with no operation running, so nothing else would stop the name service
+    /// pointing colleagues at it. Waits for any running operation, then refreshes as one would.
+    /// </summary>
+    private async Task FollowApacheFailureAsync()
+    {
+        try
+        {
+            await Locked(() => Task.FromResult(true), CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            Log.Warning(e, "The name service could not follow the web server");
+        }
+    }
 
     private FirewallSetRequest? NeededFirewall() => FirewallRulePlanner.Needed(_settings, new SiteStore(paths).All());
 

@@ -21,9 +21,12 @@ public sealed class NetworkOperationsTests : IAsyncLifetime
     private readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "ap-netops-" + Guid.NewGuid().ToString("N")));
     private readonly List<string> _events = [];
     private readonly FakeNameService _names = new();
+    private readonly FakeApache _apache;
     private IReadOnlyList<LanAddress> _lan = [Lan("Ethernet")];
     private IReadOnlyList<ExistingFirewallRule> _firewall = [];
     private Orchestrator _o = null!;
+
+    public NetworkOperationsTests() => _apache = new FakeApache(_events);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -33,7 +36,7 @@ public sealed class NetworkOperationsTests : IAsyncLifetime
         InstallApache(OtherApache);
         Directory.CreateDirectory(_paths.Data);
         new SettingsStore(_paths).Save(new AppSettings { ActiveApache = ActiveApache, StartServicesOnLaunch = false });
-        _o = new Orchestrator(_paths, new SettingsStore(_paths), new FakeTester(), new FakeApache(_events), _ => [],
+        _o = new Orchestrator(_paths, new SettingsStore(_paths), new FakeTester(), _apache, _ => [],
             new ComponentCatalog([], new ShippedCatalogProvider(_paths)),
             new ComponentInstaller(_paths, new Downloader(new HttpClient()), _ => null), new FakePools(_events), _ => true,
             hostsText: () => "", legacyHome: Path.Combine(_paths.Root, "v3"),
@@ -99,6 +102,20 @@ public sealed class NetworkOperationsTests : IAsyncLifetime
         await _o.StopAsync(ServiceId.Apache, Ct);
 
         Assert.Null(_names.LastCall.Domain);
+    }
+
+    [Fact]
+    public async Task A_web_server_that_gave_up_after_crashing_stops_the_name_service()
+    {
+        await Settings(s => s with { NetworkDomain = "arbib.pc" });
+        await _o.StartAsync(ServiceId.Apache, Ct);
+
+        _apache.GiveUp(); // no operation runs: the supervisor stopped restarting it
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (_names.LastCall.Domain is not null && DateTime.UtcNow < deadline) await Task.Delay(20, Ct);
+        Assert.Null(_names.LastCall.Domain);
+        Assert.Empty(_o.Status().NameServiceAddresses);
     }
 
     [Fact]
