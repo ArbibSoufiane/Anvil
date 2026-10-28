@@ -85,31 +85,6 @@ public sealed class AgentConnectionTests
         await gone.WaitAsync(TimeSpan.FromSeconds(5), ct);
     }
 
-    [Theory]
-    [InlineData(true, "start")]
-    [InlineData(false, "child")]
-    public void An_installed_service_is_started_instead_of_a_child(bool installed, string expected)
-    {
-        var calls = new List<string>();
-        var service = new FakeAgentService(calls) { Installed = installed };
-
-        Assert.True(AgentConnection.StartAgent(service, () =>
-        {
-            calls.Add("child");
-            return true;
-        }));
-
-        Assert.Equal([expected], calls);
-    }
-
-    [Fact]
-    public void A_service_windows_will_not_start_counts_as_not_started()
-    {
-        var service = new FakeAgentService([]) { Installed = true, StartFails = new InvalidOperationException("Access is denied.") };
-
-        Assert.False(AgentConnection.StartAgent(service, () => true));
-    }
-
     /// <summary>A one-client Agent stand-in on a real pipe.</summary>
     private sealed class TestServer : IAsyncDisposable
     {

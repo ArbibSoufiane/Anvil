@@ -17,6 +17,16 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Settings_written_by_a_service_build_still_load()
+    {
+        var store = new SettingsStore(_paths);
+        File.WriteAllText(Path.Combine(_paths.Data, "anvil.json"), """{"schemaVersion":1,"runAsService":true,"controlUserSids":["S-1-5-21-1"],"httpPort":8080}""");
+
+        Assert.Equal(8080, store.Load().HttpPort);
+        Assert.Null(store.LastLoadWarning);
+    }
+
+    [Fact]
     public void Defaults_match_spec()
     {
         var s = new SettingsStore(_paths).Load();
@@ -47,7 +57,6 @@ public sealed class SettingsStoreTests : IDisposable
             PhpPoolPorts = new Dictionary<string, int> { ["php85"] = 9100 },
             Network = new NetworkAccess(false, true),
             AcmeEmail = "ops@example.com",
-            ControlUserSids = ["S-1-5-21-1"],
         };
 
         store.Save(saved);

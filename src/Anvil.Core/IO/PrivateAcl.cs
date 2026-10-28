@@ -1,20 +1,15 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
-using Anvil.Core.Elevation;
 
 namespace Anvil.Core.IO;
 
 /// <summary>
-/// Limits a folder or file to this Windows account, the Administrators group, the Anvil service and the users who
-/// control it: the Agent runs as the user or as the service, and each must read what the other wrote. Volumes that keep
-/// no permissions (FAT, exFAT) and network shares are left as they are.
+/// Limits a folder or file to this Windows account and the Administrators group. Volumes that keep no permissions
+/// (FAT, exFAT) and network shares are left as they are.
 /// </summary>
 public static class PrivateAcl
 {
     private static readonly SecurityIdentifier Administrators = new(WellKnownSidType.BuiltinAdministratorsSid, null);
-
-    /// <summary>The settings' control users; the Agent sets them at start.</summary>
-    public static IReadOnlyList<string> ControlUsers { get; set; } = [];
 
     public static void RestrictFolder(string dir)
     {
@@ -39,11 +34,10 @@ public static class PrivateAcl
     private static IReadOnlyList<SecurityIdentifier> Holders()
     {
         using var me = WindowsIdentity.GetCurrent();
-        return Holders(me.User!, ControlUsers);
+        return Holders(me.User!);
     }
 
-    internal static IReadOnlyList<SecurityIdentifier> Holders(SecurityIdentifier me, IEnumerable<string> controlUsers) =>
-        new[] { me, Administrators, AclPlanner.ServiceSid }.Concat(controlUsers.Select(s => new SecurityIdentifier(s))).Distinct().ToList();
+    internal static IReadOnlyList<SecurityIdentifier> Holders(SecurityIdentifier me) => new[] { me, Administrators }.Distinct().ToList();
 
     private static bool KeepsPermissions(string path)
     {

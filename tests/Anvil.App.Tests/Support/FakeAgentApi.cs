@@ -15,7 +15,7 @@ namespace Anvil.App.Tests.Support;
 public sealed class FakeAgentApi : IAgentApi
 {
     public AgentStatus Status { get; set; } = new(ServerMode.Development,
-        [new ServiceStatus(ServiceId.Apache, ProcessState.Stopped, "2.4.69", null)], [], "4.0.0", RunningAsService: false);
+        [new ServiceStatus(ServiceId.Apache, ProcessState.Stopped, "2.4.69", null)], [], "4.0.0");
 
     public AppSettings Settings { get; set; } = new() { ActiveApache = "2.4.69", Apache = new ApacheTuning(256, 0, 5) };
     public AppSettings? Saved { get; private set; }

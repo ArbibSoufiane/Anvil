@@ -1,14 +1,10 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
-using Anvil.Core.Elevation;
 using Anvil.Core.IO;
 
 namespace Anvil.Core.Tests.IO;
 
-/// <summary>
-/// Keys and passwords are readable by whoever runs the Agent: the user's child Agent and the service read each other's
-/// files, so both accounts are always on them.
-/// </summary>
+/// <summary>Keys and passwords are readable only by the account running Anvil and by administrators.</summary>
 public sealed class PrivateAclTests : IDisposable
 {
     private static readonly SecurityIdentifier Administrators = new(WellKnownSidType.BuiltinAdministratorsSid, null);
@@ -18,23 +14,15 @@ public sealed class PrivateAclTests : IDisposable
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
     [Fact]
-    public void Holders_are_the_account_administrators_the_service_and_its_control_users()
+    public void Holders_are_the_account_and_administrators()
     {
         var me = new SecurityIdentifier("S-1-5-21-1004336348-1177238915-682003330-1001");
 
-        var holders = PrivateAcl.Holders(me, ["S-1-5-21-1004336348-1177238915-682003330-1002", me.Value]);
-
-        Assert.Equal([me, Administrators, AclPlanner.ServiceSid, new SecurityIdentifier("S-1-5-21-1004336348-1177238915-682003330-1002")], holders);
+        Assert.Equal([me, Administrators], PrivateAcl.Holders(me));
     }
 
     [Fact]
-    public void The_service_runs_as_its_own_holder_once()
-    {
-        Assert.Equal([AclPlanner.ServiceSid, Administrators], PrivateAcl.Holders(AclPlanner.ServiceSid, []));
-    }
-
-    [Fact]
-    public void A_restricted_file_is_open_to_the_service()
+    public void A_restricted_file_is_open_to_the_account_and_administrators_only()
     {
         var file = Path.Combine(_dir, "key.pem");
         File.WriteAllText(file, "");
@@ -43,8 +31,6 @@ public sealed class PrivateAclTests : IDisposable
 
         var sids = new FileInfo(file).GetAccessControl().GetAccessRules(true, true, typeof(SecurityIdentifier))
             .Cast<FileSystemAccessRule>().Select(r => r.IdentityReference).ToList();
-        Assert.Contains(AclPlanner.ServiceSid, sids);
-        Assert.Contains(WindowsIdentity.GetCurrent().User!, sids);
-        Assert.Equal(3, sids.Count);
+        Assert.Equal([WindowsIdentity.GetCurrent().User!, Administrators], sids.Cast<SecurityIdentifier>().OrderBy(s => s == Administrators));
     }
 }

@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using Anvil.Core.Certificates;
-using Anvil.Core.Elevation;
 using Anvil.Core.Paths;
 using Anvil.Core.Sites;
 using Microsoft.Extensions.Time.Testing;
@@ -212,7 +211,7 @@ public sealed class CertImporterTests : IDisposable
     }
 
     [Fact]
-    public void Key_file_is_readable_only_by_this_account_administrators_and_the_service()
+    public void Key_file_is_readable_only_by_this_account_and_administrators()
     {
         var issued = Issue(Now.AddDays(90), "shop.example.com");
         var request = new CertImportRequest(null, null, Write("shop.crt", issued.Leaf.ExportCertificatePem()), Write("shop.key", KeyPem(issued.Leaf)), null);
@@ -221,7 +220,7 @@ public sealed class CertImporterTests : IDisposable
 
         var security = new FileInfo(saved.KeyFile).GetAccessControl();
         Assert.True(security.AreAccessRulesProtected);
-        var allowed = new[] { WindowsIdentity.GetCurrent().User!, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), AclPlanner.ServiceSid };
+        var allowed = new[] { WindowsIdentity.GetCurrent().User!, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null) };
         var holders = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>()
             .Select(r => (SecurityIdentifier)r.IdentityReference).Distinct().ToList();
         Assert.Equal(allowed.OrderBy(s => s.Value), holders.OrderBy(s => s.Value));

@@ -47,11 +47,11 @@ public sealed class SiteOperationsTests : IDisposable
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private async Task<Orchestrator> StartedAsync(Func<bool, IAcmeProtocol>? acme = null, TimeProvider? time = null, bool runningAsService = false)
+    private async Task<Orchestrator> StartedAsync(Func<bool, IAcmeProtocol>? acme = null, TimeProvider? time = null)
     {
         var orchestrator = new Orchestrator(_paths, new SettingsStore(_paths), _tester, _apache, _ => [],
             new ComponentCatalog([], new ShippedCatalogProvider(_paths)),
-            new ComponentInstaller(_paths, new Downloader(new HttpClient()), _ => null), _pools, _ => true, runningAsService, hostsText: () => _hosts,
+            new ComponentInstaller(_paths, new Downloader(new HttpClient()), _ => null), _pools, _ => true, hostsText: () => _hosts,
             legacyHome: LegacyHome, acme: acme, time: time);
         await orchestrator.InitializeAsync(Ct);
         return orchestrator;
@@ -98,30 +98,6 @@ public sealed class SiteOperationsTests : IDisposable
         Assert.Contains("ServerName shop.example.com", File.ReadAllText(SiteVhost("shop.example.com")));
         Assert.Equal(1, _apache.Restarts);
         Assert.Equal("shop.example.com", Assert.Single(orchestrator.GetSites()).Id);
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Only_the_service_asks_for_access_to_a_site_folder_outside_the_app_folder(bool runningAsService)
-    {
-        var orchestrator = await StartedAsync(runningAsService: runningAsService);
-        // As after installing the service: the app folder, data and runtime are granted.
-        foreach (var grant in AclPlanner.Plan(_paths, [])) Assert.Null(FolderPermissions.Grant(grant.Path, AclPlanner.ServiceSid, grant.Right));
-        var outside = _paths.Root + "-sites";
-        var root = Directory.CreateDirectory(Path.Combine(outside, "shop")).FullName;
-        try
-        {
-            var result = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Root = root }, null, Ct);
-
-            Assert.True(result.Ok, result.Error);
-            if (runningAsService) Assert.Equal([new AclGrant(root, AclRight.Read)], result.RequiredGrants!);
-            else Assert.Null(result.RequiredGrants);
-        }
-        finally
-        {
-            Directory.Delete(outside, recursive: true);
-        }
     }
 
     [Fact]
@@ -631,7 +607,6 @@ public sealed class SiteOperationsTests : IDisposable
         var store = new SettingsStore(_paths);
         store.Save(store.Load() with { Mode = ServerMode.Production });
         var orchestrator = await StartedAsync();
-        Assert.Contains(orchestrator.Status().Findings, f => f.Id == "prod-not-service");
 
         var pma = Site("pma.example.com");
         Directory.CreateDirectory(Path.Combine(pma.Root, "libraries", "classes"));
@@ -641,16 +616,5 @@ public sealed class SiteOperationsTests : IDisposable
 
         Assert.True((await orchestrator.SaveSiteAsync(pma with { Access = AccessLevel.Network }, null, Ct)).Ok);
         Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id == "prod-pma-public");
-    }
-
-    [Fact]
-    public async Task The_service_in_production_is_not_warned_about()
-    {
-        var store = new SettingsStore(_paths);
-        store.Save(store.Load() with { Mode = ServerMode.Production });
-
-        var orchestrator = await StartedAsync(runningAsService: true);
-
-        Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id.StartsWith("prod-", StringComparison.Ordinal));
     }
 }

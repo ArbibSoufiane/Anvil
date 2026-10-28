@@ -8,35 +8,17 @@ namespace Anvil.Core.Elevation;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "verb")]
 [JsonDerivedType(typeof(HostsSetRequest), "hosts-set")]
 [JsonDerivedType(typeof(FirewallSetRequest), "firewall-set")]
-[JsonDerivedType(typeof(ServiceInstallRequest), "service-install")]
-[JsonDerivedType(typeof(ServiceUninstallRequest), "service-uninstall")]
-[JsonDerivedType(typeof(AclGrantRequest), "acl-grant")]
-[JsonDerivedType(typeof(FolderSecureRequest), "folder-secure")]
-public abstract record ElevatedRequest;
+public abstract record ElevatedRequest
+{
+    /// <summary>The verbs above, the only ones the Elevator runs.</summary>
+    public static IReadOnlySet<string> Verbs { get; } = new HashSet<string>(StringComparer.Ordinal) { "hosts-set", "firewall-set" };
+}
 
 /// <summary>Makes Anvil's hosts block map exactly these domains to this PC.</summary>
 public sealed record HostsSetRequest(IReadOnlyList<string> Domains) : ElevatedRequest;
 
 /// <summary>Makes Anvil's firewall rules open exactly these ports to <paramref name="Scope"/>. No ports closes them all.</summary>
 public sealed record FirewallSetRequest(IReadOnlyList<int> Ports, FirewallScope Scope) : ElevatedRequest;
-
-/// <summary>
-/// Installs the AnvilAgent service running <paramref name="AgentExe"/> --service as NT SERVICE\AnvilAgent.
-/// <paramref name="ControlUserSid"/> may start and stop it.
-/// </summary>
-public sealed record ServiceInstallRequest(string AgentExe, string ControlUserSid) : ElevatedRequest;
-
-/// <summary>Stops and removes the AnvilAgent service.</summary>
-public sealed record ServiceUninstallRequest() : ElevatedRequest;
-
-/// <summary>Gives the service account these rights, inherited by everything below each folder.</summary>
-public sealed record AclGrantRequest(IReadOnlyList<AclGrant> Grants) : ElevatedRequest;
-
-/// <summary>
-/// Leaves changing the Anvil folder to administrators, Windows and <paramref name="UserSid"/>; every other account keeps
-/// only reading it. The folder is always the Elevator's own.
-/// </summary>
-public sealed record FolderSecureRequest(string UserSid) : ElevatedRequest;
 
 public sealed record ElevatedResult(bool Ok, string? Error);
 

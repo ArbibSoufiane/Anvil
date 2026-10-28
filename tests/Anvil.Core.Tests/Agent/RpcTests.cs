@@ -31,7 +31,7 @@ public sealed class RpcTests
         var ct = TestContext.Current.CancellationToken;
         var fake = new FakeApi();
         var name = UniquePipe();
-        await using var server = new PipeServer(name, fake, []);
+        await using var server = new PipeServer(name, fake);
         server.Start();
         await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
 
@@ -60,7 +60,7 @@ public sealed class RpcTests
         var ct = TestContext.Current.CancellationToken;
         var fake = new FakeApi();
         var name = UniquePipe();
-        await using var server = new PipeServer(name, fake, []);
+        await using var server = new PipeServer(name, fake);
         server.Start();
         await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
 
@@ -81,7 +81,7 @@ public sealed class RpcTests
         var ct = TestContext.Current.CancellationToken;
         var fake = new FakeApi();
         var name = UniquePipe();
-        await using var server = new PipeServer(name, fake, []);
+        await using var server = new PipeServer(name, fake);
         server.Start();
         await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
 
@@ -109,7 +109,7 @@ public sealed class RpcTests
         var ct = TestContext.Current.CancellationToken;
         var fake = new FakeApi();
         var name = UniquePipe();
-        await using var server = new PipeServer(name, fake, []);
+        await using var server = new PipeServer(name, fake);
         server.Start();
         await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
 
@@ -131,7 +131,7 @@ public sealed class RpcTests
         var ct = TestContext.Current.CancellationToken;
         var fake = new FakeApi();
         var name = UniquePipe();
-        await using var server = new PipeServer(name, fake, []);
+        await using var server = new PipeServer(name, fake);
         server.Start();
         await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
 
@@ -164,7 +164,7 @@ public sealed class RpcTests
     {
         var ct = TestContext.Current.CancellationToken;
         var name = UniquePipe();
-        await using var server = new PipeServer(name, new FakeApi(), []);
+        await using var server = new PipeServer(name, new FakeApi());
         server.Start();
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -182,7 +182,7 @@ public sealed class RpcTests
     {
         var ct = TestContext.Current.CancellationToken;
         var name = UniquePipe();
-        await using var server = new PipeServer(name, new FakeApi(), []);
+        await using var server = new PipeServer(name, new FakeApi());
         server.Start();
         var junction = Path.Combine(Path.GetTempPath(), "ap-junction-" + Guid.NewGuid().ToString("N"));
         using (var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe",
@@ -206,7 +206,7 @@ public sealed class RpcTests
         var ct = TestContext.Current.CancellationToken;
         var fake = new FakeApi();
         var name = UniquePipe();
-        await using var server = new PipeServer(name, fake, []);
+        await using var server = new PipeServer(name, fake);
         server.Start();
         await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
 
@@ -232,7 +232,7 @@ public sealed class RpcTests
         var ct = TestContext.Current.CancellationToken;
         var fake = new FakeApi();
         var name = UniquePipe();
-        await using var server = new PipeServer(name, fake, []);
+        await using var server = new PipeServer(name, fake);
         server.Start();
         await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
         var received = new TaskCompletionSource<AgentStatus>();
@@ -249,29 +249,29 @@ public sealed class RpcTests
     [Fact]
     public void Pipe_acl_has_user_and_admins_not_everyone()
     {
-        const string serviceSid = "S-1-5-80-1111111111-2222222222-3333333333-4444444444-555555555";
+        var security = PipeServer.CreateSecurity();
 
-        var security = PipeServer.CreateSecurity([serviceSid]);
-
-        var allowed = security.GetAccessRules(includeExplicit: true, includeInherited: false, typeof(SecurityIdentifier))
+        var rules = security.GetAccessRules(includeExplicit: true, includeInherited: false, typeof(SecurityIdentifier))
             .Cast<PipeAccessRule>()
             .Where(r => r.AccessControlType == AccessControlType.Allow)
-            .Select(r => (SecurityIdentifier)r.IdentityReference)
-            .ToHashSet();
+            .ToList();
+        var allowed = rules.Select(r => (SecurityIdentifier)r.IdentityReference).ToHashSet();
         Assert.Contains(WindowsIdentity.GetCurrent().User!, allowed);
         Assert.Contains(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), allowed);
-        Assert.Contains(new SecurityIdentifier(serviceSid), allowed);
         Assert.DoesNotContain(new SecurityIdentifier(WellKnownSidType.WorldSid, null), allowed);
         Assert.DoesNotContain(new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null), allowed);
         Assert.DoesNotContain(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), allowed);
-        Assert.Equal(3, allowed.Count);
+        Assert.Equal(2, allowed.Count);
+        // Only the Agent's own account may create instances, so nobody else can serve the pipe name.
+        var admins = Assert.Single(rules, r => r.IdentityReference == new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+        Assert.False(admins.PipeAccessRights.HasFlag(PipeAccessRights.CreateNewInstance));
     }
 
     [Fact]
     public async Task Second_agent_exits_with_code_3()
     {
         var ct = TestContext.Current.CancellationToken;
-        var options = new AgentOptions(UniquePipe(), @"Local\Anvil.Agent.Test." + Guid.NewGuid().ToString("N"), RunningAsService: false);
+        var options = new AgentOptions(UniquePipe(), @"Local\Anvil.Agent.Test." + Guid.NewGuid().ToString("N"));
         var root = Path.Combine(Path.GetTempPath(), "ap-agent-" + Guid.NewGuid().ToString("N"));
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
         try
@@ -298,7 +298,7 @@ public sealed class RpcTests
         public static readonly AgentStatus Status = new(ServerMode.Production,
             [new ServiceStatus(ServiceId.Apache, ProcessState.Running, "2.4.69", null)],
             [new PreflightFinding("port-443", Severity.Blocking, "Port 443 is used by Skype (PID 7).", "Close Skype.")],
-            "4.0.0-test", RunningAsService: false);
+            "4.0.0-test");
 
         public static readonly PhpVersionInfo Php = new("8.5.12", "vs17", 4, 1000, 9100, ["htdocs"], ProcessState.Running, true, false);
         public static readonly PhpExtension Intl = new("intl", true, true, false, false);

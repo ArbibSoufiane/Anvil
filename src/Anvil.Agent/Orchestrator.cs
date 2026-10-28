@@ -30,7 +30,7 @@ namespace Anvil.Agent;
 /// <param name="hostsText">Reads the Windows hosts file; the Agent never writes it (the Elevator does).</param>
 public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IConfigTester tester, IApacheControl apache,
     Func<AppSettings, IReadOnlyList<PreflightFinding>> preflight, ComponentCatalog catalog, ComponentInstaller installer,
-    IPhpPools php, Func<int, bool> portFree, bool runningAsService = false, Func<string>? hostsText = null,
+    IPhpPools php, Func<int, bool> portFree, Func<string>? hostsText = null,
     string? legacyHome = null, Func<bool, IAcmeProtocol>? acme = null, TimeProvider? time = null, IDatabaseServer? db = null)
 {
     public const int MaxWorkers = 64;
@@ -149,7 +149,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             DbStatus(),
         ];
         var findings = _findings.Concat(_expiryFindings).Concat(_renewalFailures.Values).Concat(_productionFindings).ToList();
-        return new AgentStatus(_settings.Mode, services, findings, BuildInfo.Version, runningAsService);
+        return new AgentStatus(_settings.Mode, services, findings, BuildInfo.Version);
     }
 
     /// <summary>
@@ -221,7 +221,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     /// Keeps the new settings only when Apache accepts the configuration they produce; then reloads Apache, or
     /// restarts it when a port changed. The active Apache version is changed by <see cref="ActivateAsync"/> only.
     /// </summary>
-    public async Task<ApplyResult> SaveSettingsAsync(AppSettings s, CancellationToken ct) => WithGrants(await Locked(async () =>
+    public Task<ApplyResult> SaveSettingsAsync(AppSettings s, CancellationToken ct) => Locked(async () =>
     {
         var previous = _settings;
         // Versions, pools and the mode change through their own calls, so a page holding older settings cannot undo them.
@@ -262,7 +262,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
                 ? ApplyResult.Success()
                 : await Guard(() => apache.GracefulRestartAsync(ct), applied);
         return served.Ok ? served : await RollBackAsync(previous, version, served, ct);
-    }, ct));
+    }, ct);
 
     /// <summary>Puts the previous settings and their configuration back after Apache could not serve new ones, and serves those again.</summary>
     private async Task<ApplyResult> RollBackAsync(AppSettings previous, string version, ApplyResult failed, CancellationToken ct)
@@ -411,7 +411,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             certs.Delete(renamedFrom);
         }
 
-        return result with { HostsDomains = HostsChange(), RequiredGrants = MissingGrants() };
+        return result with { HostsDomains = HostsChange() };
     }, ct);
 
     /// <summary>Removes the site with its certificate and password file. Its logs stay.</summary>
@@ -439,7 +439,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         Remember(SiteFile(id), undo);
         sites.Save(site with { Enabled = enabled });
         var (applied, result) = await ApplySitesAsync(undo, enabled ? "The site stays off." : "The site stays on.", ct);
-        return applied ? result with { HostsDomains = HostsChange(), RequiredGrants = MissingGrants() } : result;
+        return applied ? result with { HostsDomains = HostsChange() } : result;
     }, ct);
 
     /// <summary>
@@ -477,7 +477,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
 
         var (applied, result) = await ApplySitesAsync(undo, "Nothing was imported.", ct);
         return applied
-            ? report with { Result = result with { HostsDomains = HostsChange(), RequiredGrants = MissingGrants() } }
+            ? report with { Result = result with { HostsDomains = HostsChange() } }
             : report with { Imported = [], Result = result };
     }, ct);
 
@@ -637,23 +637,8 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             return ApplyResult.Failure($"The copy did not finish: {e.Message}");
         }
 
-        return ApplyResult.Success() with { RequiredGrants = MissingGrants() };
+        return ApplyResult.Success();
     }, ct);
-
-    private ApplyResult WithGrants(ApplyResult r) => r.Ok ? r with { RequiredGrants = MissingGrants() } : r;
-
-    /// <summary>
-    /// As the service: the planned folders it cannot use yet (a new site, a new htdocs folder), for the GUI to ask the
-    /// Elevator for. Null as the window's child, which runs as the user.
-    /// </summary>
-    private IReadOnlyList<AclGrant>? MissingGrants()
-    {
-        if (!runningAsService) return null;
-        var missing = AclPlanner.Plan(paths, new SiteStore(paths).All(), _settings.HtdocsPath)
-            .Where(g => Directory.Exists(g.Path) && !FolderPermissions.Allows(g.Path, AclPlanner.ServiceSid, g.Right))
-            .ToList();
-        return missing.Count == 0 ? null : missing;
-    }
 
     /// <summary>Saves the pool's size and recycling; a running pool is resized at once.</summary>
     public Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings pool, CancellationToken ct) => Locked(async () =>
@@ -1085,7 +1070,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         }
         try
         {
-            _productionFindings = ProductionChecks.Run(_settings, runningAsService, new ProfileStore(paths).Get(ServerMode.Production),
+            _productionFindings = ProductionChecks.Run(_settings, new ProfileStore(paths).Get(ServerMode.Production),
                 new SiteStore(paths).All(), EffectiveDbIni(), ProductionChecks.LooksLikePhpMyAdmin);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

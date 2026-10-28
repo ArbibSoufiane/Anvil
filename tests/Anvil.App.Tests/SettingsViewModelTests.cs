@@ -30,26 +30,11 @@ public sealed class SettingsViewModelTests
     private static readonly Release Next = new("4.1.0", new Uri("https://github.com/ArbibSoufiane/Anvil/releases/download/v4.1.0/Anvil-4.1.0-win64.zip"),
         new Uri("https://github.com/ArbibSoufiane/Anvil/releases/download/v4.1.0/SHA256SUMS"), "Faster starts.");
 
-    private async Task<SettingsViewModel> LoadedAsync(ServiceSwitch? service = null, IAppUpdate? update = null)
+    private async Task<SettingsViewModel> LoadedAsync(IAppUpdate? update = null)
     {
-        var vm = new SettingsViewModel(_api, _elevator, _runKey, _ca, _picker, Paths, () => "192.168.10.2", _changed.Add, () => _sitesChanged++, service,
+        var vm = new SettingsViewModel(_api, _elevator, _runKey, _ca, _picker, Paths, () => "192.168.10.2", _changed.Add, () => _sitesChanged++,
             update, _editor);
         await vm.LoadAsync(Ct);
-        return vm;
-    }
-
-    private ServiceSwitch Service(Func<IReadOnlyList<string>?>? folderOpenTo = null) => new(_api, new FakeAgentLink(_api.Calls), _elevator,
-        new FakeAgentService(_api.Calls), Paths, "S-1-5-21-1004336348-1177238915-682003330-1001", folderOpenTo ?? (() => null));
-
-    /// <summary>A folder Authenticated Users can change until the Elevator secures it.</summary>
-    private ServiceSwitch OpenFolderService() =>
-        Service(() => _elevator.Requests.Any(r => r is FolderSecureRequest) ? [] : [@"NT AUTHORITY\Authenticated Users"]);
-
-    private async Task<SettingsViewModel> RefusedForTheFolderAsync()
-    {
-        var vm = await LoadedAsync(OpenFolderService());
-        vm.RunAsService = true;
-        await vm.ApplyServiceCommand.ExecuteAsync(null);
         return vm;
     }
 
@@ -154,132 +139,6 @@ public sealed class SettingsViewModelTests
         Assert.False(vm.CanUpdate);
         await vm.CheckForUpdatesCommand.ExecuteAsync(null);
         Assert.Null(vm.UpdateMessage);
-    }
-
-    [Fact]
-    public async Task Turning_on_the_service_moves_the_agent()
-    {
-        var vm = await LoadedAsync(Service());
-
-        vm.RunAsService = true;
-        await vm.ApplyServiceCommand.ExecuteAsync(null);
-
-        Assert.Contains(_elevator.Requests, r => r is ServiceInstallRequest);
-        Assert.True(vm.RunAsService);
-        Assert.True(_changed.Single().RunAsService);
-        Assert.Equal("Anvil now runs as a Windows service. Sites stay up after you sign out or restart Windows.", vm.Message);
-        Assert.True(vm.MessageOk);
-    }
-
-    [Fact]
-    public async Task Turning_off_the_service_brings_the_agent_back()
-    {
-        _api.Settings = _api.Settings with { RunAsService = true };
-        var vm = await LoadedAsync(Service());
-
-        vm.RunAsService = false;
-        await vm.ApplyServiceCommand.ExecuteAsync(null);
-
-        Assert.Contains(_elevator.Requests, r => r is ServiceUninstallRequest);
-        Assert.False(vm.RunAsService);
-        Assert.Equal("Anvil runs from this window again. Sites stop when you quit Anvil.", vm.Message);
-    }
-
-    [Fact]
-    public async Task A_refused_service_move_puts_the_switch_back()
-    {
-        _elevator.Next = new ElevatedResult(false, "The operation was canceled by the user.");
-        var vm = await LoadedAsync(Service());
-
-        vm.RunAsService = true;
-        await vm.ApplyServiceCommand.ExecuteAsync(null);
-
-        Assert.False(vm.RunAsService);
-        Assert.False(vm.MessageOk);
-        Assert.Equal("Windows did not let Anvil give its service access to the site folders (The operation was canceled by the user.). "
-            + "Anvil keeps running as before, without the service.", vm.Message);
-    }
-
-    [Fact]
-    public async Task A_folder_others_can_change_offers_to_secure_it()
-    {
-        var vm = await RefusedForTheFolderAsync();
-
-        Assert.False(vm.RunAsService);
-        Assert.False(vm.MessageOk);
-        Assert.True(vm.CanSecureFolder);
-        Assert.False(vm.ConfirmingSecureFolder);
-        Assert.Empty(_elevator.Requests);
-    }
-
-    [Fact]
-    public async Task Securing_the_folder_asks_first_then_moves_the_agent()
-    {
-        var vm = await RefusedForTheFolderAsync();
-
-        await vm.SecureFolderCommand.ExecuteAsync(null);
-
-        Assert.True(vm.ConfirmingSecureFolder);
-        Assert.Empty(_elevator.Requests);
-        Assert.Equal(@"Only you, administrators and Windows will be able to change files in D:\Anvil. NT AUTHORITY\Authenticated Users "
-            + "will still read them but no longer change them, so another account or program that writes there stops working. "
-            + "Windows asks you to confirm.", vm.SecureFolderText);
-
-        await vm.SecureFolderCommand.ExecuteAsync(null);
-
-        Assert.IsType<FolderSecureRequest>(_elevator.Requests[0]);
-        Assert.Contains(_elevator.Requests, r => r is ServiceInstallRequest);
-        Assert.True(vm.RunAsService);
-        Assert.False(vm.CanSecureFolder);
-        Assert.False(vm.ConfirmingSecureFolder);
-        Assert.Equal("Anvil now runs as a Windows service. Sites stay up after you sign out or restart Windows.", vm.Message);
-    }
-
-    [Fact]
-    public async Task Keeping_the_folder_as_it_is_changes_nothing()
-    {
-        var vm = await RefusedForTheFolderAsync();
-        await vm.SecureFolderCommand.ExecuteAsync(null);
-
-        vm.CancelSecureFolderCommand.Execute(null);
-
-        Assert.False(vm.ConfirmingSecureFolder);
-        Assert.True(vm.CanSecureFolder);
-        Assert.Empty(_elevator.Requests);
-        Assert.False(vm.RunAsService);
-    }
-
-    [Fact]
-    public async Task A_folder_fixed_meanwhile_moves_the_agent_without_asking()
-    {
-        var open = true;
-        var vm = await LoadedAsync(Service(() => open ? [@"NT AUTHORITY\Authenticated Users"] : []));
-        vm.RunAsService = true;
-        await vm.ApplyServiceCommand.ExecuteAsync(null);
-        open = false;
-
-        await vm.SecureFolderCommand.ExecuteAsync(null);
-
-        Assert.DoesNotContain(_elevator.Requests, r => r is FolderSecureRequest);
-        Assert.Contains(_elevator.Requests, r => r is ServiceInstallRequest);
-        Assert.True(vm.RunAsService);
-        Assert.False(vm.CanSecureFolder);
-    }
-
-    [Fact]
-    public async Task A_refused_folder_change_keeps_the_offer_and_the_window()
-    {
-        _elevator.ByVerb["folder-secure"] = new ElevatedResult(false, "The operation was canceled by the user.");
-        var vm = await RefusedForTheFolderAsync();
-
-        await vm.SecureFolderCommand.ExecuteAsync(null);
-        await vm.SecureFolderCommand.ExecuteAsync(null);
-
-        Assert.Equal("Windows did not let Anvil secure its folder (The operation was canceled by the user.).", vm.Message);
-        Assert.False(vm.MessageOk);
-        Assert.True(vm.CanSecureFolder);
-        Assert.False(vm.RunAsService);
-        Assert.DoesNotContain(_elevator.Requests, r => r is ServiceInstallRequest);
     }
 
     [Fact]

@@ -34,9 +34,7 @@ public sealed record AppSettings
     public bool StartServicesOnLaunch { get; init; } = true;
     public bool StartWithWindows { get; init; }
     public bool CloseToTray { get; init; } = true;
-    public bool RunAsService { get; init; }
     public string? HtdocsPath { get; init; }
     public string? AcmeEmail { get; init; }
     public bool AcmeStaging { get; init; }
-    public IReadOnlyList<string> ControlUserSids { get; init; } = [];
 }

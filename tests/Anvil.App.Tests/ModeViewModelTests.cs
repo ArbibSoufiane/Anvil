@@ -35,63 +35,20 @@ public sealed class ModeViewModelTests
     private ShellViewModel Shell() => new(new AppSettings(),
         modeSwitch: (from, to) => new ModeSwitchViewModel(_api, new ElevationFollowUp(_elevator), Paths, from, to));
 
-    private ModeSwitchViewModel ToProduction(bool withService = true) => new(_api, new ElevationFollowUp(_elevator), Paths,
-        ServerMode.Development, ServerMode.Production,
-        withService ? new ServiceSwitch(_api, new FakeAgentLink(_api.Calls), _elevator, new FakeAgentService(_api.Calls), Paths, "S-1-5-21-1-2-3-1001", () => null) : null);
+    private ModeSwitchViewModel ToProduction() => new(_api, new ElevationFollowUp(_elevator), Paths, ServerMode.Development, ServerMode.Production);
 
     [Fact]
-    public async Task Switching_to_production_also_moves_the_agent_to_the_service()
+    public async Task Applying_switches_the_mode_and_closes_the_dialog()
     {
         var dialog = ToProduction();
         await dialog.LoadAsync(Ct);
         bool? switched = null;
         dialog.Closed += (_, s) => switched = s;
 
-        Assert.True(dialog.OffersService);
-        Assert.True(dialog.RunAsService);
         await dialog.ApplyCommand.ExecuteAsync(null);
 
         Assert.True(switched);
-        Assert.Contains(_elevator.Requests, r => r is ServiceInstallRequest);
-        Assert.True(_api.Settings.RunAsService);
-    }
-
-    [Fact]
-    public async Task Leaving_the_service_unticked_only_switches_the_mode()
-    {
-        var dialog = ToProduction();
-        await dialog.LoadAsync(Ct);
-
-        dialog.RunAsService = false;
-        await dialog.ApplyCommand.ExecuteAsync(null);
-
-        Assert.DoesNotContain(_elevator.Requests, r => r is ServiceInstallRequest);
         Assert.Equal(ServerMode.Production, _api.ModeApplied?.Target);
-    }
-
-    [Fact]
-    public async Task The_service_is_not_offered_when_the_agent_already_is_one()
-    {
-        _api.Settings = _api.Settings with { RunAsService = true };
-        var dialog = ToProduction();
-        await dialog.LoadAsync(Ct);
-
-        Assert.False(dialog.OffersService);
-        Assert.False((await LoadedAsync(ToProduction(withService: false))).OffersService);
-    }
-
-    [Fact]
-    public async Task A_refused_service_move_is_shown_after_the_switch()
-    {
-        _elevator.ByVerb["service-install"] = new ElevatedResult(false, "The operation was canceled by the user.");
-        var dialog = ToProduction();
-        await dialog.LoadAsync(Ct);
-
-        await dialog.ApplyCommand.ExecuteAsync(null);
-
-        Assert.True(dialog.IsDone);
-        Assert.Equal("Switched to Production mode. Windows did not let Anvil install its service (The operation was canceled by the user.). "
-            + "Anvil keeps running as before, without the service.", dialog.Message);
     }
 
     private static async Task<ModeSwitchViewModel> LoadedAsync(ModeSwitchViewModel dialog)

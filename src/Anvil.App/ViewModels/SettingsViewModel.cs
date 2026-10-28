@@ -32,20 +32,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly Action<AppSettings>? _settingsChanged;
     private readonly Action? _sitesChanged;
     private readonly ElevationFollowUp _followUp;
-    private readonly ServiceSwitch? _service;
     private readonly IAppUpdate? _update;
     private readonly EditorChoice _editor;
     private AppSettings _settings = new();
 
     /// <param name="settingsChanged">Told about every saved change, so the rest of the window follows.</param>
     /// <param name="sitesChanged">Told when imported sites or a new htdocs folder change the Sites page.</param>
-    /// <param name="service">Moves the Agent to and from the Windows service; null leaves the switch off.</param>
     /// <param name="update">Checks for and installs a newer Anvil; null hides the update buttons.</param>
     public SettingsViewModel(IAgentApi api, IElevator elevator, IRunKey runKey, ILocalCaTrust ca, IFolderPicker picker, AppPaths paths,
-        Func<string?> lanIp, Action<AppSettings>? settingsChanged = null, Action? sitesChanged = null, ServiceSwitch? service = null,
+        Func<string?> lanIp, Action<AppSettings>? settingsChanged = null, Action? sitesChanged = null,
         IAppUpdate? update = null, EditorChoice? editor = null)
     {
-        _service = service;
         _update = update;
         _editor = editor ?? new EditorChoice(null);
         _api = api;
@@ -72,9 +69,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool CloseToTray { get; set; }
-
-    [ObservableProperty]
-    public partial bool RunAsService { get; set; }
 
     [ObservableProperty]
     public partial string EditorText { get; set; } = AutomaticEditor;
@@ -241,87 +235,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         CaTrusted = IsCaTrusted();
         // A portable folder may have moved since the Run entry was written.
         if (_settings.StartWithWindows) TryRunKey(set: true);
-    }
-
-    public bool CanRunAsService => _service is not null;
-
-    /// <summary>The service was refused because other accounts can change the Anvil folder.</summary>
-    [ObservableProperty]
-    public partial bool CanSecureFolder { get; set; }
-
-    [ObservableProperty]
-    public partial bool ConfirmingSecureFolder { get; set; }
-
-    /// <summary>Who keeps only reading the folder once it is secured.</summary>
-    [ObservableProperty]
-    public partial string? SecureFolderText { get; set; }
-
-    /// <summary>The first press says who loses write access; the second asks Windows, then moves the Agent to the service.</summary>
-    [RelayCommand]
-    private async Task SecureFolderAsync()
-    {
-        if (_service is null) return;
-        if (!ConfirmingSecureFolder && _service.FolderOpenTo() is [_, ..] others)
-        {
-            SecureFolderText = $"Only you, administrators and Windows will be able to change files in {_paths.Root}. {ServiceFolderCheck.List(others)} "
-                + "will still read them but no longer change them, so another account or program that writes there stops working. "
-                + "Windows asks you to confirm.";
-            ConfirmingSecureFolder = true;
-            return;
-        }
-
-        if (ConfirmingSecureFolder)
-        {
-            ConfirmingSecureFolder = false;
-            Say("Securing the Anvil folder…", ok: true);
-            if (await _service.SecureFolderAsync() is { } problem)
-            {
-                Say(problem, ok: false);
-                return;
-            }
-        }
-
-        RunAsService = true;
-        await ApplyServiceAsync();
-    }
-
-    [RelayCommand]
-    private void CancelSecureFolder() => ConfirmingSecureFolder = false;
-
-    /// <summary>Moves the Agent to the Windows service or back into this window; a refused move puts the switch back.</summary>
-    [RelayCommand]
-    private async Task ApplyServiceAsync()
-    {
-        var on = RunAsService;
-        if (_service is null || on == _settings.RunAsService) return;
-        Say(on ? "Moving Anvil to a Windows service…" : "Moving Anvil back to this window…", ok: true);
-
-        string? problem;
-        try
-        {
-            problem = on ? await _service.TurnOnAsync() : await _service.TurnOffAsync();
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            Log.Warning(e, "Moving the Agent failed");
-            problem = e.Message;
-        }
-
-        try
-        {
-            _settings = await _api.GetSettingsAsync();
-            Show(_settings);
-            _settingsChanged?.Invoke(_settings);
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            Log.Warning(e, "Reading settings after moving the Agent failed");
-        }
-
-        CanSecureFolder = on && problem is not null && _service.FolderOpenTo() is [_, ..];
-        if (problem is not null) Say(problem, ok: false);
-        else if (on) Say("Anvil now runs as a Windows service. Sites stay up after you sign out or restart Windows.", ok: true);
-        else Say("Anvil runs from this window again. Sites stop when you quit Anvil.", ok: true);
     }
 
     [RelayCommand]
@@ -492,8 +405,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         Show(next);
         _settingsChanged?.Invoke(next);
         Say("Saved.", ok: true);
-        // A new htdocs folder needs the service's access too.
-        if (result.RequiredGrants is not null && await _followUp.RunAsync(result, next.HttpPort, next.HttpsPort) is { } problem) Say(problem, ok: false);
         return true;
     }
 
@@ -508,7 +419,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         StartServicesOnLaunch = s.StartServicesOnLaunch;
         StartWithWindows = s.StartWithWindows;
         CloseToTray = s.CloseToTray;
-        RunAsService = s.RunAsService;
         EditorText = EditorLabel();
         HtdocsOnNetwork = s.Network.HtdocsOnNetwork;
         PrivateNetworksOnly = s.Network.PrivateNetworksOnly;

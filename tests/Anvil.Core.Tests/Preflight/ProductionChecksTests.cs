@@ -10,7 +10,7 @@ public sealed class ProductionChecksTests
 {
     private const string PmaRoot = @"D:\www\phpmyadmin";
 
-    private static readonly AppSettings Production = new() { Mode = ServerMode.Production, RunAsService = true, DbEngine = DbEngine.MariaDb };
+    private static readonly AppSettings Production = new() { Mode = ServerMode.Production, DbEngine = DbEngine.MariaDb };
 
     private static IReadOnlyDictionary<string, string> Db(params (string Key, string Value)[] values)
     {
@@ -28,9 +28,9 @@ public sealed class ProductionChecksTests
     private static ModeProfile ProfileWith(string key, string value) =>
         ProfileStore.With(ServerMode.Production, new ModeProfileOverrides(new Dictionary<string, string> { [key] = value }, null, null, null, null, null));
 
-    private static IReadOnlyList<PreflightFinding> Run(AppSettings? s = null, bool service = true, ModeProfile? profile = null,
+    private static IReadOnlyList<PreflightFinding> Run(AppSettings? s = null, ModeProfile? profile = null,
         IReadOnlyList<SiteDefinition>? sites = null, IReadOnlyDictionary<string, string>? db = null, bool noDb = false) =>
-        ProductionChecks.Run(s ?? Production, service, profile ?? BuiltInProfiles.Production, sites ?? [Site("shop.example.com")],
+        ProductionChecks.Run(s ?? Production, profile ?? BuiltInProfiles.Production, sites ?? [Site("shop.example.com")],
             noDb ? null : db ?? LocalDb, root => root == PmaRoot);
 
     private static IEnumerable<string> Ids(IReadOnlyList<PreflightFinding> findings) => findings.Select(f => f.Id);
@@ -44,18 +44,8 @@ public sealed class ProductionChecksTests
     [Fact]
     public void Development_is_not_checked()
     {
-        Assert.Empty(Run(Production with { Mode = ServerMode.Development }, service: false, profile: ProfileWith("display_errors", "On"),
+        Assert.Empty(Run(Production with { Mode = ServerMode.Development }, profile: ProfileWith("display_errors", "On"),
             sites: [Site("pma.test", cert: CertSource.None, root: PmaRoot)], db: Db(("bind-address", "0.0.0.0"))));
-    }
-
-    [Fact]
-    public void Prod_not_service_when_the_agent_runs_from_the_window()
-    {
-        var finding = Assert.Single(Run(service: false));
-
-        Assert.Equal("prod-not-service", finding.Id);
-        Assert.Equal(Severity.Warning, finding.Severity);
-        Assert.Contains("sites stop when you sign out", finding.Message);
     }
 
     [Theory]

@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using Anvil.Core.Certificates;
-using Anvil.Core.Elevation;
 using Anvil.Core.Paths;
 using Anvil.Core.Sites;
 using Microsoft.Extensions.Time.Testing;
@@ -54,7 +53,7 @@ public sealed class LocalCaTests : IDisposable
     {
         Ca().EnsureCa();
 
-        var allowed = new[] { WindowsIdentity.GetCurrent().User!, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), AclPlanner.ServiceSid };
+        var allowed = new[] { WindowsIdentity.GetCurrent().User!, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null) };
         foreach (FileSystemSecurity security in new FileSystemSecurity[]
         {
             new DirectoryInfo(Path.Combine(_paths.Certs, "ca")).GetAccessControl(),

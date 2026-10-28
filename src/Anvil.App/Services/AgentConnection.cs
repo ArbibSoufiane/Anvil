@@ -14,8 +14,8 @@ using Serilog;
 namespace Anvil.App.Services;
 
 /// <summary>
-/// The GUI's link to the Agent. Tries the pipe for 2 s; when nobody answers, starts the AnvilAgent service when it
-/// is installed, else Anvil.Agent.exe --child, and waits up to 10 s more. When the Agent goes away it keeps
+/// The GUI's link to the Agent. Tries the pipe for 2 s; when nobody answers, starts Anvil.Agent.exe --child and waits
+/// up to 10 s more. When the Agent goes away it keeps
 /// reconnecting. <see cref="ConnectAsync"/> returns one stable <see cref="IAgentApi"/> that always talks to the current
 /// connection, so view models subscribe once.
 /// </summary>
@@ -35,17 +35,16 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
     private Task<AgentClient>? _current;
     private int _holds;
 
-    /// <param name="startAgent">Starts the Agent; returns false when it could not. Null starts the service or Anvil.Agent.exe.</param>
+    /// <param name="startAgent">Starts the Agent; returns false when it could not. Null starts Anvil.Agent.exe.</param>
     /// <param name="mutexName">The mutex a running Agent holds.</param>
     /// <param name="agentExe">The program that must serve the pipe; null means this folder's Anvil.Agent.exe.</param>
     public AgentConnection(AppPaths paths, string pipeName = AgentPipe.Name, Func<bool>? startAgent = null, string mutexName = AgentPipe.Mutex,
-        IAgentService? service = null, string? agentExe = null)
+        string? agentExe = null)
     {
         _pipeName = pipeName;
         _agentExe = agentExe ?? Path.Combine(paths.Root, "Anvil.Agent.exe");
         _mutexName = mutexName;
-        var windowsService = service ?? new WindowsAgentService();
-        _startAgent = startAgent ?? (() => StartAgent(windowsService, () => StartAgentProcess(paths)));
+        _startAgent = startAgent ?? (() => StartAgentProcess(paths));
         Api = new ForwardingApi(this);
     }
 
@@ -78,24 +77,7 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
         }
     }
 
-    /// <summary>The service when Windows has it, else the child process. False when neither could be started.</summary>
-    internal static bool StartAgent(IAgentService service, Func<bool> startChild)
-    {
-        if (!service.IsInstalled()) return startChild();
-        try
-        {
-            service.Start();
-            Log.Information("Started the Anvil service");
-            return true;
-        }
-        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            Log.Warning(e, "Windows did not start the Anvil service");
-            return false;
-        }
-    }
-
-    // Existence marks a running Agent; access denied means it runs under another account (the service).
+    // Existence marks a running Agent; access denied means it runs under another account.
     private static bool AgentRunning(string mutexName)
     {
         try
@@ -137,8 +119,8 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
         }
         catch (TimeoutException)
         {
-            // The service switch is moving the Agent and decides which one runs next.
-            if (Volatile.Read(ref _holds) > 0) throw new InvalidOperationException("The Anvil Agent is being moved.");
+            // An update is replacing the Agent and decides when the next one runs.
+            if (Volatile.Read(ref _holds) > 0) throw new InvalidOperationException("The Anvil Agent is being replaced.");
             if (!_startAgent()) throw new InvalidOperationException("Anvil.Agent.exe could not be started.");
             client = await AgentRpc.ConnectAsync(_pipeName, AfterStart, _life.Token, _agentExe);
         }

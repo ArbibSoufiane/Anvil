@@ -10,4 +10,4 @@ public enum ServiceId { Apache, Php, Database }
 public sealed record ServiceStatus(ServiceId Id, ProcessState State, string? Version, string? Detail);
 
 public sealed record AgentStatus(ServerMode Mode, IReadOnlyList<ServiceStatus> Services, IReadOnlyList<PreflightFinding> Findings,
-    string AgentVersion, bool RunningAsService);
+    string AgentVersion);

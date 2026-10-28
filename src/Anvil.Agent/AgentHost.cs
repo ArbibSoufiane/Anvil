@@ -36,8 +36,6 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         using var probeHttp = new HttpClient();
         using var downloadHttp = new HttpClient();
         var store = new SettingsStore(paths);
-        var controlUsers = store.Load().ControlUserSids;
-        PrivateAcl.ControlUsers = controlUsers;
 
         Orchestrator? orchestrator = null;
         var tester = new ApacheConfigTester(paths, () => orchestrator?.ApacheVersion);
@@ -46,12 +44,12 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
             k => k == ComponentKind.Apache ? orchestrator?.Settings.ActiveApache : null);
         orchestrator = new Orchestrator(paths, store, tester, new ApacheControl(supervisor, paths, tester, probeHttp, ports), preflight.Run,
             new ComponentCatalog([new PhpCatalogProvider(probeHttp), new MariaDbCatalogProvider(probeHttp)], new ShippedCatalogProvider(paths)), installer,
-            pools, port => ports.HolderOf(port) is null, options.RunningAsService, db: new DatabaseServer(paths, supervisor, TimeProvider.System));
+            pools, port => ports.HolderOf(port) is null, db: new DatabaseServer(paths, supervisor, TimeProvider.System));
 
         var shutdown = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var api = new AgentApi(orchestrator, stopServices => shutdown.TrySetResult(stopServices));
         bool stopServices;
-        await using (var server = new PipeServer(options.PipeName, api, controlUsers))
+        await using (var server = new PipeServer(options.PipeName, api))
         {
             server.Start();
             Log.Information("Agent {Version} listening on pipe {Pipe}", Core.BuildInfo.Version, options.PipeName);

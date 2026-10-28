@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Anvil.Core.Paths;
 using Anvil.Core.Settings;
@@ -16,10 +17,6 @@ public static partial class RequestValidator
 
     [GeneratedRegex("^elevate-[0-9a-f]{32}\\.json$")]
     private static partial Regex RequestName();
-
-    /// <summary>A local or domain user account: S-1-5-21 and four numbers.</summary>
-    [GeneratedRegex(@"\AS-1-5-21(-[0-9]{1,10}){4}\z")]
-    private static partial Regex AccountSid();
 
     /// <summary>Null when <paramref name="requestPath"/> is a request file directly inside data\tmp.</summary>
     public static string? PathError(string requestPath, AppPaths paths)
@@ -43,10 +40,6 @@ public static partial class RequestValidator
         {
             HostsSetRequest h => HostsError(h),
             FirewallSetRequest f => FirewallError(f, paths),
-            ServiceInstallRequest s => ServiceInstallError(s, paths),
-            ServiceUninstallRequest => null,
-            AclGrantRequest a => AclError(a, paths),
-            FolderSecureRequest f => f.UserSid is not null && AccountSid().IsMatch(f.UserSid) ? null : "The folder's user must be a user account's SID.",
             _ => "Unknown request.",
         };
 
@@ -57,9 +50,14 @@ public static partial class RequestValidator
         ElevatedRequest? request;
         try
         {
-            request = ElevatedJson.Deserialize(File.ReadAllText(requestPath));
+            var json = File.ReadAllText(requestPath);
+            // A verb from an older build (the service and folder verbs are gone) is refused as unknown, not as unreadable.
+            if (JsonNode.Parse(json) is JsonObject node && node["verb"] is JsonValue verb && verb.TryGetValue<string>(out var name)
+                && !ElevatedRequest.Verbs.Contains(name))
+                return (null, "Unknown request.");
+            request = ElevatedJson.Deserialize(json);
         }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException or IOException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or IOException or InvalidOperationException)
         {
             return (null, "The request could not be read: " + ex.Message);
         }
@@ -82,82 +80,6 @@ public static partial class RequestValidator
         }
 
         return null;
-    }
-
-    /// <summary>The service may run only the Agent next to the Elevator, and only a user account may control it.</summary>
-    private static string? ServiceInstallError(ServiceInstallRequest s, AppPaths paths)
-    {
-        var agent = Path.Combine(paths.Root, "Anvil.Agent.exe");
-        if (FullPath(s.AgentExe) is not { } exe || !string.Equals(exe, agent, StringComparison.OrdinalIgnoreCase))
-            return "The service can only run the Anvil.Agent.exe next to Anvil.Elevator.exe.";
-        if (!File.Exists(agent)) return "Anvil.Agent.exe is missing from the Anvil folder.";
-        if (s.ControlUserSid is null || !AccountSid().IsMatch(s.ControlUserSid)) return "The control user must be a user account's SID.";
-        return null;
-    }
-
-    /// <summary>
-    /// Only grants from Anvil's own plan, recomputed here from data\sites, and never on a system folder or through a
-    /// junction or symbolic link: either could hand the service account rights over Windows itself.
-    /// </summary>
-    private static string? AclError(AclGrantRequest a, AppPaths paths)
-    {
-        if (a.Grants is null || a.Grants.Count == 0) return "The request lists no folders.";
-        var plan = AclPlanner.Plan(paths, new SiteStore(paths).All(), new SettingsStore(paths).Load().HtdocsPath);
-        foreach (var g in a.Grants)
-        {
-            if (g is null || FullPath(g.Path) is not { } full || !Enum.IsDefined(g.Right)) return "The request lists a folder without a path or right.";
-            if (!plan.Any(p => string.Equals(p.Path, full, StringComparison.OrdinalIgnoreCase) && p.Right == g.Right))
-                return $"{g.Path} is not a folder Anvil's service needs.";
-            if (IsSystemFolder(full)) return $"{g.Path} is a system folder; Anvil does not change its permissions.";
-            if (ThroughLink(full)) return $"{g.Path} goes through a link to another folder; Anvil does not change its permissions.";
-        }
-
-        return null;
-    }
-
-    private static string? FullPath(string? path)
-    {
-        if (path is null || !Path.IsPathFullyQualified(path)) return null;
-        try
-        {
-            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
-        }
-        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// A drive root, the Users folder itself, and Windows, Program Files, Program Files (x86) and ProgramData with
-    /// everything in them: programs there may run as an administrator.
-    /// </summary>
-    private static bool IsSystemFolder(string full)
-    {
-        static string Folder(Environment.SpecialFolder f) => Path.TrimEndingDirectorySeparator(Environment.GetFolderPath(f));
-        bool Same(string other) => other.Length > 0 && string.Equals(full, other, StringComparison.OrdinalIgnoreCase);
-        bool Inside(string other) => Same(other) || (other.Length > 0 && full.StartsWith(other + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
-
-        if (Same(Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full) ?? ""))) return true;
-        if (Same(Path.GetDirectoryName(Folder(Environment.SpecialFolder.UserProfile)) ?? "")) return true;
-        return new[]
-        {
-            Environment.SpecialFolder.Windows,
-            Environment.SpecialFolder.ProgramFiles,
-            Environment.SpecialFolder.ProgramFilesX86,
-            Environment.SpecialFolder.CommonApplicationData,
-        }.Select(Folder).Any(Inside);
-    }
-
-    /// <summary>True when the folder or any folder above it is a junction or symbolic link.</summary>
-    private static bool ThroughLink(string full)
-    {
-        for (var dir = new DirectoryInfo(full); dir is not null; dir = dir.Parent)
-        {
-            if (dir.Exists && dir.Attributes.HasFlag(FileAttributes.ReparsePoint)) return true;
-        }
-
-        return false;
     }
 
     private static string? HostsError(HostsSetRequest h)

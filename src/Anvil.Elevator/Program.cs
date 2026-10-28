@@ -26,10 +26,6 @@ internal static class Program
                 null => new ElevatedResult(false, error),
                 HostsSetRequest hosts => HostsHandler.Run(hosts, paths),
                 FirewallSetRequest firewall => FirewallHandler.Run(firewall),
-                ServiceInstallRequest install => ServiceHandler.Install(install, paths),
-                ServiceUninstallRequest => ServiceHandler.Uninstall(),
-                AclGrantRequest acl => AclHandler.Run(acl),
-                FolderSecureRequest secure => FolderHandler.Secure(secure, paths),
                 _ => new ElevatedResult(false, "Unknown request."),
             };
         }

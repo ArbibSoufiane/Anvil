@@ -25,17 +25,13 @@ public sealed class FakeElevator : IElevator
 
     private static string Verb(ElevatedRequest r) => r switch
     {
-        AclGrantRequest => "acl-grant",
-        ServiceInstallRequest => "service-install",
-        ServiceUninstallRequest => "service-uninstall",
         HostsSetRequest => "hosts-set",
         FirewallSetRequest => "firewall-set",
-        FolderSecureRequest => "folder-secure",
         _ => r.GetType().Name,
     };
 }
 
-/// <summary>Records what the service switch asks of the connection, in <paramref name="calls"/>.</summary>
+/// <summary>Records what an update asks of the connection, in <paramref name="calls"/>.</summary>
 public sealed class FakeAgentLink(List<string> calls, Func<string>? holdNote = null) : IAgentLink
 {
     public Exception? ConnectFails { get; set; }
@@ -61,26 +57,6 @@ public sealed class FakeAgentLink(List<string> calls, Func<string>? holdNote = n
     private sealed class Release(List<string> calls) : IDisposable
     {
         public void Dispose() => calls.Add("release");
-    }
-}
-
-public sealed class FakeAgentService(List<string> calls) : IAgentService
-{
-    public bool Installed { get; set; }
-    public Exception? StartFails { get; set; }
-
-    public bool IsInstalled() => Installed;
-
-    public void Start()
-    {
-        calls.Add("start");
-        if (StartFails is not null) throw StartFails;
-    }
-
-    public Task WaitUntilRemovedAsync(CancellationToken ct)
-    {
-        calls.Add("removed");
-        return Task.CompletedTask;
     }
 }
 

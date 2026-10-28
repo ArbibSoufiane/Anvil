@@ -26,9 +26,6 @@
           </StackPanel>
           <StackPanel Spacing="4" VerticalAlignment="Center">
             <CheckBox Content="Keep Xdebug loaded" IsChecked="{Binding KeepXdebug}" IsVisible="{Binding ShowsKeepXdebug}" />
-            <CheckBox x:Name="RunAsServiceOption" Content="Run as a Windows service (survives sign-out)"
-                      ToolTip.Tip="Sites stay up after you sign out or restart Windows."
-                      IsChecked="{Binding RunAsService}" IsVisible="{Binding OffersService}" />
           </StackPanel>
         </DockPanel>
       </Border>

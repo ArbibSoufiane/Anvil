@@ -6,7 +6,7 @@ using Anvil.Core.Sites;
 namespace Anvil.Core.Preflight;
 
 /// <summary>
-/// In Production, what would leave the server weaker than it looks: an Agent that stops at sign-out, a database or
+/// In Production, what would leave the server weaker than it looks: a database or
 /// phpMyAdmin reachable from the internet, PHP errors shown to visitors, and public sites without trusted HTTPS.
 /// Certificate expiry is reported in both modes by the renewal planner.
 /// </summary>
@@ -15,20 +15,14 @@ public static class ProductionChecks
     private static readonly string[] DisplayedErrors = ["on", "1", "true", "yes", "stdout"];
     private static readonly string[] Off = ["0", "off", "false", "no"];
 
-    /// <param name="runningAsService">The Agent runs as the Windows service now, not only in the settings.</param>
     /// <param name="production">The Production profile with the user's overrides.</param>
     /// <param name="dbIni">The active engine's [mysqld] values, or null when no database is installed.</param>
     /// <param name="looksLikePhpMyAdmin">True when a site folder holds phpMyAdmin; see <see cref="LooksLikePhpMyAdmin"/>.</param>
-    public static IReadOnlyList<PreflightFinding> Run(AppSettings s, bool runningAsService, ModeProfile production,
+    public static IReadOnlyList<PreflightFinding> Run(AppSettings s, ModeProfile production,
         IReadOnlyList<SiteDefinition> sites, IReadOnlyDictionary<string, string>? dbIni, Func<string, bool> looksLikePhpMyAdmin)
     {
         if (s.Mode != ServerMode.Production) return [];
         var findings = new List<PreflightFinding>();
-
-        if (!runningAsService)
-            findings.Add(new("prod-not-service", Severity.Warning,
-                "Anvil is not running as a Windows service, so sites stop when you sign out or Windows restarts.",
-                "Turn on \"Run as a Windows service\" in Settings."));
 
         if (dbIni is not null && ExposedBind(dbIni) is { } bind)
             findings.Add(new("prod-db-exposed", Severity.Warning,
