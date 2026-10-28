@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Anvil.Core.IO;
 using Anvil.Core.Paths;
+using Anvil.Core.Sites;
 
 namespace Anvil.Core.Settings;
 
@@ -17,7 +18,7 @@ public sealed class SettingsStore(AppPaths paths)
         if (!File.Exists(FilePath)) return new AppSettings();
         try
         {
-            return JsonFiles.Read<AppSettings>(FilePath) ?? new AppSettings();
+            return Normalized(JsonFiles.Read<AppSettings>(FilePath));
         }
         catch (JsonException ex)
         {
@@ -37,7 +38,7 @@ public sealed class SettingsStore(AppPaths paths)
         if (!File.Exists(FilePath)) return new AppSettings();
         try
         {
-            return JsonFiles.Read<AppSettings>(FilePath) ?? new AppSettings();
+            return Normalized(JsonFiles.Read<AppSettings>(FilePath));
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -46,4 +47,9 @@ public sealed class SettingsStore(AppPaths paths)
     }
 
     public void Save(AppSettings s) => JsonFiles.Write(FilePath, s);
+
+    // A hand-edited domain reads the way the app saves one: name lookups arrive in lower case.
+    private static AppSettings Normalized(AppSettings? s) => s is null
+        ? new AppSettings()
+        : s with { NetworkDomain = NetworkNames.NormalizeDomain(s.NetworkDomain) };
 }

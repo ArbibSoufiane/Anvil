@@ -98,6 +98,19 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(new NetworkAccess(false), new SettingsStore(_paths).Load().Network);
     }
 
+    [Theory]
+    [InlineData("\" Arbib.PC. \"", "arbib.pc")]
+    [InlineData("\"  \"", null)]
+    public void A_hand_edited_network_domain_is_read_the_way_the_app_saves_it(string json, string? expected)
+    {
+        // Name lookups arrive in lower case; a domain kept as typed would refuse every one of them.
+        File.WriteAllText(Path.Combine(_paths.Data, "anvil.json"), $"{{\"networkDomain\": {json}}}");
+        var store = new SettingsStore(_paths);
+
+        Assert.Equal(expected, store.Load().NetworkDomain);
+        Assert.Equal(expected, store.TryRead()!.NetworkDomain);
+    }
+
     [Fact]
     public void Corrupt_file_is_kept_aside_and_defaults_returned()
     {
