@@ -1,0 +1,242 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Anvil.App.ViewModels"
+             x:Class="Anvil.App.Views.AddSiteDialog"
+             x:DataType="vm:AddSiteViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <Border Classes="dialog" MaxWidth="760" Margin="16,24" HorizontalAlignment="Center" VerticalAlignment="Top">
+      <StackPanel Spacing="18">
+        <TextBlock Classes="h1" Text="{Binding Title}" />
+
+        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+          <Button x:Name="KindDomain" Classes="kind" Classes.selected="{Binding IsDomain}" Command="{Binding PickDomainCommand}">
+            <StackPanel Spacing="6">
+              <TextBlock FontWeight="Medium" Text="Domain site" />
+              <TextBlock Classes="mono" Text="shop.example.com" />
+              <TextBlock Classes="note" TextWrapping="Wrap" Text="Any folder, its own domain, its own PHP version." />
+            </StackPanel>
+          </Button>
+          <Button x:Name="KindIp" Grid.Column="1" Classes="kind" Classes.selected="{Binding IsIp}" Command="{Binding PickIpCommand}">
+            <StackPanel Spacing="6">
+              <TextBlock FontWeight="Medium" Text="IP site" />
+              <TextBlock Classes="mono" Text="http://192.168.10.2" />
+              <TextBlock Classes="note" TextWrapping="Wrap" Text="Single site mode: the machine's IP serves this one site. No domain." />
+            </StackPanel>
+          </Button>
+          <Button x:Name="KindHtdocs" Grid.Column="2" Classes="kind" Classes.selected="{Binding IsHtdocs}" Command="{Binding PickHtdocsCommand}">
+            <StackPanel Spacing="6">
+              <TextBlock FontWeight="Medium" Text="htdocs folder" />
+              <TextBlock Classes="mono" Text="localhost/shop" />
+              <TextBlock Classes="note" TextWrapping="Wrap" Text="A folder under htdocs. Local and network only." />
+            </StackPanel>
+          </Button>
+        </Grid>
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="fieldLabel" Text="Project folder" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox x:Name="ProjectFolder" Classes="field" Text="{Binding ProjectFolder}" PlaceholderText="D:\Sites\shop" />
+            <Button Grid.Column="1" Classes="secondary" Content="Browse" Command="{Binding BrowseCommand}" />
+          </Grid>
+          <TextBlock Classes="note" Text="{Binding DetectedText}"
+                     IsVisible="{Binding DetectedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <TextBlock x:Name="RootError" Classes="error" Text="{Binding RootError}"
+                     IsVisible="{Binding RootError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <StackPanel Spacing="4" IsVisible="{Binding IsDomain}">
+          <TextBlock Classes="fieldLabel" Text="Domain" />
+          <TextBox x:Name="DomainName" Classes="field" Text="{Binding Name}" PlaceholderText="shop.example.com" />
+          <TextBlock Classes="error" Text="{Binding NameError}" IsVisible="{Binding NameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <TextBlock Classes="fieldLabel" Margin="0,8,0,0" Text="Also answers to" />
+          <TextBox Classes="field" Text="{Binding Aliases}" PlaceholderText="www.shop.example.com (separate names with spaces)" />
+          <TextBlock Classes="error" Text="{Binding AliasesError}"
+                     IsVisible="{Binding AliasesError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <StackPanel Spacing="4" IsVisible="{Binding IsIp}">
+          <TextBlock Classes="fieldLabel" Text="Serve on" />
+          <ComboBox MinWidth="320" ItemsSource="{Binding Addresses}" SelectedItem="{Binding SelectedAddress}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:AddressChoice">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <TextBlock Classes="error" Text="{Binding NameError}" IsVisible="{Binding NameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <StackPanel Spacing="4" IsVisible="{Binding IsHtdocs}">
+          <TextBlock Classes="fieldLabel" Text="Folder name in htdocs" />
+          <TextBox Classes="field" Text="{Binding FolderName}" PlaceholderText="shop" />
+          <TextBlock Classes="error" Text="{Binding NameError}" IsVisible="{Binding NameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <StackPanel Spacing="6" Margin="0,6,0,0" IsVisible="{Binding ShowCopyChoice}">
+            <RadioButton Classes="option" GroupName="htdocsCopy" IsChecked="{Binding CopyIntoHtdocs}" Content="Copy it into htdocs" />
+            <RadioButton Classes="option" GroupName="htdocsCopy" IsChecked="{Binding KeepWhereItIs}"
+                         Content="Keep it where it is (localhost/&lt;folder&gt; points at it)" />
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="fieldLabel" Text="PHP version" />
+          <ComboBox MinWidth="320" ItemsSource="{Binding PhpChoices}" SelectedItem="{Binding SelectedPhp}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:PhpChoice">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <StackPanel Spacing="4" IsVisible="{Binding ShowProxyTarget}">
+            <TextBlock Classes="fieldLabel" Margin="0,6,0,0" Text="Forward requests to" />
+            <TextBox Classes="field" Text="{Binding ProxyTarget}" PlaceholderText="http://127.0.0.1:5173" />
+          </StackPanel>
+          <TextBlock Classes="error" Text="{Binding PhpError}" IsVisible="{Binding PhpError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <StackPanel Spacing="6" IsVisible="{Binding IsIp}">
+          <TextBlock Classes="fieldLabel" Text="Extra folders on this address" />
+          <ItemsControl ItemsSource="{Binding Mounts}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:MountRow">
+                <Grid ColumnDefinitions="120,*,Auto,200,Auto" ColumnSpacing="8" Margin="0,0,0,6">
+                  <TextBox Classes="field" Text="{Binding UrlPath}" PlaceholderText="/demo" />
+                  <TextBox Grid.Column="1" Classes="field" Text="{Binding Root}" PlaceholderText="D:\Sites\shop-demo\public" />
+                  <Button Grid.Column="2" Classes="ghost" Content="Browse" Command="{Binding BrowseCommand}" />
+                  <ComboBox Grid.Column="3" HorizontalAlignment="Stretch" ItemsSource="{Binding PhpChoices}" SelectedItem="{Binding Php}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:PhpChoice">
+                        <TextBlock Text="{Binding Label}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <Button Grid.Column="4" Classes="ghost" Content="Remove" Command="{Binding RemoveCommand}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Button Classes="ghost" Content="+ Add folder (e.g. /demo, /staging)" Command="{Binding AddMountCommand}" />
+          <TextBlock Classes="error" Text="{Binding MountsError}" IsVisible="{Binding MountsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <StackPanel Spacing="8" IsVisible="{Binding ShowCert}">
+          <TextBlock Classes="fieldLabel" Text="HTTPS certificate" />
+          <RadioButton x:Name="CertLetsEncrypt" Classes="option" GroupName="cert" IsChecked="{Binding IsLetsEncrypt}" IsEnabled="{Binding LetsEncryptEnabled}">
+            <StackPanel Spacing="2">
+              <TextBlock FontWeight="Medium" Text="Automatic (Let's Encrypt)" />
+              <TextBlock Classes="note" TextWrapping="Wrap" Text="{Binding LetsEncryptHint}" />
+            </StackPanel>
+          </RadioButton>
+          <StackPanel Spacing="4" Margin="28,0,0,0" IsVisible="{Binding IsLetsEncrypt}">
+            <TextBlock x:Name="DnsText" Classes="note" TextWrapping="Wrap" Text="{Binding DnsText}"
+                       IsVisible="{Binding DnsText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Classes="note" TextWrapping="Wrap" IsVisible="{Binding Busy}"
+                       Text="Asking Let's Encrypt for the certificate. This can take a minute." />
+          </StackPanel>
+          <RadioButton Classes="option" GroupName="cert" IsChecked="{Binding IsImported}">
+            <StackPanel Spacing="2">
+              <TextBlock FontWeight="Medium" Text="Use a certificate I was given" />
+              <TextBlock Classes="note" TextWrapping="Wrap" Text=".pfx, or .crt + .key + chain. Warns 30 days before it expires." />
+            </StackPanel>
+          </RadioButton>
+          <StackPanel x:Name="ImportFiles" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding IsImported}">
+            <TextBlock Classes="note" TextWrapping="Wrap" Text="{Binding CurrentCertificateText}"
+                       IsVisible="{Binding CurrentCertificateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Classes="fieldLabel" Text="Certificate file (.pfx, .p12, .crt, .pem)" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <TextBox Classes="field" Text="{Binding CertFile}" PlaceholderText="D:\Clients\portal.pfx" />
+              <Button Grid.Column="1" Classes="secondary" Content="Browse" Command="{Binding ChooseCertFileCommand}" />
+            </Grid>
+            <StackPanel Spacing="4" IsVisible="{Binding IsPfx}">
+              <TextBlock Classes="fieldLabel" Text="Password of the .pfx file" />
+              <TextBox Classes="field" Text="{Binding CertPassword}" PasswordChar="•" />
+            </StackPanel>
+            <StackPanel Spacing="6" IsVisible="{Binding ShowKeyFiles}">
+              <TextBlock Classes="fieldLabel" Text="Private key file (.key)" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox Classes="field" Text="{Binding KeyFile}" PlaceholderText="D:\Clients\portal.key" />
+                <Button Grid.Column="1" Classes="secondary" Content="Browse" Command="{Binding ChooseKeyFileCommand}" />
+              </Grid>
+              <TextBlock Classes="fieldLabel" Text="Intermediate certificates (optional)" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox Classes="field" Text="{Binding ChainFile}" PlaceholderText="D:\Clients\chain.crt" />
+                <Button Grid.Column="1" Classes="secondary" Content="Browse" Command="{Binding ChooseChainFileCommand}" />
+              </Grid>
+            </StackPanel>
+          </StackPanel>
+          <RadioButton Classes="option" GroupName="cert" IsChecked="{Binding IsLoadBalancer}">
+            <StackPanel Spacing="2">
+              <TextBlock FontWeight="Medium" Text="HTTP only, the client's load balancer handles SSL" />
+              <TextBlock Classes="note" TextWrapping="Wrap" Text="PHP still sees https and the visitor's real IP, from the load balancer's headers." />
+            </StackPanel>
+          </RadioButton>
+          <StackPanel Spacing="4" Margin="28,0,0,0" IsVisible="{Binding IsLoadBalancer}">
+            <TextBlock Classes="fieldLabel" Text="Trust headers only from these load balancer IPs" />
+            <TextBox Classes="field" Text="{Binding TrustedProxies}" PlaceholderText="10.0.0.5 10.0.0.0/24" />
+            <TextBlock Classes="error" Text="{Binding TrustedProxiesError}"
+                       IsVisible="{Binding TrustedProxiesError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+          <RadioButton Classes="option" GroupName="cert" IsChecked="{Binding IsLocalDev}">
+            <StackPanel Spacing="2">
+              <TextBlock FontWeight="Medium" Text="Local development certificate" />
+              <TextBlock Classes="note" TextWrapping="Wrap" Text="Trusted on this PC only. For .test domains." />
+            </StackPanel>
+          </RadioButton>
+          <RadioButton Classes="option" GroupName="cert" IsChecked="{Binding IsHttpOnly}">
+            <StackPanel Spacing="2">
+              <TextBlock FontWeight="Medium" Text="HTTP only" />
+              <TextBlock Classes="note" TextWrapping="Wrap" Text="No certificate. Fine for a demo on your network." />
+            </StackPanel>
+          </RadioButton>
+          <TextBlock Classes="error" Text="{Binding CertError}" IsVisible="{Binding CertError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <StackPanel Spacing="8">
+          <TextBlock Classes="fieldLabel" Text="Who can open it" />
+          <Border Classes="segs">
+            <ItemsControl x:Name="AccessOptions" ItemsSource="{Binding AccessOptions}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="2" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AccessChoice">
+                  <Button Classes="seg" Classes.selected="{Binding IsSelected}" Content="{Binding Label}" Command="{Binding PickCommand}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+          <TextBox Classes="field" IsVisible="{Binding ShowAllowedIps}" Text="{Binding AllowedIps}" PlaceholderText="203.0.113.7 192.168.1.0/24" />
+          <TextBlock Classes="error" Text="{Binding AccessError}" IsVisible="{Binding AccessError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <CheckBox IsChecked="{Binding PasswordProtected}" Content="Also ask for a username and password" />
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="12" IsVisible="{Binding PasswordProtected}">
+            <TextBox Classes="field" Text="{Binding User}" PlaceholderText="User name" />
+            <TextBox Grid.Column="1" Classes="field" Text="{Binding Password}" PasswordChar="•" PlaceholderText="Password" />
+          </Grid>
+          <TextBlock Classes="note" Text="{Binding PasswordHint}"
+                     IsVisible="{Binding PasswordHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="fieldLabel" Text="Will answer at" />
+          <ItemsControl x:Name="PreviewUrls" ItemsSource="{Binding PreviewUrls}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Classes="url mono" Text="{Binding}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Classes="note" TextWrapping="Wrap" Text="{Binding Footnote}" />
+        </StackPanel>
+
+        <TextBlock x:Name="GeneralError" Classes="result" Text="{Binding GeneralError}"
+                   IsVisible="{Binding GeneralError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+          <Button Classes="ghost" Content="{Binding CancelLabel}" Command="{Binding CancelCommand}" />
+          <Button x:Name="SaveSite" Classes="primary" Content="{Binding SaveLabel}" Command="{Binding SaveCommand}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </ScrollViewer>
+</UserControl>

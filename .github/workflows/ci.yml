@@ -17,5 +17,5 @@ jobs:
         run: dotnet build -c Release
       - name: Unit tests
         run: |
-          dotnet test --project tests/ArbiPache.Core.Tests -c Release --no-build
-          dotnet test --project tests/ArbiPache.App.Tests -c Release --no-build
+          dotnet test --project tests/Anvil.Core.Tests -c Release --no-build
+          dotnet test --project tests/Anvil.App.Tests -c Release --no-build

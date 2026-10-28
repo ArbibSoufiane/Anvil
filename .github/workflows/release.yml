@@ -35,6 +35,6 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           $version = $env:TAG.Substring(1)
-          gh release create $env:TAG "dist/ArbiPache-$version-win64.zip" dist/SHA256SUMS --verify-tag `
-            --title "ArbiPache $version" --notes-file dist/RELEASE_NOTES.md
+          gh release create $env:TAG "dist/Anvil-$version-win64.zip" dist/SHA256SUMS --verify-tag `
+            --title "Anvil $version" --notes-file dist/RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'gh release create failed.' }

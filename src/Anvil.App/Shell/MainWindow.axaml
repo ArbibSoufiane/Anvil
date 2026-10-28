@@ -1,0 +1,90 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="using:Anvil.App.Shell"
+        xmlns:v="using:Anvil.App.Views"
+        xmlns:settings="using:Anvil.Core.Settings"
+        x:Class="Anvil.App.Shell.MainWindow"
+        x:DataType="shell:ShellViewModel"
+        Title="Anvil"
+        Width="1360" Height="900" MinWidth="960" MinHeight="640"
+        WindowStartupLocation="CenterScreen"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="40">
+  <Window.Resources>
+    <shell:PageViewLocator x:Key="PageViews" />
+  </Window.Resources>
+
+  <Grid>
+  <DockPanel>
+    <!-- Title bar: drag area; the system draws the caption buttons on the right. -->
+    <Border DockPanel.Dock="Top" Height="40" IsHitTestVisible="False"
+            Background="{StaticResource TitleBarBrush}"
+            BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,0,0,1">
+      <StackPanel Orientation="Horizontal" Spacing="12" Margin="16,0,0,0" VerticalAlignment="Center">
+        <Viewbox Width="18" Height="18">
+          <Canvas Width="24" Height="24">
+            <Path Classes="icon" StrokeThickness="2" Stroke="{StaticResource AccentBrush}"
+                  Data="M4 20 L12 4 L20 20 M7.5 13.5 H16.5" />
+          </Canvas>
+        </Viewbox>
+        <TextBlock Text="Anvil" FontWeight="SemiBold" FontSize="13" LetterSpacing="0.3" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding Version}" FontSize="12" Classes="dim" VerticalAlignment="Center" />
+        <Border Classes="modeChip" Classes.prod="{Binding IsProduction}">
+          <TextBlock Text="{Binding ModeLabel}" />
+        </Border>
+      </StackPanel>
+    </Border>
+
+    <!-- Sidebar -->
+    <Border DockPanel.Dock="Left" Width="232" Padding="12,16"
+            Background="{StaticResource SidebarBrush}"
+            BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,0,1,0">
+      <ItemsControl x:Name="Nav" ItemsSource="{Binding NavItems}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="shell:NavItem">
+            <Button Classes="nav" Classes.selected="{Binding IsSelected}"
+                    Command="{Binding $parent[Window].((shell:ShellViewModel)DataContext).NavigateCommand}"
+                    CommandParameter="{Binding Page}">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Viewbox Width="18" Height="18">
+                  <Canvas Width="24" Height="24">
+                    <Path Classes="icon" Data="{Binding Icon}"
+                          Stroke="{Binding $parent[Button].Foreground}" />
+                  </Canvas>
+                </Viewbox>
+                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Border>
+
+    <!-- Content -->
+    <Grid Margin="28,24,28,32" RowDefinitions="Auto,*">
+      <DockPanel>
+        <!-- Choosing the other mode opens the switch dialog; nothing changes until it is applied. -->
+        <Border Classes="segs" DockPanel.Dock="Right" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button x:Name="ModeDev" Classes="seg dev" Classes.selected="{Binding IsDevelopment}" Content="Development"
+                    Command="{Binding RequestModeCommand}" CommandParameter="{x:Static settings:ServerMode.Development}" />
+            <Button x:Name="ModeProd" Classes="seg prod" Classes.selected="{Binding IsProduction}" Content="Production"
+                    Command="{Binding RequestModeCommand}" CommandParameter="{x:Static settings:ServerMode.Production}" />
+          </StackPanel>
+        </Border>
+        <StackPanel>
+          <TextBlock Classes="h1" Text="{Binding Title}" />
+          <TextBlock Classes="sub" Text="{Binding Subtitle}" />
+        </StackPanel>
+      </DockPanel>
+      <ContentControl x:Name="PageHost" Grid.Row="1" Margin="0,20,0,0"
+                      Content="{Binding CurrentPage}"
+                      ContentTemplate="{StaticResource PageViews}" />
+    </Grid>
+  </DockPanel>
+
+  <Border Classes="overlay" IsVisible="{Binding HasModeSwitch}">
+    <v:ModeSwitchDialog x:Name="ModeSwitch" DataContext="{Binding ModeSwitch}" />
+  </Border>
+  </Grid>
+</Window>

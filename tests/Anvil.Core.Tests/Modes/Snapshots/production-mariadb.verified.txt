@@ -1,0 +1,8 @@
+# Written by Anvil for Production mode. my.ini includes it last, so these values win.
+# Change them on the Dev / Production page: this file is rewritten.
+[mysqld]
+max_statement_time = 60
+wait_timeout = 600
+general_log = OFF
+slow_query_log = ON
+long_query_time = 5

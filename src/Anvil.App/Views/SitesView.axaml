@@ -1,0 +1,152 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Anvil.App.ViewModels"
+             xmlns:v="using:Anvil.App.Views"
+             x:Class="Anvil.App.Views.SitesView"
+             x:DataType="vm:SitesViewModel">
+  <Grid>
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="16">
+
+        <Border Classes="banner" x:Name="TrustOffer" IsVisible="{Binding OfferTrust}">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+            <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"
+                       Text="Trust Anvil's local certificate authority so browsers show a padlock for local development sites. Windows asks you to confirm." />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+              <Button Classes="primary" Content="Trust it" Command="{Binding TrustCommand}" />
+              <Button Classes="ghost" Content="Not now" Command="{Binding DismissTrustCommand}" />
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <TextBlock x:Name="SitesMessage" Classes="result" Classes.ok="{Binding MessageOk}" Text="{Binding Message}"
+                   IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <Border Classes="card">
+          <StackPanel Spacing="10">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+              <TextBlock Classes="h2" VerticalAlignment="Center" Text="{Binding SitesTitle}" />
+              <TextBox Grid.Column="1" Classes="field" Width="220" PlaceholderText="Search sites" Text="{Binding SearchText}" />
+              <Button Grid.Column="2" x:Name="AddSite" Classes="primary" Content="+ Add site" Command="{Binding AddCommand}" />
+            </Grid>
+            <Grid ColumnDefinitions="1.9*,0.6*,1.1*,1.3*,1.3*,1.1*,0.8*,310" Margin="8,4,8,0">
+              <TextBlock Classes="dt" Text="Site" />
+              <TextBlock Classes="dt" Grid.Column="1" Text="Type" />
+              <TextBlock Classes="dt" Grid.Column="2" Text="PHP" />
+              <TextBlock Classes="dt" Grid.Column="3" Text="Folder" />
+              <TextBlock Classes="dt" Grid.Column="4" Text="Certificate" />
+              <TextBlock Classes="dt" Grid.Column="5" Text="Who can open it" />
+              <TextBlock Classes="dt" Grid.Column="6" Text="Status" />
+              <TextBlock Classes="dt" Grid.Column="7" Text="Actions" HorizontalAlignment="Right" />
+            </Grid>
+            <ItemsControl x:Name="SiteRows" ItemsSource="{Binding VisibleSites}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SiteRow">
+                  <Border Classes="row" Padding="8,8">
+                    <Grid ColumnDefinitions="1.9*,0.6*,1.1*,1.3*,1.3*,1.1*,0.8*,310" ColumnSpacing="8">
+                      <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Classes="dd" FontWeight="Medium" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Classes="sub" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <TextBlock Classes="dd" Grid.Column="1" VerticalAlignment="Center" Text="{Binding TypeText}" />
+                      <TextBlock Classes="dd" Grid.Column="2" VerticalAlignment="Center" Text="{Binding Php}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="dd mono" Grid.Column="3" VerticalAlignment="Center" Text="{Binding Folder}"
+                                 TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Folder}" />
+                      <TextBlock Classes="dd" Grid.Column="4" VerticalAlignment="Center" Text="{Binding Certificate}" TextWrapping="Wrap" />
+                      <Border Classes="tag" Classes.network="{Binding IsNetwork}" Classes.local="{Binding IsRestricted}" Grid.Column="5"
+                              HorizontalAlignment="Left">
+                        <TextBlock Text="{Binding AccessText}" />
+                      </Border>
+                      <Border Classes="pill" Classes.ok="{Binding IsEnabled}" Grid.Column="6" HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Ellipse />
+                          <TextBlock Text="{Binding StatusText}" />
+                        </StackPanel>
+                      </Border>
+                      <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding !ConfirmingRemove}">
+                          <Button Classes="ghost" Content="Open"
+                                  Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).OpenCommand}" CommandParameter="{Binding}" />
+                          <Button Classes="ghost" Content="Edit"
+                                  Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).EditCommand}" CommandParameter="{Binding}" />
+                          <Button Classes="ghost" Content="{Binding ToggleText}"
+                                  Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).ToggleCommand}" CommandParameter="{Binding}" />
+                          <Button Classes="ghost" Content="Remove"
+                                  Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding ConfirmingRemove}">
+                          <TextBlock Classes="dim" VerticalAlignment="Center" Text="Remove this site?" />
+                          <Button Classes="secondary" Content="Remove"
+                                  Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}" />
+                          <Button Classes="ghost" Content="Keep"
+                                  Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).CancelRemoveCommand}" CommandParameter="{Binding}" />
+                        </StackPanel>
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="note" Margin="8,4,8,0" IsVisible="{Binding !HasSites}"
+                       Text="No domain or IP site yet. Press + Add site to serve a project at its own domain or at this PC's address." />
+            <TextBlock Classes="note" Margin="8,4,8,0"
+                       Text="Each site picks its own PHP version, certificate source and who can reach it. The IP site (single site mode) takes over the machine's address in place of the htdocs listing." />
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="10">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="h2" VerticalAlignment="Center" Text="{Binding HtdocsTitle}" />
+              <Button Grid.Column="1" Classes="secondary" Content="Open htdocs" Command="{Binding OpenHtdocsCommand}" />
+            </Grid>
+            <TextBlock Classes="para">
+              <Run Text="Every folder in " />
+              <Run FontFamily="{StaticResource MonoFont}" Text="{Binding HtdocsPath}" />
+              <Run Text=" answers at " />
+              <Run Text="{Binding LocalPattern}" />
+              <Run Text=" and, with network access on, at " />
+              <Run Text="{Binding NetworkPattern}" />
+              <Run Text=". Drop a folder in, it is live." />
+            </TextBlock>
+            <Grid ColumnDefinitions="1.4*,1.4*,1.6*,*,200" Margin="8,4,8,0">
+              <TextBlock Classes="dt" Text="Folder" />
+              <TextBlock Classes="dt" Grid.Column="1" Text="On this PC" />
+              <TextBlock Classes="dt" Grid.Column="2" Text="On your network" />
+              <TextBlock Classes="dt" Grid.Column="3" Text="PHP" />
+              <TextBlock Classes="dt" Grid.Column="4" Text="Actions" HorizontalAlignment="Right" />
+            </Grid>
+            <ItemsControl x:Name="HtdocsRows" ItemsSource="{Binding Htdocs}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:HtdocsRow">
+                  <Border Classes="row" Padding="8,6">
+                    <Grid ColumnDefinitions="1.4*,1.4*,1.6*,*,200" ColumnSpacing="8">
+                      <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Classes="dd" FontWeight="Medium" Text="{Binding Folder}" />
+                        <TextBlock Classes="sub" Text="{Binding Detail}" TextTrimming="CharacterEllipsis"
+                                   IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                      </StackPanel>
+                      <TextBlock Classes="dd url" Grid.Column="1" VerticalAlignment="Center" Text="{Binding Local}" />
+                      <TextBlock Classes="dd" Grid.Column="2" VerticalAlignment="Center" Text="{Binding Network}" />
+                      <TextBlock Classes="dd" Grid.Column="3" VerticalAlignment="Center" Text="{Binding Php}" />
+                      <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+                        <Button Classes="ghost" Content="Open"
+                                Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).OpenHtdocsEntryCommand}" CommandParameter="{Binding}" />
+                        <Button Classes="ghost" Content="Settings"
+                                Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).EditHtdocsCommand}" CommandParameter="{Binding}" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Classes="overlay" IsVisible="{Binding HasEditor}">
+      <v:AddSiteDialog x:Name="Editor" DataContext="{Binding Editor}" />
+    </Border>
+  </Grid>
+</UserControl>

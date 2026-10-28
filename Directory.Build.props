@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
-    <Version>4.1.0</Version>
-    <Product>ArbiPache</Product>
+    <Version>1.0.0</Version>
+    <Product>Anvil</Product>
     <Company>Soufiane Arbib</Company>
     <Authors>Soufiane Arbib</Authors>
     <Copyright>Copyright 2026 Soufiane Arbib</Copyright>

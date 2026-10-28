@@ -1,0 +1,75 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Colours from the original mockup (Main.dc.html). -->
+  <Color x:Key="Ground">#0E1116</Color>
+  <Color x:Key="TitleBar">#0A0D11</Color>
+  <Color x:Key="Sidebar">#11151B</Color>
+  <Color x:Key="Surface">#151A21</Color>
+  <Color x:Key="Raised">#1B212A</Color>
+  <Color x:Key="Selected">#222A35</Color>
+  <Color x:Key="Hairline">#1F252E</Color>
+  <Color x:Key="Border">#252C36</Color>
+  <Color x:Key="BorderStrong">#2A313C</Color>
+  <Color x:Key="Text">#E7EAEE</Color>
+  <Color x:Key="TextStrong">#F3F5F7</Color>
+  <Color x:Key="TextMuted">#A3ACB8</Color>
+  <Color x:Key="TextDim">#8B95A2</Color>
+  <Color x:Key="Accent">#F08A3C</Color>
+  <Color x:Key="OnAccent">#15100B</Color>
+  <Color x:Key="OkBg">#12321F</Color>
+  <Color x:Key="OkText">#7BE3AC</Color>
+  <Color x:Key="DevBg">#17324F</Color>
+  <Color x:Key="DevText">#CFE3FF</Color>
+  <Color x:Key="ProdBg">#4A2A12</Color>
+  <Color x:Key="ProdText">#FFD2AD</Color>
+  <Color x:Key="Link">#8CC4FF</Color>
+
+  <Color x:Key="OkDot">#4CC38A</Color>
+  <Color x:Key="BadBg">#3A1A1A</Color>
+  <Color x:Key="BadText">#FFB4B4</Color>
+  <Color x:Key="WarnBg">#3A2614</Color>
+  <Color x:Key="WarnText">#FFD2AD</Color>
+  <Color x:Key="ChipOnBorder">#2D4A66</Color>
+  <Color x:Key="ChipOnBg">#13202E</Color>
+  <Color x:Key="InputBg">#0F1318</Color>
+  <Color x:Key="LogText">#D5DAE0</Color>
+  <Color x:Key="LogWarn">#F5C878</Color>
+  <Color x:Key="LogError">#FF9C9C</Color>
+
+  <SolidColorBrush x:Key="GroundBrush" Color="{StaticResource Ground}" />
+  <SolidColorBrush x:Key="TitleBarBrush" Color="{StaticResource TitleBar}" />
+  <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource Sidebar}" />
+  <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource Surface}" />
+  <SolidColorBrush x:Key="RaisedBrush" Color="{StaticResource Raised}" />
+  <SolidColorBrush x:Key="SelectedBrush" Color="{StaticResource Selected}" />
+  <SolidColorBrush x:Key="HairlineBrush" Color="{StaticResource Hairline}" />
+  <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource Border}" />
+  <SolidColorBrush x:Key="BorderStrongBrush" Color="{StaticResource BorderStrong}" />
+  <SolidColorBrush x:Key="TextBrush" Color="{StaticResource Text}" />
+  <SolidColorBrush x:Key="TextStrongBrush" Color="{StaticResource TextStrong}" />
+  <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMuted}" />
+  <SolidColorBrush x:Key="TextDimBrush" Color="{StaticResource TextDim}" />
+  <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}" />
+  <SolidColorBrush x:Key="OnAccentBrush" Color="{StaticResource OnAccent}" />
+  <SolidColorBrush x:Key="OkBgBrush" Color="{StaticResource OkBg}" />
+  <SolidColorBrush x:Key="OkTextBrush" Color="{StaticResource OkText}" />
+  <SolidColorBrush x:Key="DevBgBrush" Color="{StaticResource DevBg}" />
+  <SolidColorBrush x:Key="DevTextBrush" Color="{StaticResource DevText}" />
+  <SolidColorBrush x:Key="ProdBgBrush" Color="{StaticResource ProdBg}" />
+  <SolidColorBrush x:Key="ProdTextBrush" Color="{StaticResource ProdText}" />
+  <SolidColorBrush x:Key="LinkBrush" Color="{StaticResource Link}" />
+
+  <SolidColorBrush x:Key="OkDotBrush" Color="{StaticResource OkDot}" />
+  <SolidColorBrush x:Key="BadBgBrush" Color="{StaticResource BadBg}" />
+  <SolidColorBrush x:Key="BadTextBrush" Color="{StaticResource BadText}" />
+  <SolidColorBrush x:Key="WarnBgBrush" Color="{StaticResource WarnBg}" />
+  <SolidColorBrush x:Key="WarnTextBrush" Color="{StaticResource WarnText}" />
+  <SolidColorBrush x:Key="ChipOnBorderBrush" Color="{StaticResource ChipOnBorder}" />
+  <SolidColorBrush x:Key="ChipOnBgBrush" Color="{StaticResource ChipOnBg}" />
+  <SolidColorBrush x:Key="InputBgBrush" Color="{StaticResource InputBg}" />
+  <SolidColorBrush x:Key="LogTextBrush" Color="{StaticResource LogText}" />
+  <SolidColorBrush x:Key="LogWarnBrush" Color="{StaticResource LogWarn}" />
+  <SolidColorBrush x:Key="LogErrorBrush" Color="{StaticResource LogError}" />
+  <FontFamily x:Key="SansFont">avares://Anvil/Assets/Fonts#IBM Plex Sans</FontFamily>
+  <FontFamily x:Key="MonoFont">avares://Anvil/Assets/Fonts#IBM Plex Mono</FontFamily>
+</ResourceDictionary>

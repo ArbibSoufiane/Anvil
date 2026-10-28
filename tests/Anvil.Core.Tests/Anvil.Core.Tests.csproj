@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Anvil.Core.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Anvil.Core\Anvil.Core.csproj" />
+    <ProjectReference Include="..\..\src\Anvil.Agent\Anvil.Agent.csproj" />
+    <ProjectReference Include="..\Anvil.TestChild\Anvil.TestChild.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Preflight\Fixtures\*.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Components\Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Database\Fixtures\*.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

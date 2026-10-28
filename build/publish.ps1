@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Builds the ArbiPache release: dist\ArbiPache\, dist\ArbiPache-<version>-win64.zip, dist\SHA256SUMS and
+    Builds the Anvil release: dist\Anvil\, dist\Anvil-<version>-win64.zip, dist\SHA256SUMS and
     dist\RELEASE_NOTES.md.
 
 .DESCRIPTION
     The zip and checksum names are the ones the in-app updater matches (ReleaseFeed.ZipName, ReleaseFeed.SumsName).
-    Change one here and ArbiPache stops seeing its own releases.
+    Change one here and Anvil stops seeing its own releases.
 
     Refuses uncommitted changes and a version without a dated CHANGELOG.md section, runs the unit tests, publishes the
     three programs self-contained (not single-file, not trimmed) into one folder, checks that folder with
@@ -38,12 +38,12 @@ function WriteText([string]$Path, [string]$Text) {
 $props = [xml](Get-Content (Join-Path $root 'Directory.Build.props') -Raw)
 $version = $props.SelectSingleNode('/Project/PropertyGroup/Version').InnerText.Trim()
 if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Directory.Build.props has no x.y.z <Version> (found '$version')." }
-$zipName = "ArbiPache-$version-win64.zip"
-Say "Building ArbiPache $version"
+$zipName = "Anvil-$version-win64.zip"
+Say "Building Anvil $version"
 
 # --- refuse what cannot be released -------------------------------------------------------------------------------
 $dirty = git status --porcelain
-if ($LASTEXITCODE -ne 0) { throw 'git status failed. Run this from a git checkout of ArbiPache.' }
+if ($LASTEXITCODE -ne 0) { throw 'git status failed. Run this from a git checkout of Anvil.' }
 if ($dirty -and -not $Trial) {
     throw "The working tree has uncommitted changes. A release must be reproducible from its commit.`n$($dirty -join "`n")"
 }
@@ -67,14 +67,14 @@ if ($Trial) { Write-Warning 'Trial build: uncommitted changes and undated notes 
 
 # --- test, publish, check -------------------------------------------------------------------------------------------
 $dist = Join-Path $root 'dist'
-$out = Join-Path $dist 'ArbiPache'
+$out = Join-Path $dist 'Anvil'
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 
 Say 'Running the unit tests'
-Run 'The Core tests' { dotnet test --project tests/ArbiPache.Core.Tests -c Release }
-Run 'The App tests' { dotnet test --project tests/ArbiPache.App.Tests -c Release }
+Run 'The Core tests' { dotnet test --project tests/Anvil.Core.Tests -c Release }
+Run 'The App tests' { dotnet test --project tests/Anvil.App.Tests -c Release }
 
-foreach ($project in 'ArbiPache.App', 'ArbiPache.Agent', 'ArbiPache.Elevator') {
+foreach ($project in 'Anvil.App', 'Anvil.Agent', 'Anvil.Elevator') {
     Say "Publishing $project"
     Run "Publishing $project" {
         dotnet publish "src/$project" -c Release -r win-x64 --self-contained -p:PublishSingleFile=false -p:PublishTrimmed=false -o $out
@@ -86,20 +86,20 @@ New-Item -ItemType Directory -Force (Join-Path $out 'catalog'), (Join-Path $out 
 Copy-Item (Join-Path $root 'catalog\*') (Join-Path $out 'catalog') -Recurse -Force
 Copy-Item (Join-Path $root 'packaging\README.txt') (Join-Path $out 'README.txt')
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $out 'LICENSE.txt')
-Copy-Item (Join-Path $root 'src\ArbiPache.App\Assets\Fonts\OFL.txt') (Join-Path $out 'licenses\IBM-Plex-OFL.txt')
+Copy-Item (Join-Path $root 'src\Anvil.App\Assets\Fonts\OFL.txt') (Join-Path $out 'licenses\IBM-Plex-OFL.txt')
 
 Say 'Checking the published folder'
-$env:ARBIPACHE_REQUIRE_DIST = '1'
+$env:ANVIL_REQUIRE_DIST = '1'
 try {
-    Run 'PublishLayoutTests' { dotnet test --project tests/ArbiPache.Core.Tests -c Release --no-build -- --filter-class '*PublishLayoutTests' }
+    Run 'PublishLayoutTests' { dotnet test --project tests/Anvil.Core.Tests -c Release --no-build -- --filter-class '*PublishLayoutTests' }
 }
-finally { Remove-Item Env:ARBIPACHE_REQUIRE_DIST }
+finally { Remove-Item Env:ANVIL_REQUIRE_DIST }
 
 # --- zip, checksum, notes -----------------------------------------------------------------------------------------
 Say "Zipping $zipName"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = Join-Path $dist $zipName
-# includeBaseDirectory: the zip holds one ArbiPache\ folder, which the updater looks inside.
+# includeBaseDirectory: the zip holds one Anvil\ folder, which the updater looks inside.
 [System.IO.Compression.ZipFile]::CreateFromDirectory($out, $zip, [System.IO.Compression.CompressionLevel]::Optimal, $true)
 
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -107,6 +107,6 @@ WriteText (Join-Path $dist 'SHA256SUMS') "$hash  $zipName`n"
 WriteText (Join-Path $dist 'RELEASE_NOTES.md') "$notes`n"
 
 Write-Host ''
-Write-Host "Built ArbiPache $version" -ForegroundColor Green
+Write-Host "Built Anvil $version" -ForegroundColor Green
 Write-Host "  $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB)"
 Write-Host "  sha256 $hash"
