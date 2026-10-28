@@ -131,6 +131,10 @@ public sealed class DnsResponder(int port = 53) : INameService, IAsyncDisposable
                 {
                     return;
                 }
+                catch (SocketException e) when (e.SocketErrorCode == SocketError.MessageSize)
+                {
+                    // Larger than any query: Windows already dropped what did not fit, so there is nothing to answer.
+                }
                 catch (Exception e) when (!ct.IsCancellationRequested)
                 {
                     Log.Warning(e, "The name service on {Address} could not answer a query", Address);

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using Anvil.Core.Network;
@@ -87,6 +88,18 @@ public sealed class DnsResponderTests
         await SendRawAsync(IPAddress.Loopback, [1, 2, 3]);
 
         Assert.Equal(1, (await AskAsync(IPAddress.Loopback, "shop.arbib.pc"))[7]);
+    }
+
+    [Fact]
+    public async Task Datagrams_too_big_for_a_query_are_dropped_without_a_pause()
+    {
+        await using var dns = new DnsResponder(_port);
+        await dns.ApplyAsync("arbib.pc", [IPAddress.Loopback], Ct);
+        for (var i = 0; i < 10; i++) await SendRawAsync(IPAddress.Loopback, new byte[4500]);
+
+        var watch = Stopwatch.StartNew();
+        Assert.Equal(1, (await AskAsync(IPAddress.Loopback, "shop.arbib.pc"))[7]);
+        Assert.True(watch.Elapsed < TimeSpan.FromMilliseconds(500), $"answered after {watch.Elapsed.TotalMilliseconds:F0} ms");
     }
 
     [Fact]
