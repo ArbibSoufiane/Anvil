@@ -44,8 +44,6 @@
                 <TextBlock Classes="dd" VerticalAlignment="Center" TextWrapping="Wrap" Text="{Binding NetworkLabel}" />
                 <ToggleSwitch Grid.Column="1" OnContent="" OffContent="" IsChecked="{Binding HtdocsOnNetwork}" Command="{Binding ApplyNetworkCommand}" />
               </Grid>
-              <CheckBox IsChecked="{Binding PrivateNetworksOnly}" Command="{Binding ApplyNetworkCommand}"
-                        Content="Private and work networks only (blocked on public Wi-Fi)" />
               <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="12">
                 <StackPanel Spacing="4">
                   <TextBlock Classes="fieldLabel" Text="HTTP port" />

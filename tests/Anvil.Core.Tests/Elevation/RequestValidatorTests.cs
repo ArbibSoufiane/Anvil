@@ -26,6 +26,17 @@ public sealed class RequestValidatorTests : IDisposable
 
     private sealed record FormatDiskRequest : ElevatedRequest;
 
+    private string SettingsFile => Path.Combine(_paths.Data, "anvil.json");
+
+    private string? Validate(ElevatedRequest r) => RequestValidator.Validate(r, RequestFile("{}"), _paths);
+
+    private void InstallApache(string version)
+    {
+        var bin = Path.Combine(_paths.ApacheRuntime(version), "bin");
+        Directory.CreateDirectory(bin);
+        File.WriteAllText(Path.Combine(bin, "httpd.exe"), "");
+    }
+
     [Fact]
     public void Valid_hosts_request_round_trips()
     {
@@ -90,25 +101,47 @@ public sealed class RequestValidatorTests : IDisposable
     public void Firewall_ports_limited_to_configured_ports()
     {
         new SettingsStore(_paths).Save(new AppSettings { HttpPort = 8080, HttpsPort = 8443 });
-        var file = RequestFile("{}");
+        InstallApache("2.4.69");
 
-        Assert.Null(RequestValidator.Validate(new FirewallSetRequest([8080, 8443], FirewallScope.Internet), file, _paths));
-        Assert.Null(RequestValidator.Validate(new FirewallSetRequest([], FirewallScope.LocalNetwork), file, _paths));
-        Assert.NotNull(RequestValidator.Validate(new FirewallSetRequest([8080, 3389], FirewallScope.Internet), file, _paths));
-        Assert.NotNull(RequestValidator.Validate(new FirewallSetRequest([70000], FirewallScope.Internet), file, _paths));
-        Assert.NotNull(RequestValidator.Validate(new FirewallSetRequest(null!, FirewallScope.Internet), file, _paths));
-        Assert.NotNull(RequestValidator.Validate(new FirewallSetRequest([8080], (FirewallScope)7), file, _paths));
+        Assert.Null(Validate(new FirewallSetRequest("2.4.69", [8080, 8443], true)));
+        Assert.Null(Validate(new FirewallSetRequest(null, [], true)));
+        Assert.Equal("Port 3389 is not one of Anvil's web ports (8080, 8443).", Validate(new FirewallSetRequest("2.4.69", [8080, 3389], false)));
+        Assert.NotNull(Validate(new FirewallSetRequest("2.4.69", [70000], false)));
+        Assert.Equal("The request lists no ports.", Validate(new FirewallSetRequest("2.4.69", null!, false)));
+    }
+
+    [Fact]
+    public void Firewall_request_for_an_apache_that_is_not_installed_is_refused() =>
+        Assert.Equal("Apache 2.4.70 is not installed.", Validate(new FirewallSetRequest("2.4.70", [80], false)));
+
+    [Theory]
+    [InlineData(@"..\x")]
+    [InlineData(@"2.4.69\..\..\..\Windows")]
+    [InlineData("2.4")]
+    [InlineData("")]
+    public void Firewall_request_with_a_path_in_the_version_is_refused(string version) =>
+        Assert.Equal($"'{version}' is not an Apache version.", Validate(new FirewallSetRequest(version, [80], false)));
+
+    [Fact]
+    public void Validator_never_moves_a_corrupt_settings_file()
+    {
+        File.WriteAllText(SettingsFile, "{not json");
+
+        Assert.Equal("Anvil's settings file cannot be read.", Validate(new FirewallSetRequest(null, [80], false)));
+        Assert.Equal("{not json", File.ReadAllText(SettingsFile));
+        Assert.Single(Directory.GetFiles(_paths.Data, "anvil.json*"));
     }
 
     [Fact]
     public void Firewall_request_round_trips_with_its_verb()
     {
-        var file = RequestFile(ElevatedJson.Serialize(new FirewallSetRequest([80, 443], FirewallScope.LocalNetwork)));
+        InstallApache("2.4.69");
+        var file = RequestFile(ElevatedJson.Serialize(new FirewallSetRequest("2.4.69", [80, 443], true)));
 
         var (request, error) = RequestValidator.Read(file, _paths);
 
         Assert.Null(error);
-        Assert.Equal([80, 443], Assert.IsType<FirewallSetRequest>(request).Ports);
+        Assert.Equal(new FirewallSetRequest("2.4.69", [80, 443], true), request);
         Assert.Contains("\"verb\": \"firewall-set\"", File.ReadAllText(file));
     }
 

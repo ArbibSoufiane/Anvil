@@ -124,15 +124,14 @@ public sealed class SitesViewModelTests
     }
 
     [Fact]
-    public async Task Required_firewall_asks_elevator_for_both_ports()
+    public async Task Required_firewall_runs_the_agents_request()
     {
-        _api.NextResult = ApplyResult.Success() with { RequiredFirewall = FirewallScope.LocalNetwork };
+        var needed = new FirewallSetRequest("2.4.69", [80, 443], true);
+        _api.NextResult = ApplyResult.Success() with { RequiredFirewall = needed };
 
         await AddShopAsync(CertSource.None);
 
-        var request = Assert.IsType<FirewallSetRequest>(Assert.Single(_elevator.Requests));
-        Assert.Equal([80, 443], request.Ports);
-        Assert.Equal(FirewallScope.LocalNetwork, request.Scope);
+        Assert.Equal(needed, Assert.IsType<FirewallSetRequest>(Assert.Single(_elevator.Requests)));
     }
 
     [Fact]

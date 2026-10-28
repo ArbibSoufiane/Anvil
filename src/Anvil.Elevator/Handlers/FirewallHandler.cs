@@ -1,38 +1,49 @@
 using Anvil.Core.Elevation;
+using Anvil.Core.Paths;
 
 namespace Anvil.Elevator.Handlers;
 
-/// <summary>firewall-set: removes every "Anvil HTTP *" rule, then adds the planned ones, through HNetCfg.FwPolicy2.</summary>
+/// <summary>
+/// firewall-set: removes every rule for Anvil's programs, its own and those Windows made from its "Allow access?" prompt,
+/// then adds the planned ones, through HNetCfg.FwPolicy2.
+/// </summary>
 internal static class FirewallHandler
 {
-    private const int Tcp = 6;
     private const int Inbound = 1;
     private const int Allow = 1;
 
-    public static ElevatedResult Run(FirewallSetRequest request)
+    public static ElevatedResult Run(FirewallSetRequest request, AppPaths paths)
     {
-        var planned = FirewallRulePlanner.Plan(request);
+        var planned = FirewallRulePlanner.Plan(request, paths);
         dynamic policy = Create("HNetCfg.FwPolicy2");
         dynamic rules = policy.Rules;
 
-        // Removing by prefix also drops rules for ports Anvil no longer uses.
-        var stale = new List<string>();
+        var stale = new List<dynamic>();
         foreach (dynamic rule in rules)
         {
-            string name = rule.Name;
-            if (name.StartsWith(FirewallRulePlanner.NamePrefix, StringComparison.Ordinal)) stale.Add(name);
+            if (FirewallRulePlanner.IsOurs(WindowsFirewallReader.FromCom(rule), paths)) stale.Add(rule);
         }
 
-        foreach (var name in stale.Distinct()) rules.Remove(name);
+        // Rules.Remove takes a name, and another program's rule may share it ("Apache HTTP Server"): each stale rule gets a
+        // name of its own first, so only that rule goes.
+        foreach (var rule in stale)
+        {
+            var unique = $"{FirewallRulePlanner.NamePrefix}removing {Guid.NewGuid():N}";
+            rule.Name = unique;
+            rules.Remove(unique);
+        }
 
         foreach (var plan in planned)
         {
             dynamic rule = Create("HNetCfg.FWRule");
             rule.Name = plan.Name;
-            rule.Description = "Added by Anvil for its web server.";
+            rule.Description = plan.Name == FirewallRulePlanner.NameServiceRule
+                ? "Added by Anvil for its name service."
+                : "Added by Anvil for its web server.";
             rule.Grouping = "Anvil";
-            rule.Protocol = Tcp;
-            rule.LocalPorts = plan.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            rule.ApplicationName = plan.Program;
+            rule.Protocol = (int)plan.Protocol;
+            rule.LocalPorts = plan.LocalPorts;
             rule.Direction = Inbound;
             rule.Action = Allow;
             rule.Profiles = plan.Profiles;

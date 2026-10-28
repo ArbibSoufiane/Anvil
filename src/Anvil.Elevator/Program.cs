@@ -25,7 +25,7 @@ internal static class Program
             {
                 null => new ElevatedResult(false, error),
                 HostsSetRequest hosts => HostsHandler.Run(hosts, paths),
-                FirewallSetRequest firewall => FirewallHandler.Run(firewall),
+                FirewallSetRequest firewall => FirewallHandler.Run(firewall, paths),
                 _ => new ElevatedResult(false, "Unknown request."),
             };
         }

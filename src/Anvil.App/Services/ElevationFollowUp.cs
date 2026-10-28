@@ -11,7 +11,7 @@ namespace Anvil.App.Services;
 public sealed class ElevationFollowUp(IElevator elevator)
 {
     /// <returns>Null when nothing was refused.</returns>
-    public async Task<string?> RunAsync(ApplyResult result, int httpPort, int httpsPort, CancellationToken ct = default)
+    public async Task<string?> RunAsync(ApplyResult result, CancellationToken ct = default)
     {
         var problems = new List<string>();
         if (result.HostsDomains is { } domains && await TryAsync(new HostsSetRequest(domains), ct) is { } error)
@@ -19,15 +19,15 @@ public sealed class ElevationFollowUp(IElevator elevator)
                 ? $"Windows did not let Anvil update the hosts file ({error}). Old entries stay there until it does."
                 : $"Windows did not let Anvil update the hosts file ({error}). {string.Join(", ", domains)} will not open in the browser "
                   + "until it does: save the site again to retry.");
-        if (result.RequiredFirewall is { } scope && await FirewallAsync(scope, httpPort, httpsPort, ct) is { } firewall)
+        if (result.RequiredFirewall is { } request && await FirewallAsync(request, ct) is { } firewall)
             problems.Add(firewall);
         return problems.Count == 0 ? null : string.Join(" ", problems);
     }
 
     /// <returns>Null when the rules are in place.</returns>
-    public async Task<string?> FirewallAsync(FirewallScope scope, int httpPort, int httpsPort, CancellationToken ct = default) =>
-        await TryAsync(new FirewallSetRequest([httpPort, httpsPort], scope), ct) is { } error
-            ? $"Windows did not let Anvil open ports {httpPort} and {httpsPort} in the firewall ({error}). Other devices cannot reach this PC until it does."
+    public async Task<string?> FirewallAsync(FirewallSetRequest request, CancellationToken ct = default) =>
+        await TryAsync(request, ct) is { } error
+            ? $"Windows did not let Anvil open the firewall ({error}). Other devices cannot reach this PC until it does."
             : null;
 
     private async Task<string?> TryAsync(ElevatedRequest request, CancellationToken ct)

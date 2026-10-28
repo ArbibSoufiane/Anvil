@@ -3,6 +3,7 @@ using Anvil.Core.Apache;
 using Anvil.Core.Certificates;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
+using Anvil.Core.Elevation;
 using Anvil.Core.Php;
 using Anvil.Core.Processes;
 using Anvil.Core.Settings;
@@ -154,6 +155,10 @@ public sealed class FakeAgentApi : IAgentApi
     }
 
     public Task<ApplyResult> ReissueLocalCertificatesAsync(CancellationToken ct = default) => Record("reissue");
+
+    public FirewallSetRequest? FirewallRequest { get; set; }
+
+    public Task<FirewallSetRequest?> GetFirewallRequestAsync(CancellationToken ct = default) => Task.FromResult(FirewallRequest);
 
     public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate>(Certificates));

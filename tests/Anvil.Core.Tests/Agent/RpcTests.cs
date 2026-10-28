@@ -52,6 +52,18 @@ public sealed class RpcTests
     }
 
     [Fact]
+    public async Task Firewall_request_round_trips_over_pipe()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var name = UniquePipe();
+        await using var server = new PipeServer(name, new FakeApi());
+        server.Start();
+        await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
+
+        Assert.Equal(FakeApi.Firewall, await client.Api.GetFirewallRequestAsync(ct));
+    }
+
+    [Fact]
     public async Task Php_calls_round_trip_over_pipe()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -350,6 +362,10 @@ public sealed class RpcTests
 
         public Task<string> BackupDatabaseAsync(CancellationToken ct = default) =>
             Task.FromException<string>(new InvalidOperationException("Start the database first."));
+
+        public static readonly FirewallSetRequest Firewall = new("2.4.69", [80, 443], NameService: true);
+
+        public Task<FirewallSetRequest?> GetFirewallRequestAsync(CancellationToken ct = default) => Task.FromResult<FirewallSetRequest?>(Firewall);
 
         public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate> { ["shop.test"] = Cert });

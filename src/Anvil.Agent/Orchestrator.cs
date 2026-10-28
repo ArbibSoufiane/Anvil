@@ -454,6 +454,9 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     /// <summary>Issues every local development certificate again; a rejected configuration puts the old ones back.</summary>
     public IReadOnlyDictionary<string, SiteCertificate> GetCertificates() => new CertificateStore(paths).All();
 
+    /// <summary>The rules Windows Firewall needs for what is open to the network now; null when nothing is.</summary>
+    public FirewallSetRequest? FirewallRequest() => FirewallRulePlanner.Needed(_settings, new SiteStore(paths).All());
+
     /// <summary>
     /// At startup, before the configuration is written: issues again every enabled site's local certificate that is
     /// missing, lacks a name or expires within 30 days. A certificate that cannot be issued stays as it is.

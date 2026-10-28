@@ -178,7 +178,7 @@ public sealed class ConfigRendererTests
     [Fact]
     public void Htdocs_off_network_limits_catchall_to_this_pc()
     {
-        var input = Input() with { Settings = Settings() with { Network = new NetworkAccess(HtdocsOnNetwork: false, PrivateNetworksOnly: true) } };
+        var input = Input() with { Settings = Settings() with { Network = new NetworkAccess(HtdocsOnNetwork: false) } };
 
         var conf = new ConfigRenderer(Paths).Render(input).Files[@"vhosts\00-catchall.conf"];
 

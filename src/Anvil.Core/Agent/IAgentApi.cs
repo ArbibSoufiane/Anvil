@@ -2,6 +2,7 @@ using Anvil.Core.Apache;
 using Anvil.Core.Certificates;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
+using Anvil.Core.Elevation;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
@@ -80,6 +81,9 @@ public partial interface IAgentApi
 
     /// <summary>Each site's certificate on disk, by site id.</summary>
     Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default);
+
+    /// <summary>The firewall rules to ask Windows for while something is open to the network; null when nothing is.</summary>
+    Task<FirewallSetRequest?> GetFirewallRequestAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Makes an installed MariaDB or MySQL version the active database: initializes an empty datadir with the root

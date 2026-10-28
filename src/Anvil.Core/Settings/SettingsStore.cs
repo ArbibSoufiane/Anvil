@@ -28,5 +28,22 @@ public sealed class SettingsStore(AppPaths paths)
         }
     }
 
+    /// <summary>
+    /// The settings, the defaults when there is no file, or null when the file cannot be read. Never moves or writes
+    /// anything: the Elevator reads settings as administrator and must leave the user's file alone.
+    /// </summary>
+    public AppSettings? TryRead()
+    {
+        if (!File.Exists(FilePath)) return new AppSettings();
+        try
+        {
+            return JsonFiles.Read<AppSettings>(FilePath) ?? new AppSettings();
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     public void Save(AppSettings s) => JsonFiles.Write(FilePath, s);
 }

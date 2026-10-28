@@ -6,6 +6,7 @@ using Anvil.Agent;
 using Anvil.Core.Agent;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
+using Anvil.Core.Elevation;
 using Anvil.Core.IO;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
@@ -473,6 +474,19 @@ public sealed class OrchestratorTests : IDisposable
         Assert.True(orchestrator.GetExtensions("8.5.12").Single(e => e.Name == "xdebug").Enabled);
         Assert.DoesNotContain(orchestrator.GetExtensions("8.4.27"), e => e.Name == "xdebug" && e.Enabled);
         Assert.Contains("xdebug.start_with_request = trigger", File.ReadAllText(Path.Combine(_paths.PhpConfigDir("8.5.12"), "php.ini")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Firewall_request_follows_what_is_open_to_the_network()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+
+        Assert.Equal(new FirewallSetRequest(Version, [80, 443], false), orchestrator.FirewallRequest());
+
+        Assert.True((await orchestrator.SaveSettingsAsync(orchestrator.Settings with { Network = new Core.Settings.NetworkAccess(false) }, ct)).Ok);
+        Assert.Null(orchestrator.FirewallRequest());
     }
 
     [Fact]

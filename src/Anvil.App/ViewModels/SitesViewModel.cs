@@ -261,7 +261,7 @@ public sealed partial class SitesViewModel : ObservableObject
 
     private async Task FollowUpAsync(ApplyResult result, string success)
     {
-        var problem = await _followUp.RunAsync(result, _settings.HttpPort, _settings.HttpsPort);
+        var problem = await _followUp.RunAsync(result);
         Say(problem ?? success, ok: problem is null);
     }
 

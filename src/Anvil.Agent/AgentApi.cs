@@ -3,6 +3,7 @@ using Anvil.Core.Apache;
 using Anvil.Core.Certificates;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
+using Anvil.Core.Elevation;
 using Anvil.Core.Php;
 using Anvil.Core.Sites;
 using Anvil.Core.Settings;
@@ -83,6 +84,8 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
 
     public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
         Task.FromResult(orchestrator.GetCertificates());
+
+    public Task<FirewallSetRequest?> GetFirewallRequestAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.FirewallRequest());
 
     public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
         orchestrator.InstallDatabaseAsync(e, version, rootPassword, ct);

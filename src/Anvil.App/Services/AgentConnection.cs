@@ -4,6 +4,7 @@ using Anvil.Core.Apache;
 using Anvil.Core.Certificates;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
+using Anvil.Core.Elevation;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
@@ -256,6 +257,9 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
 
         public async Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
             await (await Remote()).GetCertificatesAsync(ct);
+
+        public async Task<FirewallSetRequest?> GetFirewallRequestAsync(CancellationToken ct = default) =>
+            await (await Remote()).GetFirewallRequestAsync(ct);
 
         public async Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
             await (await Remote()).InstallDatabaseAsync(e, version, rootPassword, ct);

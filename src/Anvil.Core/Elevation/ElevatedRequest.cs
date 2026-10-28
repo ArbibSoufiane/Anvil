@@ -17,8 +17,19 @@ public abstract record ElevatedRequest
 /// <summary>Makes Anvil's hosts block map exactly these domains to this PC.</summary>
 public sealed record HostsSetRequest(IReadOnlyList<string> Domains) : ElevatedRequest;
 
-/// <summary>Makes Anvil's firewall rules open exactly these ports to <paramref name="Scope"/>. No ports closes them all.</summary>
-public sealed record FirewallSetRequest(IReadOnlyList<int> Ports, FirewallScope Scope) : ElevatedRequest;
+/// <summary>
+/// Replaces every firewall rule for Anvil's programs with the planned ones: <paramref name="ApacheVersion"/>'s httpd.exe on
+/// these TCP ports, and the Agent on UDP 53 when <paramref name="NameService"/>. See <see cref="FirewallRulePlanner"/>.
+/// </summary>
+public sealed record FirewallSetRequest(string? ApacheVersion, IReadOnlyList<int> Ports, bool NameService) : ElevatedRequest
+{
+    // A record compares lists by reference; two requests for the same ports are the same request.
+    public bool Equals(FirewallSetRequest? other) =>
+        other is not null && ApacheVersion == other.ApacheVersion && NameService == other.NameService
+        && (Ports ?? []).SequenceEqual(other.Ports ?? []);
+
+    public override int GetHashCode() => HashCode.Combine(ApacheVersion, NameService, Ports?.Count ?? 0);
+}
 
 public sealed record ElevatedResult(bool Ok, string? Error);
 

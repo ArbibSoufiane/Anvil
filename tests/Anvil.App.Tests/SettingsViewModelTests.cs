@@ -176,17 +176,58 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
-    public async Task Network_change_asks_for_firewall()
+    public async Task Turning_htdocs_onto_the_network_asks_for_the_agents_firewall_request()
     {
+        _api.Settings = _api.Settings with { Network = new NetworkAccess(false) };
+        _api.FirewallRequest = new FirewallSetRequest("2.4.69", [80, 443], false);
         var vm = await LoadedAsync();
 
-        vm.PrivateNetworksOnly = false;
+        vm.HtdocsOnNetwork = true;
         await vm.ApplyNetworkCommand.ExecuteAsync(null);
 
-        Assert.Equal(new NetworkAccess(true, false), _api.Saved?.Network);
-        var request = Assert.IsType<FirewallSetRequest>(Assert.Single(_elevator.Requests));
-        Assert.Equal([80, 443], request.Ports);
-        Assert.Equal(FirewallScope.Internet, request.Scope);
+        Assert.Equal(new NetworkAccess(true), _api.Saved?.Network);
+        Assert.Equal(_api.FirewallRequest, Assert.IsType<FirewallSetRequest>(Assert.Single(_elevator.Requests)));
+    }
+
+    [Fact]
+    public async Task Nothing_needed_asks_windows_nothing()
+    {
+        _api.FirewallRequest = null;
+        var vm = await LoadedAsync();
+
+        vm.HtdocsOnNetwork = false;
+        await vm.ApplyNetworkCommand.ExecuteAsync(null);
+        vm.HttpPortText = "8080";
+        await vm.ApplyPortsCommand.ExecuteAsync(null);
+
+        Assert.Empty(_elevator.Requests);
+    }
+
+    [Fact]
+    public async Task A_port_change_asks_for_the_agents_firewall_request()
+    {
+        _api.Settings = _api.Settings with { Network = new NetworkAccess(false) };
+        var vm = await LoadedAsync();
+        _api.FirewallRequest = new FirewallSetRequest("2.4.69", [8080, 443], false);
+
+        vm.HttpPortText = "8080";
+        await vm.ApplyPortsCommand.ExecuteAsync(null);
+
+        Assert.Equal(8080, _api.Saved?.HttpPort);
+        Assert.Equal(_api.FirewallRequest, Assert.IsType<FirewallSetRequest>(Assert.Single(_elevator.Requests)));
+    }
+
+    [Fact]
+    public async Task A_refused_firewall_says_other_devices_cannot_reach_this_pc()
+    {
+        _api.FirewallRequest = new FirewallSetRequest("2.4.69", [80, 443], false);
+        _elevator.Next = new ElevatedResult(false, "Permission was not granted.");
+        var vm = await LoadedAsync();
+
+        await vm.ApplyNetworkCommand.ExecuteAsync(null);
+
+        Assert.False(vm.MessageOk);
+        Assert.Equal("Windows did not let Anvil open the firewall (Permission was not granted.). Other devices cannot reach this PC until it does.", vm.Message);
     }
 
     [Fact]

@@ -77,9 +77,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial bool HtdocsOnNetwork { get; set; }
 
     [ObservableProperty]
-    public partial bool PrivateNetworksOnly { get; set; }
-
-    [ObservableProperty]
     public partial string HttpPortText { get; set; } = "";
 
     [ObservableProperty]
@@ -218,13 +215,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         TryRunKey(set: StartWithWindows);
     }
 
-    /// <summary>Saves who may open htdocs and, when the network may, asks Windows to open both ports in the firewall.</summary>
+    /// <summary>Saves who may open htdocs, then asks Windows for the firewall rules what is open now needs.</summary>
     [RelayCommand]
     private async Task ApplyNetworkAsync()
     {
-        var next = _settings with { Network = new NetworkAccess(HtdocsOnNetwork, PrivateNetworksOnly) };
-        if (!await SaveAsync(next)) return;
-        if (HtdocsOnNetwork) await OpenFirewallAsync();
+        if (!await SaveAsync(_settings with { Network = new NetworkAccess(HtdocsOnNetwork) })) return;
+        await OpenFirewallAsync();
     }
 
     [RelayCommand]
@@ -244,7 +240,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         PortsError = null;
         if (!await SaveAsync(_settings with { HttpPort = http, HttpsPort = https })) return;
-        if (_settings.Network.HtdocsOnNetwork) await OpenFirewallAsync();
+        await OpenFirewallAsync();
     }
 
     [RelayCommand]
@@ -348,7 +344,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         lines.AddRange(report.Skipped.Select(s => $"Skipped {s}."));
         if (report.MissingPhpVersions.Count > 0)
             lines.Add($"Install PHP {string.Join(", ", report.MissingPhpVersions)} on the PHP page, then turn on the sites that use it.");
-        if (report.Result is { Ok: true } applied && await _followUp.RunAsync(applied, _settings.HttpPort, _settings.HttpsPort) is { } problem)
+        if (report.Result is { Ok: true } applied && await _followUp.RunAsync(applied) is { } problem)
             lines.Add(problem);
         ImportMessage = string.Join("\n", lines);
         if (report.Imported.Count > 0) _sitesChanged?.Invoke();
@@ -381,10 +377,21 @@ public sealed partial class SettingsViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>Runs the Agent's firewall request, if what is open to the network needs one.</summary>
     private async Task OpenFirewallAsync()
     {
-        var scope = _settings.Network.PrivateNetworksOnly ? FirewallScope.LocalNetwork : FirewallScope.Internet;
-        if (await _followUp.FirewallAsync(scope, _settings.HttpPort, _settings.HttpsPort) is { } problem) Say(problem, ok: false);
+        FirewallSetRequest? request;
+        try
+        {
+            request = await _api.GetFirewallRequestAsync();
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Warning(e, "Asking the Agent for the firewall rules failed");
+            return;
+        }
+
+        if (request is not null && await _followUp.FirewallAsync(request) is { } problem) Say(problem, ok: false);
     }
 
     private void Show(AppSettings s)
@@ -394,7 +401,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         CloseToTray = s.CloseToTray;
         EditorText = EditorLabel();
         HtdocsOnNetwork = s.Network.HtdocsOnNetwork;
-        PrivateNetworksOnly = s.Network.PrivateNetworksOnly;
         HttpPortText = s.HttpPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         HttpsPortText = s.HttpsPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         HtdocsFolder = s.HtdocsPath ?? _paths.Htdocs;

@@ -6,7 +6,8 @@ public sealed record ApacheTuning(int ThreadsPerChild, int MaxConnectionsPerChil
 
 public sealed record PhpPoolSettings(int Workers, int MaxRequests);
 
-public sealed record NetworkAccess(bool HtdocsOnNetwork, bool PrivateNetworksOnly);
+/// <param name="HtdocsOnNetwork">htdocs and its entries may be opened from the local network, not only this PC.</param>
+public sealed record NetworkAccess(bool HtdocsOnNetwork);
 
 /// <summary>Contents of data\anvil.json.</summary>
 public sealed record AppSettings
@@ -25,7 +26,9 @@ public sealed record AppSettings
     public IReadOnlyDictionary<string, PhpPoolSettings> PhpPools { get; init; } = new Dictionary<string, PhpPoolSettings>();
     /// <summary>Persisted pool ports, keyed by pool key ("php85").</summary>
     public IReadOnlyDictionary<string, int> PhpPoolPorts { get; init; } = new Dictionary<string, int>();
-    public NetworkAccess Network { get; init; } = new(true, true);
+    public NetworkAccess Network { get; init; } = new(true);
+    /// <summary>The domain colleagues' PCs send to this PC's name service, e.g. "arbib.pc"; null when none is set.</summary>
+    public string? NetworkDomain { get; init; }
     public bool StartServicesOnLaunch { get; init; } = true;
     public bool StartWithWindows { get; init; }
     public bool CloseToTray { get; init; } = true;

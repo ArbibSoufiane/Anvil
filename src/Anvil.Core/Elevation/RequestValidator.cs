@@ -18,6 +18,9 @@ public static partial class RequestValidator
     [GeneratedRegex("^elevate-[0-9a-f]{32}\\.json$")]
     private static partial Regex RequestName();
 
+    [GeneratedRegex(@"^[0-9]+\.[0-9]+\.[0-9]+$")]
+    private static partial Regex ApacheVersion();
+
     /// <summary>Null when <paramref name="requestPath"/> is a request file directly inside data\tmp.</summary>
     public static string? PathError(string requestPath, AppPaths paths)
     {
@@ -66,12 +69,20 @@ public static partial class RequestValidator
         return Validate(request, requestPath, paths) is { } error ? (null, error) : (request, null);
     }
 
-    /// <summary>Only Anvil's own HTTP and HTTPS ports, as configured in data\anvil.json, can be opened.</summary>
+    /// <summary>
+    /// Only an installed Apache and only Anvil's own HTTP and HTTPS ports, as configured in data\anvil.json. The settings are
+    /// read without moving a damaged file: this runs as administrator.
+    /// </summary>
     private static string? FirewallError(FirewallSetRequest f, AppPaths paths)
     {
         if (f.Ports is null) return "The request lists no ports.";
-        if (!Enum.IsDefined(f.Scope)) return "Unknown firewall scope.";
-        var settings = new SettingsStore(paths).Load();
+        if (f.ApacheVersion is { } version)
+        {
+            if (!ApacheVersion().IsMatch(version)) return $"'{version}' is not an Apache version.";
+            if (!File.Exists(FirewallRulePlanner.HttpdPath(paths, version))) return $"Apache {version} is not installed.";
+        }
+
+        if (new SettingsStore(paths).TryRead() is not { } settings) return "Anvil's settings file cannot be read.";
         int[] allowed = [settings.HttpPort, settings.HttpsPort];
         foreach (var port in f.Ports)
         {

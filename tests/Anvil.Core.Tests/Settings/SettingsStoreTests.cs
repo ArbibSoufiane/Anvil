@@ -53,7 +53,8 @@ public sealed class SettingsStoreTests : IDisposable
             OptionalModules = ["deflate"],
             PhpPools = new Dictionary<string, PhpPoolSettings> { ["8.5.5"] = new(8, 500) },
             PhpPoolPorts = new Dictionary<string, int> { ["php85"] = 9100 },
-            Network = new NetworkAccess(false, true),
+            Network = new NetworkAccess(false),
+            NetworkDomain = "arbib.pc",
         };
 
         store.Save(saved);
@@ -71,6 +72,30 @@ public sealed class SettingsStoreTests : IDisposable
 
         Assert.Equal(8080, store.Load().HttpPort);
         Assert.Null(store.LastLoadWarning);
+    }
+
+    [Fact]
+    public void Try_read_gives_defaults_without_a_file_and_null_for_a_corrupt_one_and_moves_nothing()
+    {
+        var store = new SettingsStore(_paths);
+        Assert.Equal(80, store.TryRead()?.HttpPort);
+
+        store.Save(new AppSettings { HttpPort = 8080 });
+        Assert.Equal(8080, store.TryRead()?.HttpPort);
+
+        var file = Path.Combine(_paths.Data, "anvil.json");
+        File.WriteAllText(file, "{not json");
+        Assert.Null(store.TryRead());
+        Assert.Equal("{not json", File.ReadAllText(file));
+        Assert.Single(Directory.GetFiles(_paths.Data, "anvil.json*"));
+    }
+
+    [Fact]
+    public void Old_network_settings_keep_the_htdocs_switch()
+    {
+        File.WriteAllText(Path.Combine(_paths.Data, "anvil.json"), "{\"network\": {\"htdocsOnNetwork\": false, \"privateNetworksOnly\": true}}");
+
+        Assert.Equal(new NetworkAccess(false), new SettingsStore(_paths).Load().Network);
     }
 
     [Fact]

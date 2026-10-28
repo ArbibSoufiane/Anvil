@@ -7,7 +7,7 @@ namespace Anvil.Core.Agent;
 /// HostsDomains and RequiredFirewall name what the GUI must still ask the Elevator to do.
 /// </summary>
 public sealed record ApplyResult(bool Ok, string? Error, string? ConfigTestOutput, IReadOnlyList<string> ChangedFiles,
-    IReadOnlyList<string>? HostsDomains = null, FirewallScope? RequiredFirewall = null)
+    IReadOnlyList<string>? HostsDomains = null, FirewallSetRequest? RequiredFirewall = null)
 {
     public static ApplyResult Success(IReadOnlyList<string>? changedFiles = null, string? testOutput = null) =>
         new(true, null, testOutput, changedFiles ?? []);

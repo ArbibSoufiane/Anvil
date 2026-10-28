@@ -218,7 +218,7 @@ public sealed partial class DashboardViewModel : ObservableObject
         LocalUrl = $"http://localhost{port}/";
         LocalNote = $"htdocs · {s.HtdocsPath ?? _paths.Htdocs}";
         NetworkUrl = s.Network.HtdocsOnNetwork && LanAddress.Find() is { } ip ? $"http://{ip}{port}/" : null;
-        NetworkNote = s.Network.PrivateNetworksOnly ? "Your network · Private networks only" : "Your network";
+        NetworkNote = "Your network · Private networks only";
         ApplyDb();
     }
 
