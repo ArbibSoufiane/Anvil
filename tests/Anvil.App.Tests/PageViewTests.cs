@@ -1,3 +1,4 @@
+using System.Net;
 using Anvil.App.Services;
 using Anvil.App.Shell;
 using Anvil.App.Tests.Support;
@@ -7,6 +8,7 @@ using Anvil.Core.Agent;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
+using Anvil.Core.Network;
 using Anvil.Core.Paths;
 using Anvil.Core.Preflight;
 using Anvil.Core.Processes;
@@ -23,6 +25,8 @@ public sealed class PageViewTests
 {
     private static readonly AppPaths Paths = new(@"D:\Anvil");
     private readonly FakeAgentApi _api = new();
+
+    private static readonly IReadOnlyList<LanAddress> Lan = [new("{ETHERNET}", "Ethernet", IPAddress.Parse("192.168.10.2"))];
 
     private (MainWindow Window, ShellViewModel Shell) Show()
     {
@@ -232,9 +236,10 @@ public sealed class PageViewTests
 
     private (MainWindow Window, ShellViewModel Shell, SitesViewModel Sites, SettingsViewModel Settings) ShowSitePages()
     {
-        var sites = new SitesViewModel(_api, new FakeElevator(), new FakeCa(), new FakeFolderPicker(), Paths, () => "192.168.10.2",
+        var sites = new SitesViewModel(_api, new FakeElevator(), new FakeCa(), new FakeFolderPicker(), Paths, () => Lan, new FakeTextClipboard(),
             ui: a => a());
-        var settings = new SettingsViewModel(_api, new FakeElevator(), new FakeRunKey(), new FakeCa(), new FakeFolderPicker(), Paths, () => "192.168.10.2");
+        var settings = new SettingsViewModel(_api, new FakeElevator(), new FakeRunKey(), new FakeCa(), new FakeFolderPicker(), Paths, () => Lan,
+            new FakeTextClipboard(), ui: a => a());
         sites.LoadAsync().GetAwaiter().GetResult();
         settings.LoadAsync().GetAwaiter().GetResult();
         var shell = new ShellViewModel(_api.Settings, sites: sites, settingsPage: settings);
@@ -299,8 +304,8 @@ public sealed class PageViewTests
             Available = new Release("4.1.0", new Uri("https://github.com/ArbibSoufiane/Anvil/releases/download/v4.1.0/Anvil-4.1.0-win64.zip"),
                 new Uri("https://github.com/ArbibSoufiane/Anvil/releases/download/v4.1.0/SHA256SUMS"), "Faster starts."),
         };
-        var settings = new SettingsViewModel(_api, new FakeElevator(), new FakeRunKey(), new FakeCa(), new FakeFolderPicker(), Paths, () => "192.168.10.2",
-            update: update);
+        var settings = new SettingsViewModel(_api, new FakeElevator(), new FakeRunKey(), new FakeCa(), new FakeFolderPicker(), Paths, () => Lan,
+            new FakeTextClipboard(), update: update, ui: a => a());
         settings.LoadAsync().GetAwaiter().GetResult();
         var shell = new ShellViewModel(_api.Settings, settingsPage: settings);
         var window = new MainWindow(shell);
@@ -317,5 +322,53 @@ public sealed class PageViewTests
         Assert.Equal("Install 4.1.0", Named<Button>(window, "InstallUpdate").Content);
         Assert.Equal("Faster starts.", Named<TextBlock>(window, "UpdateNotes").Text);
         Assert.StartsWith("Anvil 4.1.0 is available.", Named<TextBlock>(window, "UpdateMessage").Text);
+    }
+
+    [AvaloniaFact]
+    public void Settings_view_shows_the_colleague_command_with_copy_buttons()
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc" };
+        var (window, shell, _, settings) = ShowSitePages();
+
+        shell.NavigateCommand.Execute(AppPage.Settings);
+        window.UpdateLayout();
+
+        Assert.Equal("arbib.pc", Named<TextBox>(window, "NetworkDomain").Text);
+        Assert.Equal(settings.WindowsCommand, Named<TextBlock>(window, "WindowsCommand").Text);
+        Assert.Equal(settings.MacCommand, Named<TextBlock>(window, "MacCommand").Text);
+        Assert.True(Named<Button>(window, "CopyWindowsCommand").IsEffectivelyVisible);
+        Assert.True(Named<Button>(window, "CopyMacCommand").IsEffectivelyVisible);
+        Assert.Equal("Off while Apache is stopped.", Named<TextBlock>(window, "NameServiceStatus").Text);
+        Assert.Equal("192.168.10.2", Named<TextBlock>(window, "ThisPcAddress").Text);
+    }
+
+    [AvaloniaFact]
+    public void Sites_view_lists_network_addresses()
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc" };
+        _api.Sites.Add(new SiteDefinition { Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "shop.test", Root = @"D:\Sites\shop" });
+        _api.Htdocs.Add(new HtdocsEntry("blog", @"D:\Anvil\htdocs\blog", false, null, AccessLevel.Network));
+        var (window, shell, _, _) = ShowSitePages();
+
+        shell.NavigateCommand.Execute(AppPage.Sites);
+        window.UpdateLayout();
+
+        Assert.Contains(Named<ItemsControl>(window, "SiteRows").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "http://shop.arbib.pc");
+        var htdocs = Named<ItemsControl>(window, "HtdocsRows").GetVisualDescendants().OfType<TextBlock>().ToList();
+        Assert.Contains(htdocs, t => t.Text == "http://192.168.10.2/blog");
+        Assert.Contains(htdocs, t => t.Text == "http://blog.arbib.pc");
+    }
+
+    [AvaloniaFact]
+    public void Dashboard_finding_shows_its_action_button()
+    {
+        _api.Status = _api.Status with
+        {
+            Findings = [new PreflightFinding(NetworkFindings.FirewallId, Severity.Warning, "Other devices cannot reach this PC yet.", "Open the firewall.")],
+        };
+
+        var (window, _) = Show();
+
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Open firewall" && b.IsEffectivelyVisible);
     }
 }

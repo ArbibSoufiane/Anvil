@@ -117,3 +117,14 @@ public sealed class FakeAppUpdate : IAppUpdate
         return Task.FromResult(InstallProblem);
     }
 }
+
+public sealed class FakeTextClipboard : ITextClipboard
+{
+    public string? Text { get; private set; }
+
+    public Task SetTextAsync(string text)
+    {
+        Text = text;
+        return Task.CompletedTask;
+    }
+}

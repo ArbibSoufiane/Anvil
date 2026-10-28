@@ -4,6 +4,7 @@ using Anvil.App.Services;
 using Anvil.Core.Agent;
 using Anvil.Core.Certificates;
 using Anvil.Core.Elevation;
+using Anvil.Core.Network;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
@@ -21,6 +22,15 @@ public sealed partial class SiteRow : ObservableObject
     public required SiteDefinition Site { get; init; }
     public required string Php { get; init; }
     public required string Url { get; init; }
+
+    /// <summary>Where other devices open the site: its network name, when it has one.</summary>
+    public IReadOnlyList<string> NetworkUrls { get; init; } = [];
+
+    /// <summary>Why the site has no network name, when it should have one.</summary>
+    public string? NetworkNote { get; init; }
+
+    public bool HasNetworkUrls => NetworkUrls.Count > 0;
+    public bool HasNetworkNote => NetworkNote is not null;
 
     public string Name => Site.Name;
 
@@ -53,11 +63,16 @@ public sealed partial class SiteRow : ObservableObject
     public partial bool ConfirmingRemove { get; set; }
 }
 
-/// <summary>One folder answering at localhost/&lt;folder&gt;.</summary>
-public sealed record HtdocsRow(HtdocsEntry Entry, string Local, string Network, string Php)
+/// <summary>
+/// One folder answering at localhost/&lt;folder&gt;; NetworkUrls are where other devices open it, NetworkNote why it has
+/// no network name.
+/// </summary>
+public sealed record HtdocsRow(HtdocsEntry Entry, string Local, string Network, string Php, IReadOnlyList<string> NetworkUrls, string? NetworkNote = null)
 {
     public string Folder => Entry.Folder;
     public string? Detail => Entry.IsAlias ? $"kept in {Entry.Root}" : null;
+    public bool HasNetworkUrls => NetworkUrls.Count > 0;
+    public bool HasNetworkNote => NetworkNote is not null;
 }
 
 /// <summary>
@@ -70,20 +85,22 @@ public sealed partial class SitesViewModel : ObservableObject
     private readonly ILocalCaTrust _ca;
     private readonly IFolderPicker _picker;
     private readonly AppPaths _paths;
-    private readonly Func<string?> _lanIp;
+    private readonly Func<IReadOnlyList<LanAddress>> _lanAddresses;
+    private readonly ITextClipboard _clipboard;
     private readonly ElevationFollowUp _followUp;
     private readonly Action<Action> _ui;
     private AppSettings _settings = new();
     private IReadOnlyList<PhpVersionInfo> _php = [];
 
     public SitesViewModel(IAgentApi api, IElevator elevator, ILocalCaTrust ca, IFolderPicker picker, AppPaths paths,
-        Func<string?> lanIp, Action<Action>? ui = null)
+        Func<IReadOnlyList<LanAddress>> lanAddresses, ITextClipboard clipboard, Action<Action>? ui = null)
     {
         _api = api;
         _ca = ca;
         _picker = picker;
         _paths = paths;
-        _lanIp = lanIp;
+        _lanAddresses = lanAddresses;
+        _clipboard = clipboard;
         _followUp = new ElevationFollowUp(elevator);
         _ui = ui ?? (a => Dispatcher.UIThread.Post(a));
     }
@@ -97,7 +114,7 @@ public sealed partial class SitesViewModel : ObservableObject
     public string HtdocsTitle => $"htdocs folders · {Htdocs.Count}";
     public string HtdocsPath => _settings.HtdocsPath ?? _paths.Htdocs;
     public string LocalPattern => $"{Host("localhost")}/<folder>";
-    public string NetworkPattern => _lanIp() is { } lan ? $"{Host(lan)}/<folder>" : "this PC's IP/<folder>";
+    public string NetworkPattern => Lan() is { } lan ? $"{Host(lan)}/<folder>" : "this PC's IP/<folder>";
 
     [ObservableProperty]
     public partial string SearchText { get; set; } = "";
@@ -224,6 +241,13 @@ public sealed partial class SitesViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task CopyUrlAsync(string url)
+    {
+        await _clipboard.SetTextAsync(url);
+        Say($"Copied {url}", ok: true);
+    }
+
+    [RelayCommand]
     private void OpenHtdocs() => EditorLauncher.OpenFolder(HtdocsPath);
 
     [RelayCommand]
@@ -248,7 +272,7 @@ public sealed partial class SitesViewModel : ObservableObject
     private void DismissTrust() => OfferTrust = false;
 
     private AddSiteViewModel NewEditor(SiteDefinition? editing) =>
-        new(_api, _picker, new SiteFormContext(_php, _settings, HtdocsPath, _lanIp()), OnEditorDoneAsync,
+        new(_api, _picker, new SiteFormContext(_php, _settings, HtdocsPath, Lan()), OnEditorDoneAsync,
             () => Editor = null, editing);
 
     private async Task OnEditorDoneAsync(SiteDefinition? site, ApplyResult result)
@@ -293,20 +317,27 @@ public sealed partial class SitesViewModel : ObservableObject
     private void Fill(IReadOnlyList<SiteDefinition> sites, IReadOnlyList<HtdocsEntry> htdocs)
     {
         var defaultPhp = _settings.DefaultPhp is { } v ? $"{v} (default)" : "default";
+        var names = NetworkNames.Plan(_settings.NetworkDomain, sites, htdocs, _settings.Network.HtdocsOnNetwork);
         Sites.Clear();
         foreach (var site in sites.Where(s => s.Kind != SiteKind.Htdocs).OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
             Sites.Add(new SiteRow
             {
                 Site = site, Php = site.Type == SiteType.Php ? site.PhpVersion ?? defaultPhp : "none", Url = UrlOf(site),
+                NetworkUrls = [.. names.Names.Where(n => n.SiteId == site.Id).Select(n => $"http://{Host(n.Host)}")],
+                NetworkNote = names.Issues.FirstOrDefault(i => i.SiteId == site.Id)?.Reason,
             });
         Htdocs.Clear();
-        var lan = _lanIp();
+        var lan = Lan();
         foreach (var entry in htdocs)
         {
+            var open = entry.Access == AccessLevel.Network && _settings.Network.HtdocsOnNetwork;
             var network = entry.Access != AccessLevel.Network ? AccessLabel(entry.Access)
-                : _settings.Network.HtdocsOnNetwork && lan is not null ? $"{Host(lan)}/{entry.Folder}"
+                : open && lan is not null ? $"{Host(lan)}/{entry.Folder}"
                 : "Off";
-            Htdocs.Add(new HtdocsRow(entry, $"{Host("localhost")}/{entry.Folder}", network, entry.PhpVersion ?? defaultPhp));
+            List<string> urls = open && lan is not null ? [$"http://{Host(lan)}/{Uri.EscapeDataString(entry.Folder)}"] : [];
+            urls.AddRange(names.Names.Where(n => n.HtdocsFolder == entry.Folder).Select(n => $"http://{Host(n.Host)}"));
+            Htdocs.Add(new HtdocsRow(entry, $"{Host("localhost")}/{entry.Folder}", network, entry.PhpVersion ?? defaultPhp, urls,
+                names.Issues.FirstOrDefault(i => i.HtdocsFolder == entry.Folder)?.Reason));
         }
         Filter();
         OnPropertyChanged(nameof(SitesTitle));
@@ -337,6 +368,8 @@ public sealed partial class SitesViewModel : ObservableObject
     }
 
     private string Host(string host) => _settings.HttpPort == 80 ? host : $"{host}:{_settings.HttpPort}";
+
+    private string? Lan() => _lanAddresses().FirstOrDefault()?.Address.ToString();
 
     private void Say(string text, bool ok)
     {

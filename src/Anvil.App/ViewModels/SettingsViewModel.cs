@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
@@ -5,10 +6,13 @@ using Anvil.App.Services;
 using Anvil.Core;
 using Anvil.Core.Agent;
 using Anvil.Core.Elevation;
+using Anvil.Core.Network;
 using Anvil.Core.Paths;
+using Anvil.Core.Processes;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
 using Anvil.Core.Update;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
@@ -16,7 +20,7 @@ using Serilog;
 namespace Anvil.App.ViewModels;
 
 /// <summary>
-/// The Settings page: startup, network access, ports, folders, the local certificate authority and the import from
+/// The Settings page: startup, network sharing, ports, folders, the local certificate authority and the import from
 /// ArbiPache 3, and Anvil's own update. Every change goes through the Agent; a refused change puts the controls back as they were.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
@@ -28,20 +32,25 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ILocalCaTrust _ca;
     private readonly IFolderPicker _picker;
     private readonly AppPaths _paths;
-    private readonly Func<string?> _lanIp;
+    private readonly Func<IReadOnlyList<LanAddress>> _lanAddresses;
+    private readonly ITextClipboard _clipboard;
+    private readonly Action<Action> _ui;
     private readonly Action<AppSettings>? _settingsChanged;
     private readonly Action? _sitesChanged;
     private readonly ElevationFollowUp _followUp;
     private readonly IAppUpdate? _update;
     private readonly EditorChoice _editor;
     private AppSettings _settings = new();
+    private bool _apacheRunning;
+    private IReadOnlyList<string> _listening = [];
 
+    /// <param name="lanAddresses">This PC's addresses on local networks, read again whenever the Agent's status changes.</param>
     /// <param name="settingsChanged">Told about every saved change, so the rest of the window follows.</param>
     /// <param name="sitesChanged">Told when imported sites or a new htdocs folder change the Sites page.</param>
     /// <param name="update">Checks for and installs a newer Anvil; null hides the update buttons.</param>
     public SettingsViewModel(IAgentApi api, IElevator elevator, IRunKey runKey, ILocalCaTrust ca, IFolderPicker picker, AppPaths paths,
-        Func<string?> lanIp, Action<AppSettings>? settingsChanged = null, Action? sitesChanged = null,
-        IAppUpdate? update = null, EditorChoice? editor = null)
+        Func<IReadOnlyList<LanAddress>> lanAddresses, ITextClipboard clipboard, Action<AppSettings>? settingsChanged = null,
+        Action? sitesChanged = null, IAppUpdate? update = null, EditorChoice? editor = null, Action<Action>? ui = null)
     {
         _update = update;
         _editor = editor ?? new EditorChoice(null);
@@ -50,16 +59,42 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ca = ca;
         _picker = picker;
         _paths = paths;
-        _lanIp = lanIp;
+        _lanAddresses = lanAddresses;
+        _clipboard = clipboard;
+        _ui = ui ?? (a => Dispatcher.UIThread.Post(a));
         _settingsChanged = settingsChanged;
         _sitesChanged = sitesChanged;
         _followUp = new ElevationFollowUp(elevator);
+        api.StatusChanged += (_, status) => _ui(() => ApplyStatus(status));
     }
 
     public string AppFolder => _paths.Root;
     public string DataFolder => _paths.Data;
     public string VersionText => $"Anvil {BuildInfo.Version}";
-    public string NetworkLabel => $"Let devices on my network open htdocs at {_lanIp() ?? "this PC's address"}";
+    public string NetworkLabel => $"Let devices on my network open htdocs at {_lanAddresses().FirstOrDefault()?.Address.ToString() ?? "this PC's address"}";
+
+    /// <summary>The domain box: a colleague's PC asks this one about every name under it.</summary>
+    [ObservableProperty]
+    public partial string NetworkDomain { get; set; } = "";
+
+    /// <summary>The address colleagues point their name lookups at: one the name service answers on, if any.</summary>
+    [ObservableProperty]
+    public partial string? ThisPcAddress { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCommands))]
+    public partial string? WindowsCommand { get; set; }
+
+    [ObservableProperty]
+    public partial string? MacCommand { get; set; }
+
+    public bool HasCommands => WindowsCommand is not null;
+
+    [ObservableProperty]
+    public partial string NameServiceStatus { get; set; } = "";
+
+    /// <summary>A Public network or port 53 taken by another program, as the Dashboard shows them.</summary>
+    public ObservableCollection<string> NetworkProblems { get; } = [];
 
     [ObservableProperty]
     public partial bool StartServicesOnLaunch { get; set; }
@@ -201,6 +236,16 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        try
+        {
+            var status = await _api.GetStatusAsync(ct);
+            ApplyStatus(status);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Warning(e, "Reading the Agent's status failed");
+        }
+
         Show(_settings);
         CaTrusted = IsCaTrusted();
         // A portable folder may have moved since the Run entry was written.
@@ -221,6 +266,35 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         if (!await SaveAsync(_settings with { Network = new NetworkAccess(HtdocsOnNetwork) })) return;
         await OpenFirewallAsync();
+    }
+
+    /// <summary>Saves the network domain (empty turns network names off), then asks Windows for the rules it needs.</summary>
+    [RelayCommand]
+    private async Task SaveNetworkDomainAsync()
+    {
+        var domain = NetworkNames.NormalizeDomain(NetworkDomain);
+        if (domain is not null && NetworkNames.DomainError(domain) is { } error)
+        {
+            Say(error, ok: false);
+            return;
+        }
+
+        if (await SaveCoreAsync(_settings with { NetworkDomain = domain }) is { } saved
+            && await _followUp.RunAsync(saved) is { } problem)
+            Say(problem, ok: false);
+    }
+
+    [RelayCommand]
+    private Task CopyWindowsCommandAsync() => CopyAsync(WindowsCommand);
+
+    [RelayCommand]
+    private Task CopyMacCommandAsync() => CopyAsync(MacCommand);
+
+    private async Task CopyAsync(string? text)
+    {
+        if (text is null) return;
+        await _clipboard.SetTextAsync(text);
+        Say("Copied.", ok: true);
     }
 
     [RelayCommand]
@@ -350,7 +424,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (report.Imported.Count > 0) _sitesChanged?.Invoke();
     }
 
-    private async Task<bool> SaveAsync(AppSettings next)
+    private async Task<bool> SaveAsync(AppSettings next) => await SaveCoreAsync(next) is not null;
+
+    /// <returns>The Agent's result when it kept the settings; null when it refused them or did not answer.</returns>
+    private async Task<ApplyResult?> SaveCoreAsync(AppSettings next)
     {
         ApplyResult result;
         try
@@ -367,14 +444,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             Show(_settings);
             Say(Describe(result), ok: false);
-            return false;
+            return null;
         }
 
         _settings = next;
         Show(next);
         _settingsChanged?.Invoke(next);
         Say("Saved.", ok: true);
-        return true;
+        return result;
     }
 
     /// <summary>Runs the Agent's firewall request, if what is open to the network needs one.</summary>
@@ -404,6 +481,36 @@ public sealed partial class SettingsViewModel : ObservableObject
         HttpPortText = s.HttpPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         HttpsPortText = s.HttpsPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         HtdocsFolder = s.HtdocsPath ?? _paths.Htdocs;
+        NetworkDomain = s.NetworkDomain ?? "";
+        ShowNetwork();
+    }
+
+    private void ApplyStatus(AgentStatus status)
+    {
+        _apacheRunning = status.Services.FirstOrDefault(x => x.Id == ServiceId.Apache)?.State
+            is ProcessState.Starting or ProcessState.Running or ProcessState.Restarting;
+        _listening = status.NameServiceAddresses;
+        NetworkProblems.Clear();
+        foreach (var f in status.Findings.Where(f => f.Id == NetworkFindings.PublicId
+                                                     || f.Id.StartsWith(NetworkFindings.DnsBindPrefix, StringComparison.Ordinal)))
+            NetworkProblems.Add(f.Message);
+        ShowNetwork();
+    }
+
+    /// <summary>The saved domain, this PC's address now and the name service's state, as the colleague commands need them.</summary>
+    private void ShowNetwork()
+    {
+        var domain = _settings.NetworkDomain;
+        var lan = _lanAddresses();
+        var address = lan.FirstOrDefault(a => _listening.Contains(a.Address.ToString()))?.Address ?? lan.FirstOrDefault()?.Address;
+        ThisPcAddress = address?.ToString();
+        WindowsCommand = domain is not null && address is not null ? ColleagueSetup.WindowsCommand(domain, address) : null;
+        MacCommand = domain is not null && address is not null ? ColleagueSetup.MacCommand(domain, address) : null;
+        NameServiceStatus = domain is null ? "Off: set a network domain to turn it on."
+            : lan.Count == 0 ? "This PC has no address on a local network."
+            : !_apacheRunning ? "Off while Apache is stopped."
+            : _listening.Count > 0 ? $"Answering for *.{domain} on {string.Join(", ", _listening)}."
+            : "Off: port 53 is in use on every network address.";
     }
 
     private void TryRunKey(bool set)

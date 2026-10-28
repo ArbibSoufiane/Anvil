@@ -1,7 +1,9 @@
+using System.Net;
 using Anvil.App.Tests.Support;
 using Anvil.App.ViewModels;
 using Anvil.Core.Agent;
 using Anvil.Core.Elevation;
+using Anvil.Core.Network;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Processes;
@@ -16,6 +18,8 @@ public sealed class SitesViewModelTests
     private readonly FakeElevator _elevator = new();
     private readonly FakeCa _ca = new();
     private readonly FakeFolderPicker _picker = new();
+    private readonly FakeTextClipboard _clipboard = new();
+    private IReadOnlyList<LanAddress> _lan = [Lan("Ethernet", "192.168.10.2")];
 
     public SitesViewModelTests()
     {
@@ -25,7 +29,9 @@ public sealed class SitesViewModelTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private SitesViewModel Make() => new(_api, _elevator, _ca, _picker, Paths, () => "192.168.10.2", ui: a => a());
+    private SitesViewModel Make() => new(_api, _elevator, _ca, _picker, Paths, () => _lan, _clipboard, ui: a => a());
+
+    private static LanAddress Lan(string adapter, string address) => new("{" + adapter.ToUpperInvariant() + "}", adapter, IPAddress.Parse(address));
 
     private static SiteDefinition Site(string name, SiteKind kind = SiteKind.Domain) =>
         new() { Id = SiteSet.IdFor(kind, name), Kind = kind, Type = SiteType.Php, Name = name, Root = $@"D:\Sites\{name}" };
@@ -185,5 +191,64 @@ public sealed class SitesViewModelTests
 
         Assert.True(row.ConfirmingRemove);
         Assert.DoesNotContain(_api.Calls, c => c.StartsWith("remove", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Rows_show_network_addresses()
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc", Network = new(true) };
+        _api.Sites.Add(Site("shop.test") with { Access = AccessLevel.Network });
+        _api.Htdocs.Add(new HtdocsEntry("blog", @"D:\Anvil\htdocs\blog", false, null, AccessLevel.Network));
+        _lan = [Lan("Ethernet", "192.168.100.254")];
+        var vm = Make();
+
+        await vm.LoadAsync(Ct);
+
+        Assert.Equal(["http://shop.arbib.pc"], vm.Sites.Single().NetworkUrls);
+        Assert.Null(vm.Sites.Single().NetworkNote);
+        Assert.Equal(["http://192.168.100.254/blog", "http://blog.arbib.pc"], vm.Htdocs.Single().NetworkUrls);
+    }
+
+    [Fact]
+    public async Task Network_addresses_carry_the_http_port()
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc", HttpPort = 8080 };
+        _api.Sites.Add(Site("shop.test"));
+        _api.Htdocs.Add(new HtdocsEntry("blog", @"D:\Anvil\htdocs\blog", false, null, AccessLevel.Network));
+        var vm = Make();
+
+        await vm.LoadAsync(Ct);
+
+        Assert.Equal(["http://shop.arbib.pc:8080"], vm.Sites.Single().NetworkUrls);
+        Assert.Equal(["http://192.168.10.2:8080/blog", "http://blog.arbib.pc:8080"], vm.Htdocs.Single().NetworkUrls);
+    }
+
+    [Fact]
+    public async Task This_pc_only_rows_and_sites_without_a_name_say_so()
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc" };
+        _api.Sites.Add(Site("my_shop.test"));
+        _api.Sites.Add(Site("admin.test") with { Access = AccessLevel.ThisPc });
+        _api.Htdocs.Add(new HtdocsEntry("notes", @"D:\Anvil\htdocs\notes", false, null, AccessLevel.ThisPc));
+        var vm = Make();
+
+        await vm.LoadAsync(Ct);
+
+        var named = vm.Sites.Single(r => r.Name == "my_shop.test");
+        Assert.Empty(named.NetworkUrls);
+        Assert.Equal("my_shop.test has no network name: a network name may use only the letters a to z, digits and hyphens.", named.NetworkNote);
+        Assert.Empty(vm.Sites.Single(r => r.Name == "admin.test").NetworkUrls);
+        Assert.Empty(vm.Htdocs.Single().NetworkUrls);
+    }
+
+    [Fact]
+    public async Task Copy_puts_an_address_on_the_clipboard()
+    {
+        var vm = Make();
+        await vm.LoadAsync(Ct);
+
+        await vm.CopyUrlCommand.ExecuteAsync("http://shop.arbib.pc");
+
+        Assert.Equal("http://shop.arbib.pc", _clipboard.Text);
     }
 }

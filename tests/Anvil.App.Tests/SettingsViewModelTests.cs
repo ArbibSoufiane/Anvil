@@ -4,7 +4,10 @@ using Anvil.App.ViewModels;
 using Anvil.Core;
 using Anvil.Core.Agent;
 using Anvil.Core.Elevation;
+using Anvil.Core.Network;
 using Anvil.Core.Paths;
+using Anvil.Core.Preflight;
+using Anvil.Core.Processes;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
 using Anvil.Core.Update;
@@ -22,6 +25,8 @@ public sealed class SettingsViewModelTests
     private readonly List<AppSettings> _changed = [];
     private readonly EditorChoice _editor = new(null);
     private int _sitesChanged;
+    private readonly FakeTextClipboard _clipboard = new();
+    private IReadOnlyList<LanAddress> _lan = [Lan("Ethernet", "192.168.100.254")];
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -32,8 +37,8 @@ public sealed class SettingsViewModelTests
 
     private async Task<SettingsViewModel> LoadedAsync(IAppUpdate? update = null)
     {
-        var vm = new SettingsViewModel(_api, _elevator, _runKey, _ca, _picker, Paths, () => "192.168.10.2", _changed.Add, () => _sitesChanged++,
-            update, _editor);
+        var vm = new SettingsViewModel(_api, _elevator, _runKey, _ca, _picker, Paths, () => _lan, _clipboard, _changed.Add, () => _sitesChanged++,
+            update, _editor, ui: a => a());
         await vm.LoadAsync(Ct);
         return vm;
     }
@@ -325,5 +330,155 @@ public sealed class SettingsViewModelTests
 
         Assert.Equal("auto", _editor.Editor);
         Assert.Equal(SettingsViewModel.AutomaticEditor, vm.EditorText);
+    }
+
+    private static LanAddress Lan(string adapter, string address) => new("{" + adapter.ToUpperInvariant() + "}", adapter, System.Net.IPAddress.Parse(address));
+
+    private AgentStatus Status(bool apacheRunning = true, IReadOnlyList<string>? nameService = null) => _api.Status with
+    {
+        Services = [new ServiceStatus(ServiceId.Apache, apacheRunning ? ProcessState.Running : ProcessState.Stopped, "2.4.69", null)],
+        NameServiceAddresses = nameService ?? [],
+    };
+
+    [Fact]
+    public async Task Shows_the_colleague_commands_for_the_domain_and_address()
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc" };
+
+        var vm = await LoadedAsync();
+
+        Assert.Equal("arbib.pc", vm.NetworkDomain);
+        Assert.Equal("192.168.100.254", vm.ThisPcAddress);
+        Assert.Equal("Add-DnsClientNrptRule -Namespace \".arbib.pc\" -NameServers 192.168.100.254", vm.WindowsCommand);
+        Assert.Equal("sudo mkdir -p /etc/resolver && echo \"nameserver 192.168.100.254\" | sudo tee /etc/resolver/arbib.pc", vm.MacCommand);
+    }
+
+    [Fact]
+    public async Task Copy_puts_the_commands_on_the_clipboard()
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc" };
+        var vm = await LoadedAsync();
+
+        await vm.CopyWindowsCommandCommand.ExecuteAsync(null);
+        Assert.Equal(vm.WindowsCommand, _clipboard.Text);
+
+        await vm.CopyMacCommandCommand.ExecuteAsync(null);
+        Assert.Equal(vm.MacCommand, _clipboard.Text);
+    }
+
+    [Fact]
+    public async Task No_domain_or_no_address_hides_the_commands()
+    {
+        var vm = await LoadedAsync();
+        Assert.Null(vm.WindowsCommand);
+        Assert.Null(vm.MacCommand);
+
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc" };
+        _lan = [];
+        await vm.LoadAsync(Ct);
+
+        Assert.Null(vm.WindowsCommand);
+        Assert.Null(vm.ThisPcAddress);
+        Assert.Equal("This PC has no address on a local network.", vm.NameServiceStatus);
+    }
+
+    [Fact]
+    public async Task Commands_follow_the_current_address()
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc" };
+        var vm = await LoadedAsync();
+        _lan = [Lan("Wi-Fi", "192.168.1.40")];
+
+        _api.Raise(Status(nameService: ["192.168.1.40"]));
+
+        Assert.EndsWith("-NameServers 192.168.1.40", vm.WindowsCommand);
+    }
+
+    [Fact]
+    public async Task The_address_the_name_service_answers_on_comes_first()
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc" };
+        _lan = [Lan("Ethernet", "192.168.100.254"), Lan("Wi-Fi", "192.168.1.40")];
+        var vm = await LoadedAsync();
+
+        _api.Raise(Status(nameService: ["192.168.1.40"]));
+
+        Assert.Equal("192.168.1.40", vm.ThisPcAddress);
+    }
+
+    [Theory]
+    [InlineData(null, false, new string[0], "Off: set a network domain to turn it on.")]
+    [InlineData("arbib.pc", false, new string[0], "Off while Apache is stopped.")]
+    [InlineData("arbib.pc", true, new[] { "192.168.100.254" }, "Answering for *.arbib.pc on 192.168.100.254.")]
+    [InlineData("arbib.pc", true, new string[0], "Off: port 53 is in use on every network address.")]
+    public async Task Name_service_status(string? domain, bool apacheRunning, string[] listening, string text)
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = domain };
+        var vm = await LoadedAsync();
+
+        _api.Raise(Status(apacheRunning, listening));
+
+        Assert.Equal(text, vm.NameServiceStatus);
+    }
+
+    [Fact]
+    public async Task Invalid_domain_is_explained_and_not_saved()
+    {
+        var vm = await LoadedAsync();
+        vm.NetworkDomain = "pc";
+
+        await vm.SaveNetworkDomainCommand.ExecuteAsync(null);
+
+        Assert.Equal("A network domain needs at least two parts, such as arbib.pc.", vm.Message);
+        Assert.False(vm.MessageOk);
+        Assert.Null(_api.Saved);
+    }
+
+    [Fact]
+    public async Task Saving_a_domain_normalizes_it_and_opens_the_firewall()
+    {
+        var request = new FirewallSetRequest("2.4.69", [80, 443], true);
+        _api.SaveResult = _api.SaveResult with { RequiredFirewall = request };
+        var vm = await LoadedAsync();
+        vm.NetworkDomain = " Arbib.PC. ";
+
+        await vm.SaveNetworkDomainCommand.ExecuteAsync(null);
+
+        Assert.Equal("arbib.pc", _api.Saved!.NetworkDomain);
+        Assert.Equal("arbib.pc", vm.NetworkDomain);
+        Assert.Equal(request, Assert.Single(_elevator.Requests));
+        Assert.EndsWith("-NameServers 192.168.100.254", vm.WindowsCommand);
+    }
+
+    [Fact]
+    public async Task Clearing_the_domain_turns_network_names_off()
+    {
+        _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc" };
+        var vm = await LoadedAsync();
+        vm.NetworkDomain = "  ";
+
+        await vm.SaveNetworkDomainCommand.ExecuteAsync(null);
+
+        Assert.Null(_api.Saved!.NetworkDomain);
+        Assert.Null(vm.WindowsCommand);
+        Assert.Equal("Off: set a network domain to turn it on.", vm.NameServiceStatus);
+    }
+
+    [Fact]
+    public async Task Public_network_and_busy_port_53_show_on_settings_too()
+    {
+        var vm = await LoadedAsync();
+
+        _api.Raise(Status() with
+        {
+            Findings =
+            [
+                new PreflightFinding(NetworkFindings.FirewallId, Severity.Warning, "firewall", null),
+                new PreflightFinding(NetworkFindings.PublicId, Severity.Warning, "public", null),
+                new PreflightFinding(NetworkFindings.DnsBindPrefix + "192.168.100.254", Severity.Warning, "busy", null),
+            ],
+        });
+
+        Assert.Equal(["public", "busy"], vm.NetworkProblems);
     }
 }

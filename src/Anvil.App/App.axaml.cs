@@ -47,19 +47,19 @@ public partial class App : Application
             var appUpdate = AppUpdate.FromGitHub(paths, _agent.Api, _agent, http, () => Dispatcher.UIThread.Post(() => desktop.Shutdown()));
             var editorChoice = EditorChoice.ForUser();
             var editor = new EditorLauncher(() => editorChoice.Editor, new WindowsRegistryReader(), File.Exists);
-            var dashboard = new DashboardViewModel(_agent.Api, paths, editor);
+            var elevator = new UacElevator(paths);
+            var dashboard = new DashboardViewModel(_agent.Api, paths, editor, elevator: elevator);
             var apache = new ApacheViewModel(_agent.Api, paths, editor);
             var php = new PhpViewModel(_agent.Api, paths, editor);
             var database = new DatabaseViewModel(_agent.Api, paths, editor);
             var logs = new LogsViewModel(paths, editor);
-            var elevator = new UacElevator(paths);
             var ca = new LocalCaTrust(paths);
             MainWindow? window = null;
             var picker = new AvaloniaFolderPicker(() => window);
-            static string? Lan() => LanAddresses.Find().FirstOrDefault()?.Address.ToString();
-            var sites = new SitesViewModel(_agent.Api, elevator, ca, picker, paths, Lan);
+            var clipboard = new AvaloniaTextClipboard(() => window);
+            var sites = new SitesViewModel(_agent.Api, elevator, ca, picker, paths, LanAddresses.Find, clipboard);
             ShellViewModel vm = null!;
-            var settingsPage = new SettingsViewModel(_agent.Api, elevator, new RegistryRunKey(), ca, picker, paths, Lan, s =>
+            var settingsPage = new SettingsViewModel(_agent.Api, elevator, new RegistryRunKey(), ca, picker, paths, LanAddresses.Find, clipboard, s =>
             {
                 settings = s;
                 vm.CloseToTray = s.CloseToTray;

@@ -47,6 +47,18 @@
                       <StackPanel VerticalAlignment="Center" Spacing="2">
                         <TextBlock Classes="dd" FontWeight="Medium" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                         <TextBlock Classes="sub" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" TextTrimming="CharacterEllipsis" />
+                        <ItemsControl ItemsSource="{Binding NetworkUrls}" IsVisible="{Binding HasNetworkUrls}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                              <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Classes="sub url" VerticalAlignment="Center" Text="{Binding}" TextTrimming="CharacterEllipsis" />
+                                <Button Classes="ghost" Padding="4,0" Content="Copy" ToolTip.Tip="Copy this address"
+                                        Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).CopyUrlCommand}" CommandParameter="{Binding}" />
+                              </StackPanel>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Classes="sub" TextWrapping="Wrap" Text="{Binding NetworkNote}" IsVisible="{Binding HasNetworkNote}" />
                       </StackPanel>
                       <TextBlock Classes="dd" Grid.Column="1" VerticalAlignment="Center" Text="{Binding TypeText}" />
                       <TextBlock Classes="dd" Grid.Column="2" VerticalAlignment="Center" Text="{Binding Php}" TextTrimming="CharacterEllipsis" />
@@ -127,7 +139,21 @@
                                    IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                       </StackPanel>
                       <TextBlock Classes="dd url" Grid.Column="1" VerticalAlignment="Center" Text="{Binding Local}" />
-                      <TextBlock Classes="dd" Grid.Column="2" VerticalAlignment="Center" Text="{Binding Network}" />
+                      <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Classes="dd" Text="{Binding Network}" IsVisible="{Binding !HasNetworkUrls}" />
+                        <ItemsControl ItemsSource="{Binding NetworkUrls}" IsVisible="{Binding HasNetworkUrls}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                              <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Classes="sub url" VerticalAlignment="Center" Text="{Binding}" TextTrimming="CharacterEllipsis" />
+                                <Button Classes="ghost" Padding="4,0" Content="Copy" ToolTip.Tip="Copy this address"
+                                        Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).CopyUrlCommand}" CommandParameter="{Binding}" />
+                              </StackPanel>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Classes="sub" TextWrapping="Wrap" Text="{Binding NetworkNote}" IsVisible="{Binding HasNetworkNote}" />
+                      </StackPanel>
                       <TextBlock Classes="dd" Grid.Column="3" VerticalAlignment="Center" Text="{Binding Php}" />
                       <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
                         <Button Classes="ghost" Content="Open"

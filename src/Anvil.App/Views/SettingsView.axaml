@@ -37,13 +37,54 @@
             </StackPanel>
           </Border>
 
-          <Border Classes="card">
+          <Border Classes="card" x:Name="NetworkSharing">
             <StackPanel Spacing="12">
-              <TextBlock Classes="h2" Text="Network access" />
+              <TextBlock Classes="h2" Text="Network sharing" />
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Classes="dd" VerticalAlignment="Center" TextWrapping="Wrap" Text="{Binding NetworkLabel}" />
                 <ToggleSwitch Grid.Column="1" OnContent="" OffContent="" IsChecked="{Binding HtdocsOnNetwork}" Command="{Binding ApplyNetworkCommand}" />
               </Grid>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="fieldLabel" Text="Network domain" />
+                  <TextBox x:Name="NetworkDomain" Classes="field" Text="{Binding NetworkDomain}" PlaceholderText="&lt;computer name&gt;.internal" />
+                </StackPanel>
+                <Button Grid.Column="1" Classes="secondary" VerticalAlignment="Bottom" Content="Save" Command="{Binding SaveNetworkDomainCommand}" />
+              </Grid>
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="4">
+                <TextBlock Classes="dt" Text="Name service" />
+                <TextBlock x:Name="NameServiceStatus" Grid.Column="1" Classes="dd" TextWrapping="Wrap" Text="{Binding NameServiceStatus}" />
+                <TextBlock Grid.Row="1" Classes="dt" Text="This PC" />
+                <TextBlock x:Name="ThisPcAddress" Grid.Row="1" Grid.Column="1" Classes="dd mono" Text="{Binding ThisPcAddress}" />
+              </Grid>
+              <ItemsControl x:Name="NetworkProblems" ItemsSource="{Binding NetworkProblems}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <StackPanel Spacing="8" IsVisible="{Binding HasCommands}">
+                <TextBlock Classes="fieldLabel" Text="Windows" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <TextBlock x:Name="WindowsCommand" Classes="mono" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding WindowsCommand}" />
+                  <Button x:Name="CopyWindowsCommand" Grid.Column="1" Classes="secondary" Content="Copy" Command="{Binding CopyWindowsCommandCommand}" />
+                </Grid>
+                <TextBlock Classes="note" TextWrapping="Wrap" Text="Your colleague runs this once in an administrator PowerShell window." />
+                <TextBlock Classes="fieldLabel" Text="Mac" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <TextBlock x:Name="MacCommand" Classes="mono" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding MacCommand}" />
+                  <Button x:Name="CopyMacCommand" Grid.Column="1" Classes="secondary" Content="Copy" Command="{Binding CopyMacCommandCommand}" />
+                </Grid>
+                <TextBlock Classes="note" TextWrapping="Wrap"
+                           Text="If this PC's address changes, they run it again with the new one. A DHCP reservation in your router keeps the address fixed." />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border Classes="card">
+            <StackPanel Spacing="12">
+              <TextBlock Classes="h2" Text="Ports" />
               <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="12">
                 <StackPanel Spacing="4">
                   <TextBlock Classes="fieldLabel" Text="HTTP port" />

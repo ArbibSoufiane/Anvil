@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Anvil.App.Services;
 using Anvil.Core.Agent;
 using Anvil.Core.Database;
+using Anvil.Core.Elevation;
 using Anvil.Core.Network;
 using Anvil.Core.Paths;
 using Anvil.Core.Preflight;
@@ -14,7 +15,18 @@ using Serilog;
 
 namespace Anvil.App.ViewModels;
 
-public sealed record FindingItem(string Message, string? Fix, bool IsBlocking);
+/// <summary>A problem on the Dashboard; ActionLabel names the button that deals with it, when Anvil can.</summary>
+public sealed record FindingItem(string Id, string Message, string? Fix, bool Blocking)
+{
+    public string? ActionLabel => Id switch
+    {
+        NetworkFindings.FirewallId => "Open firewall",
+        NetworkFindings.PublicId => "Open network settings",
+        _ => null,
+    };
+
+    public bool HasAction => ActionLabel is not null;
+}
 
 /// <summary>The Dashboard: the Apache, PHP and database cards, problems found before start, where to open the sites, and the development settings.</summary>
 public sealed partial class DashboardViewModel : ObservableObject
@@ -32,14 +44,21 @@ public sealed partial class DashboardViewModel : ObservableObject
     private readonly AppPaths _paths;
     private readonly EditorLauncher _editor;
     private readonly Action<Action> _ui;
+    private readonly ElevationFollowUp? _followUp;
+    private readonly Action<string> _openUrl;
     private AppSettings _settings = new();
 
-    public DashboardViewModel(IAgentApi api, AppPaths paths, EditorLauncher editor, Action<Action>? ui = null)
+    /// <param name="elevator">Asks Windows for the firewall rules from the firewall banner; null only has the Agent look again.</param>
+    /// <param name="openUrl">Opens a URL or a Windows settings page; null starts it through the shell.</param>
+    public DashboardViewModel(IAgentApi api, AppPaths paths, EditorLauncher editor, Action<Action>? ui = null, IElevator? elevator = null,
+        Action<string>? openUrl = null)
     {
         _api = api;
         _paths = paths;
         _editor = editor;
         _ui = ui ?? (a => Dispatcher.UIThread.Post(a));
+        _followUp = elevator is null ? null : new ElevationFollowUp(elevator);
+        _openUrl = openUrl ?? EditorLauncher.OpenUrl;
         api.StatusChanged += (_, s) =>
         {
             _ui(() => Apply(s));
@@ -136,6 +155,10 @@ public sealed partial class DashboardViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasFindings { get; set; }
 
+    /// <summary>What went wrong when a finding's button was pressed.</summary>
+    [ObservableProperty]
+    public partial string? FindingMessage { get; set; }
+
     public string StartStopLabel => ApacheRunning ? "Stop" : "Start";
 
     public ObservableCollection<FindingItem> Findings { get; } = [];
@@ -177,7 +200,35 @@ public sealed partial class DashboardViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void OpenUrl(string url) => EditorLauncher.OpenUrl(url);
+    private void OpenUrl(string url) => _openUrl(url);
+
+    /// <summary>
+    /// The firewall banner runs the Agent's firewall request through UAC, then has the Agent look again; the Public
+    /// network banner opens Windows' network settings.
+    /// </summary>
+    [RelayCommand]
+    private async Task RunFindingActionAsync(FindingItem finding)
+    {
+        if (finding.Id == NetworkFindings.PublicId)
+        {
+            _openUrl("ms-settings:network-status");
+            return;
+        }
+        if (finding.Id != NetworkFindings.FirewallId) return;
+
+        try
+        {
+            FindingMessage = _followUp is not null && await _api.GetFirewallRequestAsync() is { } request
+                ? await _followUp.FirewallAsync(request)
+                : null;
+            await _api.RefreshNetworkAsync();
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Warning(e, "Opening the firewall from the Dashboard failed");
+            FindingMessage = $"The Anvil Agent did not answer: {e.Message}";
+        }
+    }
 
     private static async Task RunAsync(Func<Task<ApplyResult>> call, Action<string?> show)
     {
@@ -262,7 +313,7 @@ public sealed partial class DashboardViewModel : ObservableObject
         ApplyDb();
 
         Findings.Clear();
-        foreach (var f in status.Findings) Findings.Add(new FindingItem(f.Message, f.Fix, f.Severity == Severity.Blocking));
+        foreach (var f in status.Findings) Findings.Add(new FindingItem(f.Id, f.Message, f.Fix, f.Severity == Severity.Blocking));
         HasFindings = Findings.Count > 0;
     }
 }

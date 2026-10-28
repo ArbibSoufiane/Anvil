@@ -20,7 +20,7 @@ public sealed class CertificateUiTests
         _api.Sites.Add(Site("shop.test", CertSource.LocalDev));
         _api.Sites.Add(Site("plain.test", CertSource.None));
         var vm = new SitesViewModel(_api, new FakeElevator(), new FakeCa(), new FakeFolderPicker(), new AppPaths(@"D:\Anvil"),
-            () => "192.168.10.2", ui: a => a());
+            () => [], new FakeTextClipboard(), ui: a => a());
 
         await vm.LoadAsync(Ct);
 
@@ -32,7 +32,8 @@ public sealed class CertificateUiTests
     [Fact]
     public async Task Reissue_asks_the_agent_for_new_local_certificates()
     {
-        var vm = new SettingsViewModel(_api, new FakeElevator(), new FakeRunKey(), new FakeCa(), new FakeFolderPicker(), new AppPaths(@"D:\Anvil"), () => null);
+        var vm = new SettingsViewModel(_api, new FakeElevator(), new FakeRunKey(), new FakeCa(), new FakeFolderPicker(), new AppPaths(@"D:\Anvil"), () => [],
+            new FakeTextClipboard());
         await vm.LoadAsync(Ct);
 
         await vm.ReissueCommand.ExecuteAsync(null);

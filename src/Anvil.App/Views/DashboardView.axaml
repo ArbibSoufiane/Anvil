@@ -15,15 +15,23 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:FindingItem">
-            <Border Classes="banner" Classes.blocking="{Binding IsBlocking}">
-              <StackPanel Spacing="2">
-                <TextBlock Text="{Binding Message}" FontWeight="Medium" />
-                <TextBlock Text="{Binding Fix}" IsVisible="{Binding Fix, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              </StackPanel>
+            <Border Classes="banner" Classes.blocking="{Binding Blocking}">
+              <DockPanel>
+                <Button DockPanel.Dock="Right" VerticalAlignment="Center" Classes="secondary" Content="{Binding ActionLabel}"
+                        IsVisible="{Binding HasAction}"
+                        Command="{Binding $parent[UserControl].((vm:DashboardViewModel)DataContext).RunFindingActionCommand}"
+                        CommandParameter="{Binding}" />
+                <StackPanel Spacing="2">
+                  <TextBlock Text="{Binding Message}" FontWeight="Medium" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding Fix}" TextWrapping="Wrap" IsVisible="{Binding Fix, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+              </DockPanel>
             </Border>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
+      <TextBlock x:Name="FindingMessage" Classes="result" TextWrapping="Wrap" Text="{Binding FindingMessage}"
+                 IsVisible="{Binding FindingMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
       <!-- Service cards -->
       <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">

@@ -3,6 +3,7 @@ using Anvil.App.Tests.Support;
 using Anvil.App.ViewModels;
 using Anvil.Core.Agent;
 using Anvil.Core.Database;
+using Anvil.Core.Elevation;
 using Anvil.Core.Paths;
 using Anvil.Core.Preflight;
 using Anvil.Core.Processes;
@@ -14,8 +15,13 @@ public sealed class DashboardViewModelTests
 {
     private static readonly AppPaths Paths = new(@"D:\Anvil");
     private readonly FakeAgentApi _api = new();
+    private readonly FakeElevator _elevator = new();
+    private readonly List<string> _opened = [];
 
-    private DashboardViewModel Make() => new(_api, Paths, new EditorLauncher(() => "auto", new NoRegistry(), _ => false, ""), ui: a => a());
+    private DashboardViewModel Make() => new(_api, Paths, new EditorLauncher(() => "auto", new NoRegistry(), _ => false, ""), ui: a => a(),
+        elevator: _elevator, openUrl: _opened.Add);
+
+    private AgentStatus StatusWith(params PreflightFinding[] findings) => _api.Status with { Findings = findings };
 
     [Fact]
     public async Task Apache_card_shows_running_from_status_event()
@@ -96,7 +102,7 @@ public sealed class DashboardViewModelTests
         var banner = Assert.Single(vm.Findings);
         Assert.Equal("Port 80 is used by Skype (PID 7).", banner.Message);
         Assert.Equal("Close Skype, or change the HTTP port in Settings.", banner.Fix);
-        Assert.True(banner.IsBlocking);
+        Assert.True(banner.Blocking);
     }
 
     [Fact]
@@ -174,5 +180,58 @@ public sealed class DashboardViewModelTests
         Assert.Equal("Not installed", vm.DbStateText);
         Assert.False(vm.DbInstalled);
         Assert.Equal("Set up MariaDB or MySQL on the Database page", vm.DbVersion);
+    }
+
+    [Fact]
+    public async Task Firewall_banner_button_runs_the_agents_request_then_refreshes()
+    {
+        var vm = Make();
+        _api.FirewallRequest = new FirewallSetRequest("2.4.69", [80, 443], true);
+        _api.Raise(StatusWith(new PreflightFinding("firewall-missing", Severity.Warning, "m", "f")));
+        var item = vm.Findings.Single();
+        Assert.Equal("Open firewall", item.ActionLabel);
+
+        await vm.RunFindingActionCommand.ExecuteAsync(item);
+
+        Assert.Equal(_api.FirewallRequest, Assert.Single(_elevator.Requests));
+        Assert.Equal(1, _api.RefreshNetworkCalls);
+    }
+
+    [Fact]
+    public async Task Refused_firewall_prompt_is_explained()
+    {
+        var vm = Make();
+        _api.FirewallRequest = new FirewallSetRequest("2.4.69", [80, 443], true);
+        _elevator.Next = new ElevatedResult(false, "The operation was canceled by the user.");
+        _api.Raise(StatusWith(new PreflightFinding("firewall-missing", Severity.Warning, "m", "f")));
+
+        await vm.RunFindingActionCommand.ExecuteAsync(vm.Findings.Single());
+
+        Assert.StartsWith("Windows did not let Anvil open the firewall", vm.FindingMessage);
+    }
+
+    [Fact]
+    public async Task Public_network_banner_opens_windows_settings()
+    {
+        var vm = Make();
+        _api.Raise(StatusWith(new PreflightFinding("network-public", Severity.Warning, "m", "f")));
+        Assert.Equal("Open network settings", vm.Findings.Single().ActionLabel);
+
+        await vm.RunFindingActionCommand.ExecuteAsync(vm.Findings.Single());
+
+        Assert.Equal("ms-settings:network-status", _opened.Single());
+    }
+
+    [Fact]
+    public void Other_findings_have_no_button()
+    {
+        var vm = Make();
+
+        _api.Raise(StatusWith(new PreflightFinding("port-80", Severity.Blocking, "Port 80 is used by Skype (PID 7).", "Close Skype.")));
+
+        var item = vm.Findings.Single();
+        Assert.Null(item.ActionLabel);
+        Assert.False(item.HasAction);
+        Assert.True(item.Blocking);
     }
 }
