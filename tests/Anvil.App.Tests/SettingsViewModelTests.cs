@@ -395,6 +395,20 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public async Task The_htdocs_label_follows_the_current_address()
+    {
+        var vm = await LoadedAsync();
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        _lan = [Lan("Wi-Fi", "192.168.1.40")];
+
+        _api.Raise(Status());
+
+        Assert.Contains(nameof(SettingsViewModel.NetworkLabel), changed);
+        Assert.Equal("Let devices on my network open htdocs at 192.168.1.40", vm.NetworkLabel);
+    }
+
+    [Fact]
     public async Task The_address_the_name_service_answers_on_comes_first()
     {
         _api.Settings = _api.Settings with { NetworkDomain = "arbib.pc" };

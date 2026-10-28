@@ -506,6 +506,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         var lan = _lanAddresses();
         var address = lan.FirstOrDefault(a => _listening.Contains(a.Address.ToString()))?.Address ?? lan.FirstOrDefault()?.Address;
         ThisPcAddress = address?.ToString();
+        OnPropertyChanged(nameof(NetworkLabel));
         WindowsCommand = domain is not null && address is not null ? ColleagueSetup.WindowsCommand(domain, address) : null;
         MacCommand = domain is not null && address is not null ? ColleagueSetup.MacCommand(domain, address) : null;
         NameServiceStatus = domain is null ? "Off: set a network domain to turn it on."
