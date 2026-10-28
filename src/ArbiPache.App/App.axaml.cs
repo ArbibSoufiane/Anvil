@@ -55,7 +55,7 @@ public partial class App : Application
             using var me = System.Security.Principal.WindowsIdentity.GetCurrent();
             var userSid = me.User!.Value;
             var service = new ServiceSwitch(_agent.Api, _agent, elevator, new WindowsAgentService(), paths, userSid,
-                () => ServiceSwitch.FolderProblem(paths, userSid));
+                () => ServiceSwitch.FolderWriters(paths, userSid));
             var ca = new LocalCaTrust(paths);
             MainWindow? window = null;
             var picker = new AvaloniaFolderPicker(() => window);

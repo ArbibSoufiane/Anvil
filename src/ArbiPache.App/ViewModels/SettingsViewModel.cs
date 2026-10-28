@@ -245,6 +245,49 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public bool CanRunAsService => _service is not null;
 
+    /// <summary>The service was refused because other accounts can change the ArbiPache folder.</summary>
+    [ObservableProperty]
+    public partial bool CanSecureFolder { get; set; }
+
+    [ObservableProperty]
+    public partial bool ConfirmingSecureFolder { get; set; }
+
+    /// <summary>Who keeps only reading the folder once it is secured.</summary>
+    [ObservableProperty]
+    public partial string? SecureFolderText { get; set; }
+
+    /// <summary>The first press says who loses write access; the second asks Windows, then moves the Agent to the service.</summary>
+    [RelayCommand]
+    private async Task SecureFolderAsync()
+    {
+        if (_service is null) return;
+        if (!ConfirmingSecureFolder && _service.FolderOpenTo() is [_, ..] others)
+        {
+            SecureFolderText = $"Only you, administrators and Windows will be able to change files in {_paths.Root}. {ServiceFolderCheck.List(others)} "
+                + "will still read them but no longer change them, so another account or program that writes there stops working. "
+                + "Windows asks you to confirm.";
+            ConfirmingSecureFolder = true;
+            return;
+        }
+
+        if (ConfirmingSecureFolder)
+        {
+            ConfirmingSecureFolder = false;
+            Say("Securing the ArbiPache folder…", ok: true);
+            if (await _service.SecureFolderAsync() is { } problem)
+            {
+                Say(problem, ok: false);
+                return;
+            }
+        }
+
+        RunAsService = true;
+        await ApplyServiceAsync();
+    }
+
+    [RelayCommand]
+    private void CancelSecureFolder() => ConfirmingSecureFolder = false;
+
     /// <summary>Moves the Agent to the Windows service or back into this window; a refused move puts the switch back.</summary>
     [RelayCommand]
     private async Task ApplyServiceAsync()
@@ -275,6 +318,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             Log.Warning(e, "Reading settings after moving the Agent failed");
         }
 
+        CanSecureFolder = on && problem is not null && _service.FolderOpenTo() is [_, ..];
         if (problem is not null) Say(problem, ok: false);
         else if (on) Say("ArbiPache now runs as a Windows service. Sites stay up after you sign out or restart Windows.", ok: true);
         else Say("ArbiPache runs from this window again. Sites stop when you quit ArbiPache.", ok: true);

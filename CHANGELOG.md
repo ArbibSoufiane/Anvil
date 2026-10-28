@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.0 — unreleased
+
+### Added
+- Settings offers **Secure this folder** when the Windows service is refused because other accounts
+  can change files in the ArbiPache folder. It names the accounts that would lose write access, asks
+  you to confirm, then leaves changing the folder to you, administrators and Windows and turns the
+  service on. Other accounts can still read the folder.
+
 ## 4.0.0 — unreleased
 
 ArbiPache 4 is a new program: a rewrite of ArbiPache 3 in C# / .NET 10 with an Avalonia window.

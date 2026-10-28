@@ -27,7 +27,10 @@ about even if you are unsure they are exploitable.
   administrators, and the users the service was installed for.
 - **The service refuses a writable folder.** ArbiPache will not install the service while accounts
   other than administrators and the installing user can change files in its folder, because they
-  could replace `ArbiPache.Agent.exe` and run code as the service.
+  could replace `ArbiPache.Agent.exe` and run code as the service. Settings then offers **Secure this
+  folder**: it names the accounts that would lose write access and, once you confirm and Windows
+  approves, stops the folder inheriting the drive's permissions. Only you, administrators and
+  Windows can change it afterwards; every other account keeps read access.
 - **Downloads are HTTPS and SHA-256 checked before use**: against hashes pinned in
   `catalog\components.json`, or against the hashes PHP and MariaDB publish for their own builds.
 - **Production mode** hides errors, cuts off long-running requests, sends `403` to unknown host

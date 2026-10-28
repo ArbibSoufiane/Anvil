@@ -11,6 +11,7 @@ namespace ArbiPache.Core.Elevation;
 [JsonDerivedType(typeof(ServiceInstallRequest), "service-install")]
 [JsonDerivedType(typeof(ServiceUninstallRequest), "service-uninstall")]
 [JsonDerivedType(typeof(AclGrantRequest), "acl-grant")]
+[JsonDerivedType(typeof(FolderSecureRequest), "folder-secure")]
 public abstract record ElevatedRequest;
 
 /// <summary>Makes ArbiPache's hosts block map exactly these domains to this PC.</summary>
@@ -30,6 +31,12 @@ public sealed record ServiceUninstallRequest() : ElevatedRequest;
 
 /// <summary>Gives the service account these rights, inherited by everything below each folder.</summary>
 public sealed record AclGrantRequest(IReadOnlyList<AclGrant> Grants) : ElevatedRequest;
+
+/// <summary>
+/// Leaves changing the ArbiPache folder to administrators, Windows and <paramref name="UserSid"/>; every other account keeps
+/// only reading it. The folder is always the Elevator's own.
+/// </summary>
+public sealed record FolderSecureRequest(string UserSid) : ElevatedRequest;
 
 public sealed record ElevatedResult(bool Ok, string? Error);
 

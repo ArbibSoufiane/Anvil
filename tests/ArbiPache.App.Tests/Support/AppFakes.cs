@@ -30,6 +30,7 @@ public sealed class FakeElevator : IElevator
         ServiceUninstallRequest => "service-uninstall",
         HostsSetRequest => "hosts-set",
         FirewallSetRequest => "firewall-set",
+        FolderSecureRequest => "folder-secure",
         _ => r.GetType().Name,
     };
 }

@@ -46,6 +46,7 @@ public static partial class RequestValidator
             ServiceInstallRequest s => ServiceInstallError(s, paths),
             ServiceUninstallRequest => null,
             AclGrantRequest a => AclError(a, paths),
+            FolderSecureRequest f => f.UserSid is not null && AccountSid().IsMatch(f.UserSid) ? null : "The folder's user must be a user account's SID.",
             _ => "Unknown request.",
         };
 

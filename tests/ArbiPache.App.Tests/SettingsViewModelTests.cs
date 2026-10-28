@@ -38,8 +38,20 @@ public sealed class SettingsViewModelTests
         return vm;
     }
 
-    private ServiceSwitch Service() => new(_api, new FakeAgentLink(_api.Calls), _elevator, new FakeAgentService(_api.Calls), Paths,
-        "S-1-5-21-1004336348-1177238915-682003330-1001", () => null);
+    private ServiceSwitch Service(Func<IReadOnlyList<string>?>? folderOpenTo = null) => new(_api, new FakeAgentLink(_api.Calls), _elevator,
+        new FakeAgentService(_api.Calls), Paths, "S-1-5-21-1004336348-1177238915-682003330-1001", folderOpenTo ?? (() => null));
+
+    /// <summary>A folder Authenticated Users can change until the Elevator secures it.</summary>
+    private ServiceSwitch OpenFolderService() =>
+        Service(() => _elevator.Requests.Any(r => r is FolderSecureRequest) ? [] : [@"NT AUTHORITY\Authenticated Users"]);
+
+    private async Task<SettingsViewModel> RefusedForTheFolderAsync()
+    {
+        var vm = await LoadedAsync(OpenFolderService());
+        vm.RunAsService = true;
+        await vm.ApplyServiceCommand.ExecuteAsync(null);
+        return vm;
+    }
 
     [Fact]
     public async Task Check_for_updates_says_when_this_is_the_latest()
@@ -186,6 +198,88 @@ public sealed class SettingsViewModelTests
         Assert.False(vm.MessageOk);
         Assert.Equal("Windows did not let ArbiPache give its service access to the site folders (The operation was canceled by the user.). "
             + "ArbiPache keeps running as before, without the service.", vm.Message);
+    }
+
+    [Fact]
+    public async Task A_folder_others_can_change_offers_to_secure_it()
+    {
+        var vm = await RefusedForTheFolderAsync();
+
+        Assert.False(vm.RunAsService);
+        Assert.False(vm.MessageOk);
+        Assert.True(vm.CanSecureFolder);
+        Assert.False(vm.ConfirmingSecureFolder);
+        Assert.Empty(_elevator.Requests);
+    }
+
+    [Fact]
+    public async Task Securing_the_folder_asks_first_then_moves_the_agent()
+    {
+        var vm = await RefusedForTheFolderAsync();
+
+        await vm.SecureFolderCommand.ExecuteAsync(null);
+
+        Assert.True(vm.ConfirmingSecureFolder);
+        Assert.Empty(_elevator.Requests);
+        Assert.Equal(@"Only you, administrators and Windows will be able to change files in D:\ArbiPache. NT AUTHORITY\Authenticated Users "
+            + "will still read them but no longer change them, so another account or program that writes there stops working. "
+            + "Windows asks you to confirm.", vm.SecureFolderText);
+
+        await vm.SecureFolderCommand.ExecuteAsync(null);
+
+        Assert.IsType<FolderSecureRequest>(_elevator.Requests[0]);
+        Assert.Contains(_elevator.Requests, r => r is ServiceInstallRequest);
+        Assert.True(vm.RunAsService);
+        Assert.False(vm.CanSecureFolder);
+        Assert.False(vm.ConfirmingSecureFolder);
+        Assert.Equal("ArbiPache now runs as a Windows service. Sites stay up after you sign out or restart Windows.", vm.Message);
+    }
+
+    [Fact]
+    public async Task Keeping_the_folder_as_it_is_changes_nothing()
+    {
+        var vm = await RefusedForTheFolderAsync();
+        await vm.SecureFolderCommand.ExecuteAsync(null);
+
+        vm.CancelSecureFolderCommand.Execute(null);
+
+        Assert.False(vm.ConfirmingSecureFolder);
+        Assert.True(vm.CanSecureFolder);
+        Assert.Empty(_elevator.Requests);
+        Assert.False(vm.RunAsService);
+    }
+
+    [Fact]
+    public async Task A_folder_fixed_meanwhile_moves_the_agent_without_asking()
+    {
+        var open = true;
+        var vm = await LoadedAsync(Service(() => open ? [@"NT AUTHORITY\Authenticated Users"] : []));
+        vm.RunAsService = true;
+        await vm.ApplyServiceCommand.ExecuteAsync(null);
+        open = false;
+
+        await vm.SecureFolderCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain(_elevator.Requests, r => r is FolderSecureRequest);
+        Assert.Contains(_elevator.Requests, r => r is ServiceInstallRequest);
+        Assert.True(vm.RunAsService);
+        Assert.False(vm.CanSecureFolder);
+    }
+
+    [Fact]
+    public async Task A_refused_folder_change_keeps_the_offer_and_the_window()
+    {
+        _elevator.ByVerb["folder-secure"] = new ElevatedResult(false, "The operation was canceled by the user.");
+        var vm = await RefusedForTheFolderAsync();
+
+        await vm.SecureFolderCommand.ExecuteAsync(null);
+        await vm.SecureFolderCommand.ExecuteAsync(null);
+
+        Assert.Equal("Windows did not let ArbiPache secure its folder (The operation was canceled by the user.).", vm.Message);
+        Assert.False(vm.MessageOk);
+        Assert.True(vm.CanSecureFolder);
+        Assert.False(vm.RunAsService);
+        Assert.DoesNotContain(_elevator.Requests, r => r is ServiceInstallRequest);
     }
 
     [Fact]

@@ -29,6 +29,7 @@ internal static class Program
                 ServiceInstallRequest install => ServiceHandler.Install(install, paths),
                 ServiceUninstallRequest => ServiceHandler.Uninstall(),
                 AclGrantRequest acl => AclHandler.Run(acl),
+                FolderSecureRequest secure => FolderHandler.Secure(secure, paths),
                 _ => new ElevatedResult(false, "Unknown request."),
             };
         }

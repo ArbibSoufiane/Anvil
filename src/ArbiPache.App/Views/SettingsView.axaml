@@ -32,6 +32,17 @@
                 <ToggleSwitch x:Name="RunAsService" Grid.Column="1" OnContent="" OffContent="" IsChecked="{Binding RunAsService}"
                               Command="{Binding ApplyServiceCommand}" IsEnabled="{Binding CanRunAsService}" />
               </Grid>
+              <StackPanel Spacing="8" IsVisible="{Binding CanSecureFolder}">
+                <Button x:Name="SecureFolder" Classes="secondary" HorizontalAlignment="Left" Content="Secure this folder…"
+                        Command="{Binding SecureFolderCommand}" IsVisible="{Binding !ConfirmingSecureFolder}" />
+                <StackPanel Spacing="8" IsVisible="{Binding ConfirmingSecureFolder}">
+                  <TextBlock Classes="note" TextWrapping="Wrap" Text="{Binding SecureFolderText}" />
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="ConfirmSecureFolder" Classes="secondary" Content="Secure folder" Command="{Binding SecureFolderCommand}" />
+                    <Button Classes="ghost" Content="Keep as it is" Command="{Binding CancelSecureFolderCommand}" />
+                  </StackPanel>
+                </StackPanel>
+              </StackPanel>
               <StackPanel Spacing="4">
                 <TextBlock Classes="fieldLabel" Text="Open config files with" />
                 <TextBlock Classes="dd mono" Text="{Binding EditorText}" TextTrimming="CharacterEllipsis" />

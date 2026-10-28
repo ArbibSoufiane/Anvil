@@ -140,4 +140,60 @@ public sealed class FolderPermissionsTests : IDisposable
 
         Assert.Contains(FolderPermissions.Access(_dir), a => a.Sid == Guests.Value && !a.CanWrite);
     }
+
+    /// <summary>A folder set up like a fresh D:\: Authenticated Users may change everything below it, and this user has no entry of its own.</summary>
+    private string FreshDrive()
+    {
+        var drive = Directory.CreateDirectory(Path.Combine(_dir, "drive")).FullName;
+        var security = new DirectorySecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        foreach (var (sid, rights) in new[]
+                 {
+                     (new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl),
+                     (new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl),
+                     (AuthenticatedUsers, FileSystemRights.Modify),
+                     (Users, FileSystemRights.ReadAndExecute),
+                 })
+        {
+            security.AddAccessRule(new FileSystemAccessRule(sid, rights, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None, AccessControlType.Allow));
+        }
+        new DirectoryInfo(drive).SetAccessControl(security);
+        return drive;
+    }
+
+    private static readonly SecurityIdentifier AuthenticatedUsers = new(WellKnownSidType.AuthenticatedUserSid, null);
+
+    [Fact]
+    public void Secure_leaves_other_accounts_reading_and_this_user_writing()
+    {
+        var drive = FreshDrive();
+        var app = Directory.CreateDirectory(Path.Combine(drive, "ArbiPache")).FullName;
+        var data = Directory.CreateDirectory(Path.Combine(app, "data")).FullName;
+        var agent = Path.Combine(app, "ArbiPache.Agent.exe");
+        File.WriteAllText(agent, "");
+        var me = WindowsIdentity.GetCurrent().User!;
+        Assert.NotNull(ServiceFolderCheck.Problem(app, FolderPermissions.Access(app), me.Value));
+
+        Assert.Null(FolderPermissions.Secure(app, me));
+
+        Assert.Null(ServiceFolderCheck.Problem(app, FolderPermissions.Access(app), me.Value));
+        Assert.Equal(FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize, FolderRights(app, AuthenticatedUsers));
+        Assert.Equal(FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize, RightsOf(new FileInfo(agent).GetAccessControl(), AuthenticatedUsers));
+        Assert.Equal(FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize, FolderRights(app, Users));
+        File.WriteAllText(Path.Combine(data, "arbipache.json"), "{}");
+        Assert.Equal(FileSystemRights.Modify | FileSystemRights.Synchronize, FolderRights(drive, AuthenticatedUsers));
+    }
+
+    [Fact]
+    public void Secure_leaves_a_link_alone()
+    {
+        var target = Directory.CreateDirectory(Path.Combine(FreshDrive(), "ArbiPache")).FullName;
+        var link = Path.Combine(_dir, "ArbiPache");
+        Junction(link, target);
+
+        Assert.Equal($"{link} is a link to another folder; ArbiPache did not change its permissions.",
+            FolderPermissions.Secure(link, WindowsIdentity.GetCurrent().User!));
+        Assert.Equal(FileSystemRights.Modify | FileSystemRights.Synchronize, FolderRights(target, AuthenticatedUsers));
+    }
 }

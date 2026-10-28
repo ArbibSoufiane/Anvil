@@ -101,7 +101,8 @@ Three executables, one shared library, all in the app folder:
   nobody logged in). All its children live in a Job Object so none are orphaned.
 - **ArbiPache.Elevator.exe** (`requireAdministrator`). Tiny. Started through UAC only when needed.
   Accepts one typed JSON request file per run with a fixed verb set: `hosts-set`, `firewall-set`,
-  `service-install`, `service-uninstall`, `acl-grant`. Rejects anything else.
+  `service-install`, `service-uninstall`, `acl-grant`, `folder-secure` (its own folder only). Rejects
+  anything else.
 - **ArbiPache.Core** (library): all logic, pure where possible, unit tested.
 
 httpd runs as a console process under the Agent, never as its own Windows service. `httpd -k restart`

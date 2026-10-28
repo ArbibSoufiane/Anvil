@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Storage.FileSystem;
 
@@ -38,24 +39,73 @@ public static class FolderPermissions
     /// </summary>
     public static string? Grant(string folder, SecurityIdentifier account, AclRight right)
     {
-        using var handle = PInvoke.CreateFile(folder,
+        using var handle = OpenFolder(folder, out var problem);
+        if (problem is not null) return problem;
+
+        var security = new HandleSecurity(handle);
+        security.AddAccessRule(new AccessRule<FileSystemRights>(account, Rights(right), Inherited, PropagationFlags.None, AccessControlType.Allow));
+        security.Save(handle);
+        return null;
+    }
+
+    /// <summary>
+    /// Leaves changing the folder to SYSTEM, administrators, TrustedInstaller and <paramref name="user"/>. The folder stops
+    /// inheriting from the drive, every other account that could change it keeps only read and execute, and the user gets
+    /// full control, all inherited by everything below. Opened like <see cref="Grant"/>. Null on success, otherwise why
+    /// nothing changed.
+    /// </summary>
+    public static string? Secure(string folder, SecurityIdentifier user)
+    {
+        using var handle = OpenFolder(folder, out var problem);
+        if (problem is not null) return problem;
+
+        var security = new HandleSecurity(handle);
+        var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<AccessRule<FileSystemRights>>().ToList();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        foreach (var account in rules.Select(r => r.IdentityReference).Distinct()) security.PurgeAccessRules(account);
+        foreach (var rule in rules)
+        {
+            var sid = (SecurityIdentifier)rule.IdentityReference;
+            var writes = rule.AccessControlType == AccessControlType.Allow && (rule.Rights & WriteRights) != 0
+                         && !ServiceFolderCheck.IsTrusted(sid.Value) && sid != user;
+            security.AddAccessRule(new AccessRule<FileSystemRights>(sid, writes ? Rights(AclRight.ReadExecute) : rule.Rights,
+                rule.InheritanceFlags, rule.PropagationFlags, rule.AccessControlType));
+        }
+
+        security.AddAccessRule(new AccessRule<FileSystemRights>(user, FileSystemRights.FullControl, Inherited, PropagationFlags.None, AccessControlType.Allow));
+        security.Save(handle);
+        return null;
+    }
+
+    private const InheritanceFlags Inherited = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+
+    /// <summary>
+    /// Opens the folder itself, never a link's target, with the rights to change its permissions, and checks it is a real
+    /// folder reached without links. The handle stays open so the folder cannot be swapped for a link meanwhile.
+    /// </summary>
+    private static SafeFileHandle OpenFolder(string folder, out string? problem)
+    {
+        var handle = PInvoke.CreateFile(folder,
             (uint)(FILE_ACCESS_RIGHTS.READ_CONTROL | FILE_ACCESS_RIGHTS.WRITE_DAC | FILE_ACCESS_RIGHTS.FILE_READ_ATTRIBUTES),
             FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE, null, FILE_CREATION_DISPOSITION.OPEN_EXISTING,
             FILE_FLAGS_AND_ATTRIBUTES.FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAGS_AND_ATTRIBUTES.FILE_FLAG_OPEN_REPARSE_POINT, null);
         if (handle.IsInvalid) throw new IOException($"ArbiPache could not open {folder}: {new Win32Exception().Message}");
-        if (!PInvoke.GetFileInformationByHandle(handle, out var info)) throw new Win32Exception();
-
-        var attributes = (FileAttributes)info.dwFileAttributes;
-        if (attributes.HasFlag(FileAttributes.ReparsePoint)) return $"{folder} is a link to another folder; ArbiPache did not change its permissions.";
-        if (!attributes.HasFlag(FileAttributes.Directory)) return $"{folder} is not a folder; ArbiPache did not change its permissions.";
-        if (!string.Equals(FinalPath(handle), Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)), StringComparison.OrdinalIgnoreCase))
-            return $"{folder} is reached through a link to another folder; ArbiPache did not change its permissions.";
-
-        var security = new HandleSecurity(handle);
-        security.AddAccessRule(new AccessRule<FileSystemRights>(account, Rights(right),
-            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-        security.Save(handle);
-        return null;
+        try
+        {
+            if (!PInvoke.GetFileInformationByHandle(handle, out var info)) throw new Win32Exception();
+            var attributes = (FileAttributes)info.dwFileAttributes;
+            problem = attributes.HasFlag(FileAttributes.ReparsePoint) ? $"{folder} is a link to another folder; ArbiPache did not change its permissions."
+                : !attributes.HasFlag(FileAttributes.Directory) ? $"{folder} is not a folder; ArbiPache did not change its permissions."
+                : !string.Equals(FinalPath(handle), Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)), StringComparison.OrdinalIgnoreCase)
+                    ? $"{folder} is reached through a link to another folder; ArbiPache did not change its permissions."
+                    : null;
+            return handle;
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
     }
 
     /// <summary>True when the folder's entries, its own or inherited, already give <paramref name="account"/> the right.</summary>

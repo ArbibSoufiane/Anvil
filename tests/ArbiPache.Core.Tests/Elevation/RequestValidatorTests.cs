@@ -167,6 +167,29 @@ public sealed class RequestValidatorTests : IDisposable
     }
 
     [Fact]
+    public void Folder_secure_request_round_trips_with_its_verb()
+    {
+        var file = RequestFile(ElevatedJson.Serialize(new FolderSecureRequest(UserSid)));
+
+        var (request, error) = RequestValidator.Read(file, _paths);
+
+        Assert.Null(error);
+        Assert.Equal(UserSid, Assert.IsType<FolderSecureRequest>(request).UserSid);
+        Assert.Contains("\"verb\": \"folder-secure\"", File.ReadAllText(file));
+    }
+
+    [Theory]
+    [InlineData("S-1-1-0")]
+    [InlineData("S-1-5-11")]
+    [InlineData("S-1-5-21-1-2-3-4\r\nS-1-1-0")]
+    [InlineData("")]
+    public void Folder_secure_keeps_writing_only_for_a_user_account(string sid)
+    {
+        Assert.Equal("The folder's user must be a user account's SID.",
+            RequestValidator.Validate(new FolderSecureRequest(sid), RequestFile("{}"), _paths));
+    }
+
+    [Fact]
     public void Planned_acl_grants_accepted()
     {
         var file = RequestFile(ElevatedJson.Serialize(new AclGrantRequest(AclPlanner.Plan(_paths, []))));

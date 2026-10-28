@@ -26,20 +26,46 @@ public sealed class ServiceToggleTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private ServiceSwitch Switch(string? folderProblem = null) => new(_api, _link, _elevator, _service, Paths, Me, () => folderProblem);
+    private ServiceSwitch Switch(params string[] folderOpenTo) => new(_api, _link, _elevator, _service, Paths, Me, () => folderOpenTo);
 
     // The service install refuses such a folder anyway; asking first keeps the sites up and spares two UAC prompts.
     [Fact]
     public async Task Toggle_on_refuses_a_folder_others_can_change_before_stopping_anything()
     {
-        const string open = @"Authenticated Users can change files in D:\ArbiPache, so it could replace ArbiPache.Agent.exe and run code as the service.";
+        var problem = await Switch(@"NT AUTHORITY\Authenticated Users").TurnOnAsync(Ct);
 
-        var problem = await Switch(open).TurnOnAsync(Ct);
-
-        Assert.Equal(open + " ArbiPache keeps running as before, without the service.", problem);
+        Assert.Equal(@"NT AUTHORITY\Authenticated Users can change files in D:\ArbiPache, so it could replace ArbiPache.Agent.exe and run code "
+            + "as the service. Remove its write access to the folder (Properties, Security), or move ArbiPache to a folder only you and "
+            + "administrators can change, then try again. ArbiPache keeps running as before, without the service.", problem);
         Assert.Empty(_api.Calls);
         Assert.Empty(_elevator.Requests);
         Assert.False(_api.Settings.RunAsService);
+    }
+
+    [Fact]
+    public void Folder_open_to_lists_the_accounts_that_lose_write_access()
+    {
+        Assert.Equal([@"NT AUTHORITY\Authenticated Users", @"PC\guest"], Switch(@"NT AUTHORITY\Authenticated Users", @"PC\guest").FolderOpenTo());
+        Assert.Empty(new ServiceSwitch(_api, _link, _elevator, _service, Paths, Me, () => null).FolderOpenTo());
+    }
+
+    [Fact]
+    public async Task Securing_the_folder_asks_windows_for_this_user()
+    {
+        var problem = await Switch(@"NT AUTHORITY\Authenticated Users").SecureFolderAsync(Ct);
+
+        Assert.Null(problem);
+        Assert.Equal(new FolderSecureRequest(Me), Assert.Single(_elevator.Requests));
+        Assert.Equal(["folder-secure"], _api.Calls);
+    }
+
+    [Fact]
+    public async Task A_refused_folder_change_is_reported()
+    {
+        _elevator.Next = new ElevatedResult(false, "The operation was canceled by the user.");
+
+        Assert.Equal("Windows did not let ArbiPache secure its folder (The operation was canceled by the user.).",
+            await Switch(@"NT AUTHORITY\Authenticated Users").SecureFolderAsync(Ct));
     }
 
     [Fact]

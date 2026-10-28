@@ -33,19 +33,20 @@ public interface IAgentService
 /// <summary>
 /// Moves the Agent between the window's child process and the ArbiPacheAgent Windows service. Both ask Windows through
 /// the Elevator; whatever is refused comes back as a sentence, with the Agent put back the way it was.
-/// <paramref name="folderProblem"/> is the service install's own folder check, asked first so a refusal stops nothing.
+/// <paramref name="folderOpenTo"/> is the service install's own folder check, asked first so a refusal stops nothing: the
+/// accounts besides this user and Windows' own that can change the folder, or null when its permissions cannot be read here.
 /// </summary>
 public sealed class ServiceSwitch(IAgentApi api, IAgentLink link, IElevator elevator, IAgentService service, AppPaths paths, string userSid,
-    Func<string?> folderProblem)
+    Func<IReadOnlyList<string>?> folderOpenTo)
 {
     private const string AsBefore = "ArbiPache keeps running as before, without the service.";
 
     /// <summary>The service install's folder check, as this user can read it; null when the folder cannot be read here.</summary>
-    public static string? FolderProblem(AppPaths paths, string userSid)
+    public static IReadOnlyList<string>? FolderWriters(AppPaths paths, string userSid)
     {
         try
         {
-            return ServiceFolderCheck.Problem(paths.Root, FolderPermissions.Access(paths.Root), userSid);
+            return ServiceFolderCheck.Others(FolderPermissions.Access(paths.Root), userSid);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -58,7 +59,7 @@ public sealed class ServiceSwitch(IAgentApi api, IAgentLink link, IElevator elev
     /// <returns>Null when the Agent now runs as the service.</returns>
     public async Task<string?> TurnOnAsync(CancellationToken ct = default)
     {
-        if (folderProblem() is { } open) return $"{open} {AsBefore}";
+        if (FolderOpenTo() is [_, ..] others) return $"{ServiceFolderCheck.Describe(paths.Root, others)} {AsBefore}";
         var before = await api.GetSettingsAsync(ct);
         var sites = await api.GetSitesAsync(ct);
         // The service reads who may use its pipe when it starts, so the user is on the list before it does.
@@ -101,6 +102,12 @@ public sealed class ServiceSwitch(IAgentApi api, IAgentLink link, IElevator elev
         await api.SaveSettingsAsync(before, ct);
         return $"{problem} {AsBefore}";
     }
+
+    /// <summary>The accounts besides this user and Windows' own that can change the folder; empty when none, or when unknown here.</summary>
+    public IReadOnlyList<string> FolderOpenTo() => folderOpenTo() ?? [];
+
+    /// <summary>Asks Windows to leave changing the folder to this user, administrators and Windows itself. Null when it did.</summary>
+    public Task<string?> SecureFolderAsync(CancellationToken ct = default) => ElevateAsync(new FolderSecureRequest(userSid), "secure its folder", ct);
 
     /// <returns>Null when the Agent runs as the window's child again.</returns>
     public async Task<string?> TurnOffAsync(CancellationToken ct = default)
