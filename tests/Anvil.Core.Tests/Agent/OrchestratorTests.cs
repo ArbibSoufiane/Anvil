@@ -669,6 +669,24 @@ public sealed class OrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Php_update_that_cannot_write_its_test_script_says_so()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        PhpSites();
+        var orchestrator = Make(phpProbe: (_, _) => Task.FromResult(true));
+        await orchestrator.InitializeAsync(ct);
+        Assert.True((await orchestrator.StartAsync(ServiceId.Apache, ct)).Ok);
+        Directory.CreateDirectory(Path.Combine(_paths.Run, FastCgiProbe.ScriptName)); // a folder where the script goes
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.Php, "8.5.12", ct);
+
+        Assert.False(result.Ok);
+        Assert.StartsWith("Anvil could not write its PHP test script (", result.Error);
+        Assert.EndsWith("), so Anvil went back to PHP 8.5.5.", result.Error);
+        Assert.Equal("8.5.5", new SettingsStore(_paths).Load().DefaultPhp);
+    }
+
+    [Fact]
     public async Task Php_update_runs_the_probe_script_on_the_new_pool()
     {
         var ct = TestContext.Current.CancellationToken;

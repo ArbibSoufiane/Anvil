@@ -135,7 +135,8 @@ public sealed partial class Orchestrator
             await StartPoolsAsync(pools, ct);
             await apache.GracefulRestartAsync(ct);
         }, applied);
-        if (started.Ok && await PhpAnswersAsync(pools, version, ct)) return started;
+        var problem = started.Ok ? await PhpProblemAsync(pools, version, ct) : null;
+        if (started.Ok && problem is null) return started;
 
         PutSitesBack();
         Save(previous);
@@ -148,15 +149,18 @@ public sealed partial class Orchestrator
         });
         if (started.Ok)
             return ApplyResult.Failure(restored.Ok
-                ? $"PHP {version} started but did not answer a request, so Anvil went back to PHP {from}."
-                : $"PHP {version} started but did not answer a request, and PHP {from} did not start again: {restored.Error}");
+                ? $"{problem}, so Anvil went back to PHP {from}."
+                : $"{problem}, and PHP {from} did not start again: {restored.Error}");
         return ApplyResult.Failure(restored.Ok
             ? $"PHP {version} did not start: {started.Error} PHP {from} is running again."
             : $"PHP {version} did not start: {started.Error} PHP {from} did not start either: {restored.Error}");
     }
 
-    /// <summary>Runs the probe script on every pool of <paramref name="version"/>: a pool that listens may still fail each request.</summary>
-    private async Task<bool> PhpAnswersAsync(IReadOnlyList<PhpPool> pools, string version, CancellationToken ct)
+    /// <summary>
+    /// Runs the probe script on every pool of <paramref name="version"/>: a pool that listens may still fail each request.
+    /// Null when every pool answers, else why PHP counts as not working.
+    /// </summary>
+    private async Task<string?> PhpProblemAsync(IReadOnlyList<PhpPool> pools, string version, CancellationToken ct)
     {
         try
         {
@@ -166,15 +170,15 @@ public sealed partial class Orchestrator
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             Log.Warning(e, "Writing the PHP probe script failed");
-            return false;
+            return $"Anvil could not write its PHP test script ({e.Message.TrimEnd('.')})";
         }
         foreach (var pool in pools.Where(p => SameVersion(p.Version, version)))
         {
             if (await _phpProbe(pool.Port, ct)) continue;
             Log.Warning("PHP {Version} on port {Port} did not answer the probe", version, pool.Port);
-            return false;
+            return $"PHP {version} started but did not answer a request";
         }
-        return true;
+        return null;
     }
 
     private async Task<ApplyResult> UpdateDbAsync(DbEngine engine, string version, CancellationToken ct)
