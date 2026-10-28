@@ -11,7 +11,10 @@ using Scriban;
 
 namespace Anvil.Core.Apache;
 
-/// <summary>Renders data\conf: the global include, the development defaults, the PHP pools, the htdocs virtual hosts and one file per site.</summary>
+/// <summary>
+/// Renders data\conf: the global include, the development defaults, the PHP pools, the htdocs virtual hosts, one file per
+/// network name and one per site.
+/// </summary>
 public sealed partial class ConfigRenderer(AppPaths paths)
 {
     /// <summary>Loopback, RFC 1918, IPv6 unique-local and link-local.</summary>
@@ -103,7 +106,15 @@ public sealed partial class ConfigRenderer(AppPaths paths)
                 port = s.HttpsPort,
                 cert = CertFields(httpsCert),
             });
-        // "site-" keeps every site file after 00-catchall, so the catch-all stays the default server whatever the domain.
+        // "net-" and "site-" keep every other file after 00-catchall, so the catch-all stays the default server whatever the
+        // name. The bare network domain needs no file: the catch-all answers it.
+        foreach (var name in NetworkNames.Plan(s.NetworkDomain, input.Sites, input.Htdocs, s.Network.HtdocsOnNetwork).Names)
+        {
+            files[Path.Combine("vhosts", $"net-{name.Label}.conf")] = name.SiteId is { } id
+                ? RenderSite(sites.Single(x => x.Id == id), input, options, htdocsPool, name.Host)
+                : RenderNetworkFolder(name, input, options, htdocsPool);
+        }
+
         foreach (var site in sites)
             files[Path.Combine("vhosts", $"site-{site.Id}.conf")] = RenderSite(site, input, options, htdocsPool);
         return new RenderedConfig(files) { Folders = sites.Select(x => SiteLogDir(x.Id)).ToList() };
@@ -116,11 +127,15 @@ public sealed partial class ConfigRenderer(AppPaths paths)
     public static string PhpHandler(PhpPool? pool, string indent, bool withIndex = true) =>
         Indent(Templates.Render("_php-handler.sbn", new { port = pool?.Port, with_index = withIndex }), indent);
 
-    private string RenderSite(SiteDefinition site, RenderInput input, string options, PhpPool? defaultPool)
+    /// <param name="networkHost">
+    /// The site's name under the network domain: then only its plain HTTP virtual host is rendered, for that name alone,
+    /// with no redirect to HTTPS (the certificate does not name it).
+    /// </param>
+    private string RenderSite(SiteDefinition site, RenderInput input, string options, PhpPool? defaultPool, string? networkHost = null)
     {
         var s = input.Settings;
-        var serverName = SiteSet.NormalizeHost(site.Name) ?? site.Name;
-        var cert = CertificateOf(site, input);
+        var serverName = networkHost ?? SiteSet.NormalizeHost(site.Name) ?? site.Name;
+        var cert = networkHost is null ? CertificateOf(site, input) : null;
         var redirect = cert is not null && site.HttpRedirect ? $"https://{serverName}{(s.HttpsPort == 443 ? "" : $":{s.HttpsPort}")}/" : null;
         var vhosts = new List<object> { new { port = s.HttpPort, ssl = false, redirect = redirect is not null } };
         if (cert is not null) vhosts.Add(new { port = s.HttpsPort, ssl = true, redirect = false });
@@ -131,10 +146,10 @@ public sealed partial class ConfigRenderer(AppPaths paths)
         // after .htaccess files, and AuthMerging And keeps the site's restriction on top of them.
         return Templates.Render("vhost-site.conf.sbn", new
         {
-            title = site.Name,
+            title = networkHost is null ? site.Name : $"{site.Name} on the local network: http://{networkHost}/",
             vhosts,
             server_name = serverName,
-            aliases = site.Aliases.Count > 0 ? string.Join(' ', site.Aliases.Select(a => SiteSet.NormalizeHost(a) ?? a)) : null,
+            aliases = networkHost is null && site.Aliases.Count > 0 ? string.Join(' ', site.Aliases.Select(a => SiteSet.NormalizeHost(a) ?? a)) : null,
             error_log = Rotated(SiteLogDir(site.Id), "error"),
             access_log = Rotated(SiteLogDir(site.Id), "access"),
             ssl_access_log = Rotated(SiteLogDir(site.Id), "ssl-access"),
@@ -146,6 +161,22 @@ public sealed partial class ConfigRenderer(AppPaths paths)
             index,
             rules = Indent(rules, "        "),
             php = site.Type == SiteType.Php ? PhpHandler(PoolFor(site.PhpVersion, input.Pools, defaultPool), "        ", withIndex: false) : null,
+        });
+    }
+
+    /// <summary>An htdocs folder at its network name: the folder as the site root, on its own PHP version when it has one.</summary>
+    private static string RenderNetworkFolder(NetworkName name, RenderInput input, string options, PhpPool? htdocsPool)
+    {
+        var entry = input.Htdocs.First(e => e.Folder == name.HtdocsFolder);
+        return Templates.Render("vhost-network-htdocs.conf.sbn", new
+        {
+            folder = entry.Folder,
+            host = name.Host,
+            port = input.Settings.HttpPort,
+            root = AppPaths.ForApache(entry.Root),
+            options,
+            require = $"ip {PrivateRanges}",
+            php_handler = htdocsPool is null ? null : PhpHandler(PoolFor(entry.PhpVersion, input.Pools, htdocsPool), "    "),
         });
     }
 

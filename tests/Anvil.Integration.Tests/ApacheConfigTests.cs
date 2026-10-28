@@ -119,6 +119,44 @@ public sealed class ApacheConfigTests : IDisposable
     }
 
     [Fact]
+    public async Task Network_names_pass_the_config_test()
+    {
+        var (_, outcome) = await ApplyAsync("ap-it-net", shape: (paths, input) =>
+        {
+            var shop = Path.Combine(paths.Root, "Mes Sites", "café shop");
+            var blog = Path.Combine(paths.Htdocs, "blog");
+            Directory.CreateDirectory(shop);
+            Directory.CreateDirectory(blog);
+            new LocalCa(paths, new CertificateStore(paths), TimeProvider.System).Issue("shop.test", ["shop.test"]);
+            PhpPool Pool(string version, int port) => new(version, PhpVersionKey.Of(version), port, 2, 100, "php-cgi.exe", paths.Data, paths.Data);
+            return input with
+            {
+                Settings = input.Settings with { DefaultPhp = "8.5.12", NetworkDomain = "arbib.pc" },
+                Pools = [Pool("8.5.12", 9100), Pool("8.4.27", 9101)],
+                Sites =
+                [
+                    new SiteDefinition
+                    {
+                        Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "shop.test", Root = shop,
+                        Cert = CertSource.LocalDev, Aliases = ["www.shop.test"],
+                    },
+                    new SiteDefinition
+                    {
+                        Id = "app.test", Kind = SiteKind.Domain, Type = SiteType.Proxy, Name = "app.test", Root = "http://127.0.0.1:5173",
+                    },
+                ],
+                Htdocs = [new("blog", blog, false, "8.4.27", AccessLevel.Network)],
+                Certificates = new CertificateStore(paths).All(),
+            };
+        });
+
+        Assert.True(outcome.Ok, outcome.TestOutput);
+        Assert.Contains(Path.Combine("vhosts", "net-shop.conf"), outcome.ChangedFiles);
+        Assert.Contains(Path.Combine("vhosts", "net-app.conf"), outcome.ChangedFiles);
+        Assert.Contains(Path.Combine("vhosts", "net-blog.conf"), outcome.ChangedFiles);
+    }
+
+    [Fact]
     public async Task Real_httpd_rejection_rolls_back()
     {
         var (paths, outcome) = await ApplyAsync("ap-it-bad",

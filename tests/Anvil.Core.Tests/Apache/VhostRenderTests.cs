@@ -35,10 +35,10 @@ public sealed class VhostRenderTests
 
     private static RenderedConfig RenderConfig(
         IReadOnlyList<SiteDefinition> sites, IReadOnlyList<HtdocsEntry>? htdocs = null,
-        IReadOnlyDictionary<string, SiteCertificate>? certs = null) =>
+        IReadOnlyDictionary<string, SiteCertificate>? certs = null, string? networkDomain = null) =>
         new ConfigRenderer(Paths).Render(new RenderInput
         {
-            Settings = new AppSettings { DefaultPhp = "8.5.12" },
+            Settings = new AppSettings { DefaultPhp = "8.5.12", NetworkDomain = networkDomain },
             Stock = Stock,
             Pools = [Php85, Php84],
             Sites = sites,
@@ -48,10 +48,65 @@ public sealed class VhostRenderTests
 
     private static IReadOnlyDictionary<string, string> Render(
         IReadOnlyList<SiteDefinition> sites, IReadOnlyList<HtdocsEntry>? htdocs = null,
-        IReadOnlyDictionary<string, SiteCertificate>? certs = null) =>
-        RenderConfig(sites, htdocs, certs).Files.ToDictionary(f => f.Key, f => f.Value.ReplaceLineEndings("\n"));
+        IReadOnlyDictionary<string, SiteCertificate>? certs = null, string? networkDomain = null) =>
+        RenderConfig(sites, htdocs, certs, networkDomain).Files.ToDictionary(f => f.Key, f => f.Value.ReplaceLineEndings("\n"));
 
     private static string SiteFile(string id) => $@"vhosts\site-{id}.conf";
+
+    private static HtdocsEntry Entry(string folder, string? php = null) =>
+        new(folder, Path.Combine(Paths.Htdocs, folder), false, php, AccessLevel.Network);
+
+    [Fact]
+    public void Network_name_for_a_site_is_plain_http_without_redirect()
+    {
+        var site = Domain("shop.test") with { Cert = CertSource.LocalDev, HttpRedirect = true, Aliases = ["www.shop.test"], Access = AccessLevel.Network };
+
+        var files = Render([site], certs: new Dictionary<string, SiteCertificate> { [site.Id] = Cert(site.Id) }, networkDomain: "arbib.pc");
+
+        var net = files[@"vhosts\net-shop.conf"];
+        Assert.Contains("ServerName shop.arbib.pc\n", net);
+        Assert.Contains($"Require ip {ConfigRenderer.PrivateRanges}", net);
+        Assert.Contains("/data/logs/sites/shop.test/error.", net);
+        Assert.DoesNotContain("Redirect", net);
+        Assert.DoesNotContain("SSLEngine", net);
+        Assert.DoesNotContain("ServerAlias", net);
+        Assert.Single(Regex.Matches(net, "<VirtualHost "));
+        Assert.Contains("RedirectMatch 301", files[SiteFile(site.Id)]);
+        Snapshot.Match(net, "network-site");
+    }
+
+    [Fact]
+    public void Network_name_for_an_htdocs_folder_serves_that_folder()
+    {
+        var net = Render([], [Entry("blog")], networkDomain: "arbib.pc")[@"vhosts\net-blog.conf"];
+
+        Assert.Contains("ServerName blog.arbib.pc\n", net);
+        Assert.Contains($"DocumentRoot \"{AppPaths.ForApache(Path.Combine(Paths.Htdocs, "blog"))}\"", net);
+        Assert.Contains("SetHandler \"proxy:fcgi://127.0.0.1:9100/\"", net);
+        Assert.Contains($"Require ip {ConfigRenderer.PrivateRanges}", net);
+        Snapshot.Match(net, "network-htdocs");
+    }
+
+    [Fact]
+    public void Network_name_for_a_folder_runs_its_own_php() =>
+        Assert.Contains("SetHandler \"proxy:fcgi://127.0.0.1:9101/\"", Render([], [Entry("legacy", "8.4.27")], networkDomain: "arbib.pc")[@"vhosts\net-legacy.conf"]);
+
+    [Fact]
+    public void Folder_without_network_name_renders_no_network_file() =>
+        Assert.DoesNotContain(Render([], [Entry("my app")], networkDomain: "arbib.pc").Keys, k => k.Contains("net-", StringComparison.Ordinal));
+
+    [Fact]
+    public void No_network_domain_renders_no_network_files() =>
+        Assert.DoesNotContain(Render([Domain("shop.test") with { Access = AccessLevel.Network }], [Entry("blog")]).Keys,
+            k => k.Contains("net-", StringComparison.Ordinal));
+
+    // Apache answers a name no virtual host claims with the first one it read for the port, and reads vhosts\*.conf in
+    // name order: 00-catchall must stay first, so network names sort after it.
+    [Fact]
+    public void Network_files_sort_after_the_catch_all_and_before_the_sites() =>
+        Assert.Equal([@"vhosts\00-catchall.conf", @"vhosts\01-localhost.conf", @"vhosts\net-blog.conf", @"vhosts\net-shop.conf", @"vhosts\site-shop.test.conf"],
+            Render([Domain("shop.test") with { Access = AccessLevel.Network }], [Entry("blog")], networkDomain: "arbib.pc").Keys
+                .Where(k => k.StartsWith(@"vhosts\", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
 
     [Fact]
     public void Domain_https_with_redirect()
