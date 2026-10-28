@@ -1,5 +1,7 @@
 # ArbiPache 4 — Design
 
+> ArbiPache 4 is now **Anvil**, a development-only tool. `docs/superpowers/specs/2026-10-28-anvil-dev-only-design.md` supersedes the production features below (Production mode, Let's Encrypt, the Windows service, IP sites).
+
 Date: 2026-10-27 · Status: approved in conversation · UI mockup: https://claude.ai/artifact/Gt31veQvjjeYTFPVJZhHdt
 
 ## Intent
@@ -110,7 +112,7 @@ httpd runs as a console process under the Agent, never as its own Windows servic
 and `-k shutdown` only reach an installed service ("No installed service named Apache2.4"), so the
 Agent signals the console httpd through the named events `ap<pid>_restart` (graceful reload: the old
 child finishes its requests while a new one starts) and `ap<pid>_shutdown`. If the event is missing or
-httpd is not serving 10 s after a reload, the Agent stops and starts it. (Found in Phase 1, Task 1.10.)
+httpd is not serving 15 s after a reload, the Agent stops and starts it. (Found in Phase 1, Task 1.10.)
 
 GUI ↔ Agent: JSON-RPC (StreamJsonRpc) over the named pipe `ArbiPache.Agent`, ACL = installing user +
 Administrators (+ the service SID). One Agent per machine (mutex `Global\ArbiPache.Agent`).
