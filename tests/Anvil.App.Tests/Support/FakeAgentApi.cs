@@ -15,7 +15,7 @@ namespace Anvil.App.Tests.Support;
 public sealed class FakeAgentApi : IAgentApi
 {
     public AgentStatus Status { get; set; } = new(
-        [new ServiceStatus(ServiceId.Apache, ProcessState.Stopped, "2.4.69", null)], [], "4.0.0");
+        [new ServiceStatus(ServiceId.Apache, ProcessState.Stopped, "2.4.69", null)], [], "4.0.0", []);
 
     public AppSettings Settings { get; set; } = new() { ActiveApache = "2.4.69", Apache = new ApacheTuning(256, 0, 5) };
     public AppSettings? Saved { get; private set; }
@@ -159,6 +159,14 @@ public sealed class FakeAgentApi : IAgentApi
     public FirewallSetRequest? FirewallRequest { get; set; }
 
     public Task<FirewallSetRequest?> GetFirewallRequestAsync(CancellationToken ct = default) => Task.FromResult(FirewallRequest);
+
+    public int RefreshNetworkCalls { get; private set; }
+
+    public Task RefreshNetworkAsync(CancellationToken ct = default)
+    {
+        RefreshNetworkCalls++;
+        return Task.CompletedTask;
+    }
 
     public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate>(Certificates));

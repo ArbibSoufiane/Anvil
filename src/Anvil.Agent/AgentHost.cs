@@ -1,8 +1,11 @@
+using System.Net.NetworkInformation;
 using Anvil.Core.Agent;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
+using Anvil.Core.Elevation;
 using Anvil.Core.IO;
+using Anvil.Core.Network;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Platform;
@@ -18,6 +21,8 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
 {
     public const int ExitOk = 0;
     public const int ExitAlreadyRunning = 3;
+
+    private static readonly TimeSpan AddressSettleTime = TimeSpan.FromSeconds(2);
 
     public async Task<int> RunAsync(CancellationToken ct)
     {
@@ -36,6 +41,7 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         using var probeHttp = new HttpClient();
         using var downloadHttp = new HttpClient();
         var store = new SettingsStore(paths);
+        await using var names = new DnsResponder();
 
         Orchestrator? orchestrator = null;
         var tester = new ApacheConfigTester(paths, () => orchestrator?.ApacheVersion);
@@ -44,7 +50,8 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
             k => k == ComponentKind.Apache ? orchestrator?.Settings.ActiveApache : null);
         orchestrator = new Orchestrator(paths, store, tester, new ApacheControl(supervisor, paths, tester, probeHttp, ports), preflight.Run,
             new ComponentCatalog([new PhpCatalogProvider(probeHttp), new MariaDbCatalogProvider(probeHttp)], new ShippedCatalogProvider(paths)), installer,
-            pools, port => ports.HolderOf(port) is null, db: new DatabaseServer(paths, supervisor, TimeProvider.System));
+            pools, port => ports.HolderOf(port) is null, db: new DatabaseServer(paths, supervisor, TimeProvider.System),
+            names: names, lanAddresses: LanAddresses.Find, publicAdapters: NetworkCategory.PublicAdapterIds, firewallRules: WindowsFirewallReader.Read);
 
         var shutdown = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var api = new AgentApi(orchestrator, stopServices => shutdown.TrySetResult(stopServices));
@@ -64,7 +71,18 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
 
             using var stopJanitor = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var janitor = new Janitor(paths, TimeProvider.System).RunAsync(stopJanitor.Token);
-            stopServices = await WaitForShutdownAsync(shutdown.Task, ct);
+            // One change of address raises several events (each adapter, each address): refresh once they settle.
+            using var settle = new Timer(_ => _ = RefreshNetworkAsync(orchestrator, ct));
+            NetworkAddressChangedEventHandler addressChanged = (_, _) => settle.Change(AddressSettleTime, Timeout.InfiniteTimeSpan);
+            NetworkChange.NetworkAddressChanged += addressChanged;
+            try
+            {
+                stopServices = await WaitForShutdownAsync(shutdown.Task, ct);
+            }
+            finally
+            {
+                NetworkChange.NetworkAddressChanged -= addressChanged;
+            }
             await stopJanitor.CancelAsync();
             await janitor;
         }
@@ -75,6 +93,21 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         else await orchestrator.StopAsync(ServiceId.Database, CancellationToken.None);
         Log.Information("Agent stopped");
         return ExitOk;
+    }
+
+    private static async Task RefreshNetworkAsync(Orchestrator orchestrator, CancellationToken ct)
+    {
+        try
+        {
+            await orchestrator.RefreshNetworkAsync(ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Warning(e, "The network could not be checked again after an address change");
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     /// <summary>Cancellation counts as a shutdown that stops services.</summary>

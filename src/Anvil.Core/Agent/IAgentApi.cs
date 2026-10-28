@@ -85,6 +85,9 @@ public partial interface IAgentApi
     /// <summary>The firewall rules to ask Windows for while something is open to the network; null when nothing is.</summary>
     Task<FirewallSetRequest?> GetFirewallRequestAsync(CancellationToken ct = default);
 
+    /// <summary>Reads this PC's addresses, its networks and the firewall again, and moves the name service to match.</summary>
+    Task RefreshNetworkAsync(CancellationToken ct = default);
+
     /// <summary>
     /// Makes an installed MariaDB or MySQL version the active database: initializes an empty datadir with the root
     /// password (an existing one must accept it), stops the other engine and starts this one.

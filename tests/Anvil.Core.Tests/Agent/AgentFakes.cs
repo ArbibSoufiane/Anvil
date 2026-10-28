@@ -1,7 +1,9 @@
+using System.Net;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
 using Anvil.Core.IO;
+using Anvil.Core.Network;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Processes;
@@ -176,4 +178,20 @@ internal sealed class FakeDb(List<string> events) : IDatabaseServer
 
     public Task<string> BackupAsync(DbEngine e, string version, CancellationToken ct) =>
         Task.FromResult(@"D:\Anvil\data\backups\db\2026-10-27-120000.sql.gz");
+}
+
+/// <summary>Records each ApplyAsync; FailOn is an address another program holds port 53 on.</summary>
+internal sealed class FakeNameService : INameService
+{
+    public (string? Domain, IReadOnlyList<IPAddress> Addresses) LastCall { get; private set; } = (null, []);
+    public IPAddress? FailOn { get; set; }
+    public IReadOnlyList<IPAddress> Listening { get; private set; } = [];
+
+    public Task<IReadOnlyList<DnsBindFailure>> ApplyAsync(string? networkDomain, IReadOnlyList<IPAddress> addresses, CancellationToken ct)
+    {
+        LastCall = (networkDomain, addresses);
+        IReadOnlyList<IPAddress> wanted = networkDomain is null ? [] : addresses;
+        Listening = wanted.Where(a => !a.Equals(FailOn)).ToList();
+        return Task.FromResult<IReadOnlyList<DnsBindFailure>>(wanted.Where(a => a.Equals(FailOn)).Select(a => new DnsBindFailure(a, "in use")).ToList());
+    }
 }

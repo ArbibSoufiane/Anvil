@@ -261,6 +261,8 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
         public async Task<FirewallSetRequest?> GetFirewallRequestAsync(CancellationToken ct = default) =>
             await (await Remote()).GetFirewallRequestAsync(ct);
 
+        public async Task RefreshNetworkAsync(CancellationToken ct = default) => await (await Remote()).RefreshNetworkAsync(ct);
+
         public async Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
             await (await Remote()).InstallDatabaseAsync(e, version, rootPassword, ct);
 

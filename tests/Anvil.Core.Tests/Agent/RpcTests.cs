@@ -64,6 +64,21 @@ public sealed class RpcTests
     }
 
     [Fact]
+    public async Task Network_refresh_reaches_the_agent()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var name = UniquePipe();
+        var fake = new FakeApi();
+        await using var server = new PipeServer(name, fake);
+        server.Start();
+        await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
+
+        await client.Api.RefreshNetworkAsync(ct);
+
+        Assert.Equal(1, fake.NetworkRefreshes);
+    }
+
+    [Fact]
     public async Task Php_calls_round_trip_over_pipe()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -262,7 +277,7 @@ public sealed class RpcTests
         public static readonly AgentStatus Status = new(
             [new ServiceStatus(ServiceId.Apache, ProcessState.Running, "2.4.69", null)],
             [new PreflightFinding("port-443", Severity.Blocking, "Port 443 is used by Skype (PID 7).", "Close Skype.")],
-            "4.0.0-test");
+            "4.0.0-test", ["192.168.100.254"]);
 
         public static readonly PhpVersionInfo Php = new("8.5.12", "vs17", 4, 1000, 9100, ["htdocs"], ProcessState.Running, true, false);
         public static readonly PhpExtension Intl = new("intl", true, true, false);
@@ -366,6 +381,14 @@ public sealed class RpcTests
         public static readonly FirewallSetRequest Firewall = new("2.4.69", [80, 443], NameService: true);
 
         public Task<FirewallSetRequest?> GetFirewallRequestAsync(CancellationToken ct = default) => Task.FromResult<FirewallSetRequest?>(Firewall);
+
+        public int NetworkRefreshes { get; private set; }
+
+        public Task RefreshNetworkAsync(CancellationToken ct = default)
+        {
+            NetworkRefreshes++;
+            return Task.CompletedTask;
+        }
 
         public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate> { ["shop.test"] = Cert });

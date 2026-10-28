@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -10,6 +11,7 @@ using Anvil.Core.Database;
 using Anvil.Core.Elevation;
 using Anvil.Core.Hosts;
 using Anvil.Core.IO;
+using Anvil.Core.Network;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Preflight;
@@ -27,10 +29,16 @@ namespace Anvil.Agent;
 /// </summary>
 /// <param name="portFree">True when nothing listens on the port; picks ports for new PHP pools.</param>
 /// <param name="hostsText">Reads the Windows hosts file; the Agent never writes it (the Elevator does).</param>
+/// <param name="names">Answers the network domain while Apache runs; null runs none.</param>
+/// <param name="lanAddresses">This PC's LAN addresses; null means none.</param>
+/// <param name="publicAdapters">Ids of the adapters on networks Windows treats as Public; null means none.</param>
+/// <param name="firewallRules">Windows Firewall's inbound rules; null means none.</param>
 public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IConfigTester tester, IApacheControl apache,
     Func<AppSettings, IReadOnlyList<PreflightFinding>> preflight, ComponentCatalog catalog, ComponentInstaller installer,
     IPhpPools php, Func<int, bool> portFree, Func<string>? hostsText = null,
-    string? legacyHome = null, TimeProvider? time = null, IDatabaseServer? db = null)
+    string? legacyHome = null, TimeProvider? time = null, IDatabaseServer? db = null,
+    INameService? names = null, Func<IReadOnlyList<LanAddress>>? lanAddresses = null, Func<IReadOnlySet<string>>? publicAdapters = null,
+    Func<IReadOnlyList<ExistingFirewallRule>>? firewallRules = null)
 {
     public const int MaxWorkers = 64;
     public const int MaxRecycleRequests = 1_000_000;
@@ -43,6 +51,13 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private readonly TimeProvider _time = time ?? TimeProvider.System;
     private IReadOnlyList<PreflightFinding> _findings = [];
     private string? _apacheUnderTest;
+    private readonly Func<IReadOnlyList<LanAddress>> _lanAddresses = lanAddresses ?? (() => []);
+    private readonly Func<IReadOnlySet<string>> _publicAdapters = publicAdapters ?? (() => new HashSet<string>());
+    private readonly Func<IReadOnlyList<ExistingFirewallRule>> _firewallRules = firewallRules ?? (() => []);
+    private IReadOnlyList<PreflightFinding> _networkFindings = [];
+    private IReadOnlyList<DnsBindFailure> _bindFailures = [];
+    private (string? Domain, IPAddress[] Addresses)? _namesApplied;
+    private bool _retryNames;
 
     public event EventHandler<AgentStatus>? StatusChanged;
 
@@ -137,7 +152,8 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             PhpStatus(),
             DbStatus(),
         ];
-        return new AgentStatus(services, _findings, BuildInfo.Version);
+        return new AgentStatus(services, [.. _findings, .. _networkFindings], BuildInfo.Version,
+            names?.Listening.Select(a => a.ToString()).ToList() ?? []);
     }
 
     /// <summary>
@@ -211,6 +227,12 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     /// </summary>
     public Task<ApplyResult> SaveSettingsAsync(AppSettings s, CancellationToken ct) => Locked(async () =>
     {
+        var saved = await SaveSettingsCoreAsync(s, ct);
+        return saved.Ok ? saved with { RequiredFirewall = FirewallRequest() } : saved;
+    }, ct);
+
+    private async Task<ApplyResult> SaveSettingsCoreAsync(AppSettings s, CancellationToken ct)
+    {
         var previous = _settings;
         // Versions and pools change through their own calls, so a page holding older settings cannot undo them.
         s = s with
@@ -249,7 +271,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
                 ? ApplyResult.Success()
                 : await Guard(() => apache.GracefulRestartAsync(ct), applied);
         return served.Ok ? served : await RollBackAsync(previous, version, served, ct);
-    }, ct);
+    }
 
     /// <summary>Puts the previous settings and their configuration back after Apache could not serve new ones, and serves those again.</summary>
     private async Task<ApplyResult> RollBackAsync(AppSettings previous, string version, ApplyResult failed, CancellationToken ct)
@@ -383,7 +405,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         if (!applied) return result;
         if (renamedFrom is not null) certs.Delete(renamedFrom);
 
-        return result with { HostsDomains = HostsChange() };
+        return result with { HostsDomains = HostsChange(), RequiredFirewall = FirewallRequest() };
     }, ct);
 
     /// <summary>Removes the site with its certificate. Its logs stay.</summary>
@@ -410,7 +432,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         Remember(SiteFile(id), undo);
         sites.Save(site with { Enabled = enabled });
         var (applied, result) = await ApplySitesAsync(undo, enabled ? "The site stays off." : "The site stays on.", ct);
-        return applied ? result with { HostsDomains = HostsChange() } : result;
+        return applied ? result with { HostsDomains = HostsChange(), RequiredFirewall = FirewallRequest() } : result;
     }, ct);
 
     /// <summary>
@@ -455,8 +477,23 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     /// <summary>Issues every local development certificate again; a rejected configuration puts the old ones back.</summary>
     public IReadOnlyDictionary<string, SiteCertificate> GetCertificates() => new CertificateStore(paths).All();
 
-    /// <summary>The rules Windows Firewall needs for what is open to the network now; null when nothing is.</summary>
-    public FirewallSetRequest? FirewallRequest() => FirewallRulePlanner.Needed(_settings, new SiteStore(paths).All());
+    /// <summary>
+    /// The rules Windows Firewall needs for what is open to the network now; null when nothing is open or the rules are
+    /// already in place.
+    /// </summary>
+    public FirewallSetRequest? FirewallRequest() => NeededFirewall() is { } needed && !FirewallReady(needed) ? needed : null;
+
+    /// <summary>Reads this PC's addresses, its networks and the firewall again, and tries the name service on every address again.</summary>
+    public Task RefreshNetworkAsync(CancellationToken ct) => Locked(() =>
+    {
+        _retryNames = true;
+        return Task.FromResult(true);
+    }, ct);
+
+    private FirewallSetRequest? NeededFirewall() => FirewallRulePlanner.Needed(_settings, new SiteStore(paths).All());
+
+    private bool FirewallReady(FirewallSetRequest needed) =>
+        FirewallRulePlanner.Satisfied(FirewallRulePlanner.Plan(needed, paths), _firewallRules(), paths);
 
     /// <summary>
     /// At startup, before the configuration is written: issues again every enabled site's local certificate that is
@@ -889,10 +926,55 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         }
         finally
         {
-            _gate.Release();
+            try
+            {
+                await RefreshNetworkCoreAsync();
+            }
+            finally
+            {
+                _gate.Release();
+            }
             RaiseStatus();
         }
     }
 
     private void RaiseStatus() => StatusChanged?.Invoke(this, Status());
+
+    /// <summary>
+    /// Runs after every operation: the name service answers the network domain on this PC's addresses while Apache
+    /// runs, and the findings say what keeps other devices out. The firewall and the networks are read only while
+    /// something is open to the network.
+    /// </summary>
+    private async Task RefreshNetworkCoreAsync()
+    {
+        try
+        {
+            var lan = _lanAddresses();
+            if (names is not null)
+            {
+                (string? Domain, IPAddress[] Addresses) wanted =
+                    (ApacheRunning ? _settings.NetworkDomain : null, [.. lan.Select(a => a.Address).Distinct()]);
+                if (_retryNames || _namesApplied is not { } applied || applied.Domain != wanted.Domain
+                    || !applied.Addresses.SequenceEqual(wanted.Addresses))
+                {
+                    _bindFailures = await names.ApplyAsync(wanted.Domain, wanted.Addresses, CancellationToken.None);
+                    _namesApplied = wanted;
+                }
+            }
+            _retryNames = false;
+
+            var needed = NeededFirewall();
+            if (needed is null)
+            {
+                _networkFindings = [];
+                return;
+            }
+            var publicIds = _publicAdapters();
+            _networkFindings = NetworkFindings.For(true, FirewallReady(needed), [.. lan.Where(a => publicIds.Contains(a.AdapterId))], _bindFailures);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log.Warning("The network checks could not run: {Message}", e.Message);
+        }
+    }
 }

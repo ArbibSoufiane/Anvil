@@ -46,7 +46,7 @@ public sealed partial class DashboardViewModel : ObservableObject
             _ = ReloadSettingsAsync();
         };
         ApplySettings();
-        Apply(new AgentStatus([], [], ""));
+        Apply(new AgentStatus([], [], "", []));
     }
 
     [ObservableProperty]

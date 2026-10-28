@@ -213,7 +213,7 @@ public sealed class OrchestratorTests : IDisposable
         await orchestrator.InitializeAsync(TestContext.Current.CancellationToken);
 
         Assert.Null(_apache.Status);
-        Assert.Equal("port-80", Assert.Single(orchestrator.Status().Findings).Id);
+        Assert.Equal("port-80", Assert.Single(orchestrator.Status().Findings, f => f.Severity == Severity.Blocking).Id);
     }
 
     [Fact]

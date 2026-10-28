@@ -87,6 +87,8 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
 
     public Task<FirewallSetRequest?> GetFirewallRequestAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.FirewallRequest());
 
+    public Task RefreshNetworkAsync(CancellationToken ct = default) => orchestrator.RefreshNetworkAsync(ct);
+
     public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
         orchestrator.InstallDatabaseAsync(e, version, rootPassword, ct);
 
