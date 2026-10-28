@@ -22,7 +22,7 @@ public sealed class AgentConnectionTests
             starts++;
             server = TestServer.Start(pipe, api);
             return true;
-        });
+        }, agentExe: Environment.ProcessPath);
         var reconnected = new TaskCompletionSource();
         connection.Reconnected += (_, _) => reconnected.TrySetResult();
 
@@ -55,7 +55,7 @@ public sealed class AgentConnectionTests
             starts++;
             server = TestServer.Start(pipe, new FakeAgentApi());
             return true;
-        });
+        }, agentExe: Environment.ProcessPath);
         IAgentLink link = connection;
 
         using (link.HoldStart())

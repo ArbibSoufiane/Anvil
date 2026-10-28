@@ -27,6 +27,7 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
     private static readonly TimeSpan StopWithin = TimeSpan.FromMinutes(1);
 
     private readonly string _pipeName;
+    private readonly string _agentExe;
     private readonly string _mutexName;
     private readonly Func<bool> _startAgent;
     private readonly CancellationTokenSource _life = new();
@@ -36,10 +37,12 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
 
     /// <param name="startAgent">Starts the Agent; returns false when it could not. Null starts the service or ArbiPache.Agent.exe.</param>
     /// <param name="mutexName">The mutex a running Agent holds.</param>
+    /// <param name="agentExe">The program that must serve the pipe; null means this folder's ArbiPache.Agent.exe.</param>
     public AgentConnection(AppPaths paths, string pipeName = AgentPipe.Name, Func<bool>? startAgent = null, string mutexName = AgentPipe.Mutex,
-        IAgentService? service = null)
+        IAgentService? service = null, string? agentExe = null)
     {
         _pipeName = pipeName;
+        _agentExe = agentExe ?? Path.Combine(paths.Root, "ArbiPache.Agent.exe");
         _mutexName = mutexName;
         var windowsService = service ?? new WindowsAgentService();
         _startAgent = startAgent ?? (() => StartAgent(windowsService, () => StartAgentProcess(paths)));
@@ -130,14 +133,14 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
         AgentClient client;
         try
         {
-            client = await AgentRpc.ConnectAsync(_pipeName, Probe, _life.Token);
+            client = await AgentRpc.ConnectAsync(_pipeName, Probe, _life.Token, _agentExe);
         }
         catch (TimeoutException)
         {
             // The service switch is moving the Agent and decides which one runs next.
             if (Volatile.Read(ref _holds) > 0) throw new InvalidOperationException("The ArbiPache Agent is being moved.");
             if (!_startAgent()) throw new InvalidOperationException("ArbiPache.Agent.exe could not be started.");
-            client = await AgentRpc.ConnectAsync(_pipeName, AfterStart, _life.Token);
+            client = await AgentRpc.ConnectAsync(_pipeName, AfterStart, _life.Token, _agentExe);
         }
         client.Api.StatusChanged += (_, s) => ((ForwardingApi)Api).Raise(s);
         _ = client.Completion.ContinueWith(_ => OnLost(client), TaskScheduler.Default);

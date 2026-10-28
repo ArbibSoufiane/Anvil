@@ -8,6 +8,8 @@ MIB_TCP6TABLE_OWNER_PID
 TCP_TABLE_CLASS
 OpenProcess
 QueryFullProcessImageName
+GetNamedPipeServerProcessId
+GetFileInformationByHandle
 WIN32_ERROR
 CreateProcess
 InitializeProcThreadAttributeList

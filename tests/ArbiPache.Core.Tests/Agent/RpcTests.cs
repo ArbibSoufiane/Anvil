@@ -157,6 +157,49 @@ public sealed class RpcTests
         Assert.True(fake.ProfileSaved.Value.Overrides.SecurityHeaders);
     }
 
+    // Another ArbiPache folder, or another account's program, may own the pipe: the window talks only to its own Agent,
+    // and sends it no passwords before it knows.
+    [Fact]
+    public async Task Connect_refuses_a_pipe_another_program_serves()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var name = UniquePipe();
+        await using var server = new PipeServer(name, new FakeApi(), []);
+        server.Start();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            AgentRpc.ConnectAsync(name, Wait, ct, @"D:\Other\ArbiPache\ArbiPache.Agent.exe"));
+        await using var own = await AgentRpc.ConnectAsync(name, Wait, ct, Environment.ProcessPath);
+
+        Assert.Equal($"Another program answers on the ArbiPache Agent's pipe: {Environment.ProcessPath}. "
+            + "If it is another copy of ArbiPache, close it, then open this one again.", error.Message);
+        Assert.NotNull(own.Api);
+    }
+
+    // A portable copy may run from a junction or a subst drive: Windows names the Agent by its real path then.
+    [Fact]
+    public async Task Connect_accepts_its_agent_reached_through_a_junction()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var name = UniquePipe();
+        await using var server = new PipeServer(name, new FakeApi(), []);
+        server.Start();
+        var junction = Path.Combine(Path.GetTempPath(), "ap-junction-" + Guid.NewGuid().ToString("N"));
+        using (var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe",
+                   ["/c", "mklink", "/J", junction, Path.GetDirectoryName(Environment.ProcessPath)!]) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true })!)
+            await mklink.WaitForExitAsync(ct);
+        try
+        {
+            await using var own = await AgentRpc.ConnectAsync(name, Wait, ct, Path.Combine(junction, Path.GetFileName(Environment.ProcessPath)!));
+
+            Assert.NotNull(own.Api);
+        }
+        finally
+        {
+            Directory.Delete(junction);
+        }
+    }
+
     [Fact]
     public async Task Certificate_calls_round_trip_and_keep_their_error_code()
     {

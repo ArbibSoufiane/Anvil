@@ -87,7 +87,7 @@ public sealed class PortProbe : IPortProbe
     }
 
     // Limited-information access works for other users' processes too, unlike Process.MainModule.
-    private static string? ImagePath(int pid)
+    internal static string? ImagePath(int pid)
     {
         using var handle = PInvoke.OpenProcess_SafeHandle(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)pid);
         if (handle.IsInvalid) return null;
