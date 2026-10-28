@@ -43,6 +43,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private AppSettings _settings = new();
     private bool _apacheRunning;
     private IReadOnlyList<string> _listening = [];
+    private bool _portTaken;
 
     /// <param name="lanAddresses">This PC's addresses on local networks, read again whenever the Agent's status changes.</param>
     /// <param name="settingsChanged">Told about every saved change, so the rest of the window follows.</param>
@@ -490,6 +491,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _apacheRunning = status.Services.FirstOrDefault(x => x.Id == ServiceId.Apache)?.State
             is ProcessState.Starting or ProcessState.Running or ProcessState.Restarting;
         _listening = status.NameServiceAddresses;
+        _portTaken = status.Findings.Any(f => f.Id.StartsWith(NetworkFindings.DnsBindPrefix, StringComparison.Ordinal));
         NetworkProblems.Clear();
         foreach (var f in status.Findings.Where(f => f.Id == NetworkFindings.PublicId
                                                      || f.Id.StartsWith(NetworkFindings.DnsBindPrefix, StringComparison.Ordinal)))
@@ -510,7 +512,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             : lan.Count == 0 ? "This PC has no address on a local network."
             : !_apacheRunning ? "Off while Apache is stopped."
             : _listening.Count > 0 ? $"Answering for *.{domain} on {string.Join(", ", _listening)}."
-            : "Off: port 53 is in use on every network address.";
+            : _portTaken ? "Off: port 53 is in use on every network address."
+            // Apache reports itself starting before the name service binds.
+            : "Starting with Apache.";
     }
 
     private void TryRunKey(bool set)

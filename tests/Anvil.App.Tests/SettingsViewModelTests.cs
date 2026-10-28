@@ -407,16 +407,21 @@ public sealed class SettingsViewModelTests
     }
 
     [Theory]
-    [InlineData(null, false, new string[0], "Off: set a network domain to turn it on.")]
-    [InlineData("arbib.pc", false, new string[0], "Off while Apache is stopped.")]
-    [InlineData("arbib.pc", true, new[] { "192.168.100.254" }, "Answering for *.arbib.pc on 192.168.100.254.")]
-    [InlineData("arbib.pc", true, new string[0], "Off: port 53 is in use on every network address.")]
-    public async Task Name_service_status(string? domain, bool apacheRunning, string[] listening, string text)
+    [InlineData(null, false, new string[0], false, "Off: set a network domain to turn it on.")]
+    [InlineData("arbib.pc", false, new string[0], false, "Off while Apache is stopped.")]
+    [InlineData("arbib.pc", true, new[] { "192.168.100.254" }, false, "Answering for *.arbib.pc on 192.168.100.254.")]
+    [InlineData("arbib.pc", true, new string[0], true, "Off: port 53 is in use on every network address.")]
+    // Apache reports itself starting before the name service has bound anything.
+    [InlineData("arbib.pc", true, new string[0], false, "Starting with Apache.")]
+    public async Task Name_service_status(string? domain, bool apacheRunning, string[] listening, bool portTaken, string text)
     {
         _api.Settings = _api.Settings with { NetworkDomain = domain };
         var vm = await LoadedAsync();
 
-        _api.Raise(Status(apacheRunning, listening));
+        _api.Raise(Status(apacheRunning, listening) with
+        {
+            Findings = portTaken ? [new PreflightFinding(NetworkFindings.DnsBindPrefix + "192.168.100.254", Severity.Warning, "Port 53 is in use.", null)] : [],
+        });
 
         Assert.Equal(text, vm.NameServiceStatus);
     }
