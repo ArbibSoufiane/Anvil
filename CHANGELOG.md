@@ -31,11 +31,17 @@ Settings → Import from ArbiPache 3 brings your sites over.
 - Check for updates in Settings: downloads the new release, verifies it against `SHA256SUMS`, swaps
   the program files and keeps the previous version until the new one is in place.
 - Opening ArbiPache a second time brings the running window to the front.
+- A site's access setting holds even when an app ships a `.htaccess` that allows everyone.
+- HTTPS refuses host names no site claims, and Apache listens only on the ports set in Settings.
+- A site folder that would publish ArbiPache's own files is refused, and `data\` is never served.
+- A port another program uses is refused while your sites run. When Apache cannot serve new
+  settings, ArbiPache goes back to the previous ones and starts Apache again.
+- Moving the ArbiPache folder re-points the database and the sites kept inside it.
 
 ### Changed
 - Rewritten in C# / .NET 10 with an Avalonia desktop app. No command-line interface.
-- Everything lives in the ArbiPache folder (`runtime\`, `data\`, `htdocs\`); nothing is kept in your
-  user profile, so copying the folder moves ArbiPache.
+- Everything lives in the ArbiPache folder (`runtime\`, `data\`, `htdocs\`), so copying the folder
+  moves ArbiPache. Only your choice of editor is kept in your user profile.
 - Shipped as a plain folder of .NET files instead of a PyInstaller bundle, which is what
   Windows Defender flagged.
 - mkcert is no longer downloaded: certificates are made by ArbiPache itself.
