@@ -47,8 +47,20 @@ signed, the updater also refuses program files that do not carry the expected si
 
 **The local development certificate authority.** HTTPS for `.test` sites comes from ArbiPache's own
 certificate authority, trusted in your user's `CurrentUser\Root` store when you click Trust. Its
-private key is `data\certs\ca\ca.key`. Anyone who can read that file can issue a certificate for any
-domain that your browsers will then trust. Settings → Remove from Windows takes the trust away.
+private key is `data\certs\ca\ca.key`, readable only by you, administrators and the service. Anyone
+who can read that file can issue a certificate for any domain that your browsers will then trust. Settings → Remove from Windows takes the trust away.
+
+**PHP runs as the Agent.** As a service, PHP scripts run as `NT SERVICE\ArbiPacheAgent`, which keeps
+only the privileges it uses (no impersonation). A script can read and change what the service can:
+`data\` (settings, certificate keys, the database password) and `runtime\`, besides the site
+folders. A site with a hole in it therefore exposes those secrets, so keep internet-facing apps up
+to date. ArbiPache runs no program named in `data\`: the editor you choose is kept in your own
+profile.
+
+**PHP pools listen on 127.0.0.1.** Apache reaches PHP over FastCGI on local TCP ports (9100 and up),
+because Apache on Windows cannot use named pipes for it. Any program or account on this PC can
+connect to those ports and run a PHP file the service can read, as the service. On a PC shared
+with people you do not trust, do not run ArbiPache as a service.
 
 **htdocs is served without a login.** Folders in `htdocs\` are never reachable from the internet,
 but anyone on your network can open them when you allow that in Settings. Anything you serve that

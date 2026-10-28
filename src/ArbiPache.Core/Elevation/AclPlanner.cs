@@ -15,7 +15,8 @@ public sealed record AclGrant(string Path, AclRight Right);
 /// <summary>
 /// What NT SERVICE\ArbiPacheAgent may use: the app folder read and execute, data\ and runtime\ (component installs)
 /// modify, htdocs and every site folder read, and the folders PHP frameworks write to (Laravel storage and
-/// bootstrap\cache, Symfony var, WordPress uploads) modify. A PHP script running under the service can change nothing else.
+/// bootstrap\cache, Symfony var, WordPress uploads) modify. PHP runs as the service too, so a script can also change
+/// data\ and runtime\ and read the keys and secrets there; outside these folders it can change nothing.
 /// </summary>
 public static class AclPlanner
 {

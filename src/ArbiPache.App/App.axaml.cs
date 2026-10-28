@@ -44,7 +44,8 @@ public partial class App : Application
             var http = new HttpClient();
             CleanUpUpdate(new Updater(paths, http));
             var appUpdate = AppUpdate.FromGitHub(paths, _agent.Api, _agent, http, () => Dispatcher.UIThread.Post(() => desktop.Shutdown()));
-            var editor = new EditorLauncher(() => settings.Editor, new WindowsRegistryReader(), File.Exists);
+            var editorChoice = EditorChoice.ForUser();
+            var editor = new EditorLauncher(() => editorChoice.Editor, new WindowsRegistryReader(), File.Exists);
             var dashboard = new DashboardViewModel(_agent.Api, paths, editor);
             var apache = new ApacheViewModel(_agent.Api, paths, editor);
             var php = new PhpViewModel(_agent.Api, paths, editor);
@@ -65,7 +66,7 @@ public partial class App : Application
             {
                 settings = s;
                 vm.CloseToTray = s.CloseToTray;
-            }, () => _ = sites.LoadAsync(), service, appUpdate);
+            }, () => _ = sites.LoadAsync(), service, appUpdate, editorChoice);
             var mode = new ModeViewModel(_agent.Api);
             var followUp = new ElevationFollowUp(elevator);
             vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage, database, mode,

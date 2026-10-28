@@ -34,6 +34,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ElevationFollowUp _followUp;
     private readonly ServiceSwitch? _service;
     private readonly IAppUpdate? _update;
+    private readonly EditorChoice _editor;
     private AppSettings _settings = new();
 
     /// <param name="settingsChanged">Told about every saved change, so the rest of the window follows.</param>
@@ -42,10 +43,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <param name="update">Checks for and installs a newer ArbiPache; null hides the update buttons.</param>
     public SettingsViewModel(IAgentApi api, IElevator elevator, IRunKey runKey, ILocalCaTrust ca, IFolderPicker picker, AppPaths paths,
         Func<string?> lanIp, Action<AppSettings>? settingsChanged = null, Action? sitesChanged = null, ServiceSwitch? service = null,
-        IAppUpdate? update = null)
+        IAppUpdate? update = null, EditorChoice? editor = null)
     {
         _service = service;
         _update = update;
+        _editor = editor ?? new EditorChoice(null);
         _api = api;
         _runKey = runKey;
         _ca = ca;
@@ -326,11 +328,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task ChooseEditorAsync()
     {
         if (await _picker.PickProgramAsync("Choose the program that opens config files") is not { } program) return;
-        await SaveAsync(_settings with { Editor = program });
+        UseEditor(program);
     }
 
     [RelayCommand]
-    private async Task UseAutomaticEditorAsync() => await SaveAsync(_settings with { Editor = "auto" });
+    private void UseAutomaticEditor() => UseEditor("auto");
+
+    private void UseEditor(string program)
+    {
+        _editor.Editor = program;
+        EditorText = EditorLabel();
+    }
+
+    private string EditorLabel() =>
+        _editor.Editor is var chosen && string.Equals(chosen, "auto", StringComparison.OrdinalIgnoreCase) ? AutomaticEditor : chosen;
 
     [RelayCommand]
     private void OpenAppFolder() => EditorLauncher.OpenFolder(AppFolder);
@@ -454,7 +465,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         StartWithWindows = s.StartWithWindows;
         CloseToTray = s.CloseToTray;
         RunAsService = s.RunAsService;
-        EditorText = string.Equals(s.Editor, "auto", StringComparison.OrdinalIgnoreCase) ? AutomaticEditor : s.Editor;
+        EditorText = EditorLabel();
         HtdocsOnNetwork = s.Network.HtdocsOnNetwork;
         PrivateNetworksOnly = s.Network.PrivateNetworksOnly;
         HttpPortText = s.HttpPort.ToString(System.Globalization.CultureInfo.InvariantCulture);

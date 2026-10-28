@@ -26,7 +26,6 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(ServerMode.Development, s.Mode);
         Assert.True(s.CloseToTray);
         Assert.True(s.StartServicesOnLaunch);
-        Assert.Equal("auto", s.Editor);
         Assert.Equal(3306, s.DbPort);
     }
 

@@ -13,12 +13,16 @@ namespace ArbiPache.Elevator.Handlers;
 /// <summary>
 /// service-install and service-uninstall. The service is ArbiPacheAgent: delayed automatic start, NT SERVICE\ArbiPacheAgent,
 /// restarted after 5 s, 30 s and 60 s when it fails (counts reset after a day), and the installing user may start and stop it.
+/// It keeps only the privileges it uses, so PHP running under it cannot impersonate its way to SYSTEM.
 /// </summary>
 internal static unsafe class ServiceHandler
 {
     private const string DisplayName = "ArbiPache Agent";
     private const string Description = "Runs ArbiPache's web server, PHP pools and database.";
     private const uint OneDay = 86_400;
+
+    // Without SeImpersonatePrivilege and the other defaults of a service account; the Agent impersonates no one.
+    private const string RequiredPrivileges = "SeChangeNotifyPrivilege\0SeCreateGlobalPrivilege\0\0";
 
     // System and administrators keep full control, signed-in and service users may read its status, and the
     // installing user may also start and stop it.
@@ -95,6 +99,13 @@ internal static unsafe class ServiceHandler
         var sid = new SERVICE_SID_INFO { dwServiceSidType = PInvoke.SERVICE_SID_TYPE_UNRESTRICTED };
         if (!PInvoke.ChangeServiceConfig2W(service, SERVICE_CONFIG.SERVICE_CONFIG_SERVICE_SID_INFO, &sid))
             return Failed("give the ArbiPache service its own account");
+
+        fixed (char* privileges = RequiredPrivileges)
+        {
+            var required = new SERVICE_REQUIRED_PRIVILEGES_INFOW { pmszRequiredPrivileges = privileges };
+            if (!PInvoke.ChangeServiceConfig2W(service, SERVICE_CONFIG.SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO, &required))
+                return Failed("limit the ArbiPache service's privileges");
+        }
 
         var restarts = stackalloc SC_ACTION[]
         {

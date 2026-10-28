@@ -20,6 +20,7 @@ public sealed class SettingsViewModelTests
     private readonly FakeCa _ca = new();
     private readonly FakeFolderPicker _picker = new();
     private readonly List<AppSettings> _changed = [];
+    private readonly EditorChoice _editor = new(null);
     private int _sitesChanged;
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -32,7 +33,7 @@ public sealed class SettingsViewModelTests
     private async Task<SettingsViewModel> LoadedAsync(ServiceSwitch? service = null, IAppUpdate? update = null)
     {
         var vm = new SettingsViewModel(_api, _elevator, _runKey, _ca, _picker, Paths, () => "192.168.10.2", _changed.Add, () => _sitesChanged++, service,
-            update);
+            update, _editor);
         await vm.LoadAsync(Ct);
         return vm;
     }
@@ -313,7 +314,22 @@ public sealed class SettingsViewModelTests
 
         await vm.ChooseEditorCommand.ExecuteAsync(null);
 
-        Assert.Equal(@"C:\Tools\subl.exe", _api.Saved?.Editor);
+        Assert.Equal(@"C:\Tools\subl.exe", _editor.Editor);
         Assert.Equal(@"C:\Tools\subl.exe", vm.EditorText);
+        // data\ is writable by the service account: a program named there could be planted by a script a site runs.
+        Assert.Null(_api.Saved);
+    }
+
+    [Fact]
+    public async Task Automatic_editor_is_shown_until_one_is_chosen()
+    {
+        var vm = await LoadedAsync();
+
+        Assert.Equal(SettingsViewModel.AutomaticEditor, vm.EditorText);
+        _editor.Editor = @"C:\Tools\subl.exe";
+        vm.UseAutomaticEditorCommand.Execute(null);
+
+        Assert.Equal("auto", _editor.Editor);
+        Assert.Equal(SettingsViewModel.AutomaticEditor, vm.EditorText);
     }
 }

@@ -7,6 +7,24 @@ namespace ArbiPache.App.Tests;
 
 public sealed class EditorLauncherTests
 {
+    [Fact]
+    public void Editor_choice_lives_in_its_own_file()
+    {
+        var file = Path.Combine(Path.GetTempPath(), "ap-editor-" + Guid.NewGuid().ToString("N"), "editor.txt");
+        try
+        {
+            Assert.Equal("auto", new EditorChoice(file).Editor);
+
+            new EditorChoice(file).Editor = @"C:\Tools\subl.exe";
+
+            Assert.Equal(@"C:\Tools\subl.exe", new EditorChoice(file).Editor);
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(file)!, recursive: true);
+        }
+    }
+
     private static readonly string VsCode = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Microsoft VS Code", "Code.exe");
     private const string NppDir = @"C:\Program Files\Notepad++";
