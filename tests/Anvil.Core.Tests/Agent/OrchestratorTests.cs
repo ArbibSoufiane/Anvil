@@ -490,6 +490,25 @@ public sealed class OrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Saving_settings_normalizes_and_checks_the_network_domain()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+
+        Assert.True((await orchestrator.SaveSettingsAsync(orchestrator.Settings with { NetworkDomain = " Arbib.PC " }, ct)).Ok);
+        Assert.Equal("arbib.pc", orchestrator.Settings.NetworkDomain);
+        Assert.Equal("arbib.pc", new SettingsStore(_paths).Load().NetworkDomain);
+
+        var bad = await orchestrator.SaveSettingsAsync(orchestrator.Settings with { NetworkDomain = "pc" }, ct);
+        Assert.Equal("A network domain needs at least two parts, such as arbib.pc.", bad.Error);
+        Assert.Equal("arbib.pc", orchestrator.Settings.NetworkDomain);
+
+        Assert.True((await orchestrator.SaveSettingsAsync(orchestrator.Settings with { NetworkDomain = "  " }, ct)).Ok);
+        Assert.Null(orchestrator.Settings.NetworkDomain);
+    }
+
+    [Fact]
     public async Task Unknown_extension_is_refused()
     {
         var ct = TestContext.Current.CancellationToken;

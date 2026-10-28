@@ -219,6 +219,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             DefaultPhp = previous.DefaultPhp,
             PhpPools = previous.PhpPools,
             PhpPoolPorts = previous.PhpPoolPorts,
+            NetworkDomain = NetworkNames.NormalizeDomain(s.NetworkDomain),
         };
         if (Validate(s) is { } invalid) return ApplyResult.Failure(invalid);
         // A port another program holds would take the sites down: refuse it while they still run.
@@ -862,7 +863,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         foreach (var (port, label) in new[] { (s.HttpPort, "HTTP"), (s.HttpsPort, "HTTPS"), (s.DbPort, "Database") })
             if (port is < 1 or > 65535) return $"The {label} port must be between 1 and 65535.";
         if (s.Apache.ThreadsPerChild is < 1 or > 1920) return "Threads per child must be between 1 and 1920.";
-        return null;
+        return s.NetworkDomain is { } domain ? NetworkNames.DomainError(domain) : null;
     }
 
     private InstalledComponent? InstalledPhp(string version) =>
