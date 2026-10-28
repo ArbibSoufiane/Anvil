@@ -137,4 +137,57 @@ public sealed class InstallerTests : IDisposable
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) });
     }
+
+    [Theory]
+    [InlineData("2.4.69", true)]
+    [InlineData("2026-10-20", true)]
+    [InlineData("8.5", true)]
+    [InlineData(@"..\x", false)]
+    [InlineData("a/b", false)]
+    [InlineData("1..2", false)]
+    [InlineData("-1", false)]
+    [InlineData("", false)]
+    public void Version_must_be_safe(string v, bool ok) => Assert.Equal(ok, ComponentInstaller.IsSafeVersion(v));
+
+    [Fact]
+    public async Task Unsafe_version_is_refused_before_anything_is_written()
+    {
+        var body = Zip("x.txt");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            Installer(body).InstallAsync(Release(ComponentKind.Apache, @"..\..\evil", "httpd.zip", body), null, TestContext.Current.CancellationToken));
+
+        Assert.False(Directory.Exists(Path.Combine(_paths.Runtime, "evil")));
+        Assert.False(Directory.Exists(Path.Combine(_paths.Root, "evil")));
+    }
+
+    [Fact]
+    public async Task Reinstalling_an_installed_version_keeps_it()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var body = Zip("Apache24/bin/httpd.exe");
+        var release = Release(ComponentKind.Apache, "2.4.69", "httpd.zip", body, "Apache24");
+        var first = await Installer(body).InstallAsync(release, null, ct);
+        var marker = Path.Combine(first.Path, "keep.txt");
+        File.WriteAllText(marker, "x");
+
+        var again = await Installer([]).InstallAsync(release, null, ct); // nothing to download: a fetch would fail the hash
+
+        Assert.True(File.Exists(marker));
+        Assert.Equal(first.Path, again.Path);
+    }
+
+    [Fact]
+    public async Task A_folder_the_registry_does_not_list_is_installed_again()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var body = Zip("Apache24/bin/httpd.exe");
+        Directory.CreateDirectory(_paths.ApacheRuntime("2.4.69"));
+        File.WriteAllText(Path.Combine(_paths.ApacheRuntime("2.4.69"), "half.txt"), "x");
+
+        var installed = await Installer(body).InstallAsync(Release(ComponentKind.Apache, "2.4.69", "httpd.zip", body, "Apache24"), null, ct);
+
+        Assert.True(File.Exists(Path.Combine(installed.Path, "bin", "httpd.exe")));
+        Assert.False(File.Exists(Path.Combine(installed.Path, "half.txt")));
+    }
 }

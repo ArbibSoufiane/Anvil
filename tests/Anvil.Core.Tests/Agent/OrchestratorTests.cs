@@ -420,9 +420,8 @@ public sealed class OrchestratorTests : IDisposable
         var ct = TestContext.Current.CancellationToken;
         var ca = Encoding.ASCII.GetBytes("-----BEGIN CERTIFICATE-----");
         var zip = Zip("php-cgi.exe", "php.ini-development", "ext/php_intl.dll");
-        Directory.CreateDirectory(_paths.Catalog);
-        File.WriteAllText(Path.Combine(_paths.Catalog, "components.json"),
-            $$"""{"schemaVersion":1,"releases":[{"kind":"CaBundle","version":"2026-10-20","url":"https://example.com/cacert.pem","sha256":"{{Sha(ca)}}"}]}""");
+        Catalog($$"""{"kind":"CaBundle","version":"2026-10-20","url":"https://example.com/cacert.pem","sha256":"{{Sha(ca)}}"}""",
+            $$"""{"kind":"Php","version":"8.5.12","url":"https://example.com/php.zip","sha256":"{{Sha(zip)}}","toolset":"vs17"}""");
         var downloads = new MapHandler(new() { ["/cacert.pem"] = ca, ["/php.zip"] = zip });
         var orchestrator = Make(downloads);
         await orchestrator.InitializeAsync(ct);
@@ -450,12 +449,23 @@ public sealed class OrchestratorTests : IDisposable
         return ms.ToArray();
     }
 
+    private void Catalog(params string[] releases)
+    {
+        Directory.CreateDirectory(_paths.Catalog);
+        File.WriteAllText(Path.Combine(_paths.Catalog, "components.json"), $$"""{"schemaVersion":1,"releases":[{{string.Join(",", releases)}}]}""");
+    }
+
     private sealed class MapHandler(Dictionary<string, byte[]> files) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(files.TryGetValue(request.RequestUri!.AbsolutePath, out var body)
+        public List<Uri> Requested { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requested.Add(request.RequestUri!);
+            return Task.FromResult(files.TryGetValue(request.RequestUri!.AbsolutePath, out var body)
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) }
                 : new HttpResponseMessage(HttpStatusCode.NotFound));
+        }
     }
 
     [Fact]
@@ -465,6 +475,7 @@ public sealed class OrchestratorTests : IDisposable
         InstallPhp("8.5.12");
         InstallPhp("8.4.27");
         var dll = "xdebug"u8.ToArray();
+        Catalog($$"""{"kind":"Xdebug","version":"3.5.3","url":"https://example.com/php_xdebug-3.5.3-8.5-nts-vs17-x86_64.dll","sha256":"{{Sha(dll)}}","appliesTo":"8.5"}""");
         var orchestrator = Make(new MapHandler(new() { ["/php_xdebug-3.5.3-8.5-nts-vs17-x86_64.dll"] = dll }));
         await orchestrator.InitializeAsync(ct);
 
@@ -638,9 +649,8 @@ public sealed class OrchestratorTests : IDisposable
         File.AppendAllText(Path.Combine(_paths.PhpConfigDir("8.5.5"), "php.ini"), "memory_limit = 2G\r\n");
         var ca = Encoding.ASCII.GetBytes("-----BEGIN CERTIFICATE-----");
         var zip = Zip("php-cgi.exe", "php.ini-development", "ext/php_intl.dll");
-        Directory.CreateDirectory(_paths.Catalog);
-        File.WriteAllText(Path.Combine(_paths.Catalog, "components.json"),
-            $$"""{"schemaVersion":1,"releases":[{"kind":"CaBundle","version":"2026-10-20","url":"https://example.com/cacert.pem","sha256":"{{Sha(ca)}}"}]}""");
+        Catalog($$"""{"kind":"CaBundle","version":"2026-10-20","url":"https://example.com/cacert.pem","sha256":"{{Sha(ca)}}"}""",
+            $$"""{"kind":"Php","version":"8.5.12","url":"https://example.com/php.zip","sha256":"{{Sha(zip)}}","toolset":"vs17"}""");
         var orchestrator = Make(new MapHandler(new() { ["/cacert.pem"] = ca, ["/php.zip"] = zip }));
         await orchestrator.InitializeAsync(ct);
 
@@ -689,5 +699,38 @@ public sealed class OrchestratorTests : IDisposable
         public static readonly SiteJson Instance = new();
         public bool Equals(SiteDefinition? x, SiteDefinition? y) => System.Text.Json.JsonSerializer.Serialize(x) == System.Text.Json.JsonSerializer.Serialize(y);
         public int GetHashCode(SiteDefinition obj) => 0;
+    }
+
+    [Fact]
+    public async Task Install_uses_the_catalogs_url_and_hash_not_the_callers()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        InstallPhp("8.4.27"); // the CA bundle comes with the first PHP only
+        var dll = "xdebug"u8.ToArray();
+        Catalog($$"""{"kind":"Xdebug","version":"3.5.3","url":"https://example.com/php_xdebug.dll","sha256":"{{Sha(dll)}}","appliesTo":"8.4"}""");
+        var downloads = new MapHandler(new() { ["/php_xdebug.dll"] = dll });
+        var orchestrator = Make(downloads);
+        await orchestrator.InitializeAsync(ct);
+
+        await orchestrator.InstallAsync(new ComponentRelease(ComponentKind.Xdebug, "3.5.3", new Uri("https://evil.example/php_xdebug.dll"),
+            new string('0', 64), AppliesTo: "8.4"), ct);
+
+        Assert.Equal([new Uri("https://example.com/php_xdebug.dll")], downloads.Requested);
+        Assert.Equal(Sha(dll), Assert.Single(orchestrator.GetInstalled(ComponentKind.Xdebug)).Sha256);
+    }
+
+    [Fact]
+    public async Task Release_missing_from_the_catalog_is_refused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var downloads = new MapHandler([]);
+        var orchestrator = Make(downloads);
+        await orchestrator.InitializeAsync(ct);
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.InstallAsync(
+            new ComponentRelease(ComponentKind.Php, "9.9.9", new Uri("https://example.com/php.zip"), new string('0', 64), "vs17"), ct));
+
+        Assert.Equal("Php 9.9.9 is not in Anvil's catalog.", e.Message);
+        Assert.Empty(downloads.Requested);
     }
 }

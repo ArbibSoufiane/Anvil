@@ -300,8 +300,13 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     /// PHP brings the CA bundle along the first time, gets its php.ini at once (a patch release copies the one of the
     /// branch's older patch), and becomes the default when there is none.
     /// </summary>
-    public async Task<InstalledComponent> InstallAsync(ComponentRelease r, CancellationToken ct)
+    public async Task<InstalledComponent> InstallAsync(ComponentRelease offered, CancellationToken ct)
     {
+        // The window sends what it was offered; only the Agent's catalog says where a release comes from and its hash.
+        var r = (await catalog.GetAsync(offered.Kind, ct)).FirstOrDefault(c => SameVersion(c.Version, offered.Version)
+                    && string.Equals(c.Toolset, offered.Toolset, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(c.AppliesTo, offered.AppliesTo, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException($"{offered.Kind} {offered.Version} is not in Anvil's catalog.");
         if (r.Kind == ComponentKind.Php && installer.Installed(ComponentKind.CaBundle).Count == 0)
         {
             var bundle = (await catalog.GetAsync(ComponentKind.CaBundle, ct)).FirstOrDefault()

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Anvil.Core.Database;
 using Anvil.Core.IO;
 using Anvil.Core.Paths;
@@ -6,13 +7,20 @@ namespace Anvil.Core.Components;
 
 /// <summary>
 /// Installs releases side by side under runtime\, recorded in runtime\installed.json.
-/// A release is unpacked into "&lt;target&gt;.staging" and renamed only when complete.
+/// A release is unpacked into "&lt;target&gt;.staging" and renamed only when complete; a version already installed is
+/// never unpacked again, so a running Apache or PHP keeps its files.
 /// </summary>
-public sealed class ComponentInstaller(AppPaths paths, Downloader dl, Func<ComponentKind, string?> activeVersion)
+public sealed partial class ComponentInstaller(AppPaths paths, Downloader dl, Func<ComponentKind, string?> activeVersion)
 {
     private static readonly Lock RegistryLock = new();
 
     private string RegistryFile => Path.Combine(paths.Runtime, "installed.json");
+
+    [GeneratedRegex("^[0-9A-Za-z][0-9A-Za-z.-]{0,31}$")]
+    private static partial Regex SafeVersionPattern();
+
+    /// <summary>A version that names exactly one folder under runtime: letters, digits, dots and hyphens, never "..".</summary>
+    public static bool IsSafeVersion(string v) => SafeVersionPattern().IsMatch(v) && !v.Contains("..", StringComparison.Ordinal);
 
     public string TargetFor(ComponentKind kind, string version, string? appliesTo = null) => kind switch
     {
@@ -27,7 +35,14 @@ public sealed class ComponentInstaller(AppPaths paths, Downloader dl, Func<Compo
 
     public async Task<InstalledComponent> InstallAsync(ComponentRelease r, IProgress<InstallProgress>? p, CancellationToken ct)
     {
+        if (!IsSafeVersion(r.Version) || (r.AppliesTo is { } php && !IsSafeVersion(php)))
+            throw new ArgumentException($"'{r.Version}' is not a version Anvil can install.");
         var target = TargetFor(r.Kind, r.Version, r.AppliesTo);
+        lock (RegistryLock)
+        {
+            if (Directory.Exists(target) && Load().FirstOrDefault(e => string.Equals(e.Path, target, StringComparison.OrdinalIgnoreCase)) is { } installed)
+                return installed;
+        }
         var fileName = Path.GetFileName(r.Url.AbsolutePath);
         var download = Path.Combine(paths.Tmp, "downloads", fileName);
 
