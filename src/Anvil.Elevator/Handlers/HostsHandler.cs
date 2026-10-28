@@ -19,10 +19,7 @@ internal static class HostsHandler
         var next = HostsFile.ApplyBlock(current, request.Domains);
         if (next == current) return new ElevatedResult(true, null);
 
-        var backups = Path.Combine(paths.Backups, "hosts");
-        Directory.CreateDirectory(backups);
-        if (new DirectoryInfo(paths.Backups).Attributes.HasFlag(FileAttributes.ReparsePoint))
-            throw new IOException($"{paths.Backups} is a link to another folder.");
+        var backups = ElevatedFolders.HostsBackups(paths);
         SafeFile.CreateNew(Path.Combine(backups, $"{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt"), current, Bytes);
 
         AtomicFile.ReplaceText(hostsPath, next, Bytes);
