@@ -38,7 +38,7 @@ public sealed class SettingsViewModelTests
     }
 
     private ServiceSwitch Service() => new(_api, new FakeAgentLink(_api.Calls), _elevator, new FakeAgentService(_api.Calls), Paths,
-        "S-1-5-21-1004336348-1177238915-682003330-1001");
+        "S-1-5-21-1004336348-1177238915-682003330-1001", () => null);
 
     [Fact]
     public async Task Check_for_updates_says_when_this_is_the_latest()

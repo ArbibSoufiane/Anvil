@@ -37,7 +37,7 @@ public sealed class ModeViewModelTests
 
     private ModeSwitchViewModel ToProduction(bool withService = true) => new(_api, new ElevationFollowUp(_elevator), Paths,
         ServerMode.Development, ServerMode.Production,
-        withService ? new ServiceSwitch(_api, new FakeAgentLink(_api.Calls), _elevator, new FakeAgentService(_api.Calls), Paths, "S-1-5-21-1-2-3-1001") : null);
+        withService ? new ServiceSwitch(_api, new FakeAgentLink(_api.Calls), _elevator, new FakeAgentService(_api.Calls), Paths, "S-1-5-21-1-2-3-1001", () => null) : null);
 
     [Fact]
     public async Task Switching_to_production_also_moves_the_agent_to_the_service()

@@ -33,14 +33,32 @@ public interface IAgentService
 /// <summary>
 /// Moves the Agent between the window's child process and the ArbiPacheAgent Windows service. Both ask Windows through
 /// the Elevator; whatever is refused comes back as a sentence, with the Agent put back the way it was.
+/// <paramref name="folderProblem"/> is the service install's own folder check, asked first so a refusal stops nothing.
 /// </summary>
-public sealed class ServiceSwitch(IAgentApi api, IAgentLink link, IElevator elevator, IAgentService service, AppPaths paths, string userSid)
+public sealed class ServiceSwitch(IAgentApi api, IAgentLink link, IElevator elevator, IAgentService service, AppPaths paths, string userSid,
+    Func<string?> folderProblem)
 {
     private const string AsBefore = "ArbiPache keeps running as before, without the service.";
+
+    /// <summary>The service install's folder check, as this user can read it; null when the folder cannot be read here.</summary>
+    public static string? FolderProblem(AppPaths paths, string userSid)
+    {
+        try
+        {
+            return ServiceFolderCheck.Problem(paths.Root, FolderPermissions.Access(paths.Root), userSid);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // The elevated install checks again with full access.
+            Log.Information("Cannot read the permissions of {Root}: {Message}", paths.Root, e.Message);
+            return null;
+        }
+    }
 
     /// <returns>Null when the Agent now runs as the service.</returns>
     public async Task<string?> TurnOnAsync(CancellationToken ct = default)
     {
+        if (folderProblem() is { } open) return $"{open} {AsBefore}";
         var before = await api.GetSettingsAsync(ct);
         var sites = await api.GetSitesAsync(ct);
         // The service reads who may use its pipe when it starts, so the user is on the list before it does.

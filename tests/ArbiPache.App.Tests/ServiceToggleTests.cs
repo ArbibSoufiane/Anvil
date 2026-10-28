@@ -26,7 +26,21 @@ public sealed class ServiceToggleTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private ServiceSwitch Switch() => new(_api, _link, _elevator, _service, Paths, Me);
+    private ServiceSwitch Switch(string? folderProblem = null) => new(_api, _link, _elevator, _service, Paths, Me, () => folderProblem);
+
+    // The service install refuses such a folder anyway; asking first keeps the sites up and spares two UAC prompts.
+    [Fact]
+    public async Task Toggle_on_refuses_a_folder_others_can_change_before_stopping_anything()
+    {
+        const string open = @"Authenticated Users can change files in D:\ArbiPache, so it could replace ArbiPache.Agent.exe and run code as the service.";
+
+        var problem = await Switch(open).TurnOnAsync(Ct);
+
+        Assert.Equal(open + " ArbiPache keeps running as before, without the service.", problem);
+        Assert.Empty(_api.Calls);
+        Assert.Empty(_elevator.Requests);
+        Assert.False(_api.Settings.RunAsService);
+    }
 
     [Fact]
     public async Task Toggle_on_stops_child_installs_service_and_reconnects()

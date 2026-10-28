@@ -52,7 +52,9 @@ public partial class App : Application
             var logs = new LogsViewModel(paths, editor);
             var elevator = new UacElevator(paths);
             using var me = System.Security.Principal.WindowsIdentity.GetCurrent();
-            var service = new ServiceSwitch(_agent.Api, _agent, elevator, new WindowsAgentService(), paths, me.User!.Value);
+            var userSid = me.User!.Value;
+            var service = new ServiceSwitch(_agent.Api, _agent, elevator, new WindowsAgentService(), paths, userSid,
+                () => ServiceSwitch.FolderProblem(paths, userSid));
             var ca = new LocalCaTrust(paths);
             MainWindow? window = null;
             var picker = new AvaloniaFolderPicker(() => window);
