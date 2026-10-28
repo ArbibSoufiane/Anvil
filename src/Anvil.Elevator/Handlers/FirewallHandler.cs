@@ -28,7 +28,7 @@ internal static class FirewallHandler
         // name of its own first, so only that rule goes.
         foreach (var rule in stale)
         {
-            var unique = $"{FirewallRulePlanner.NamePrefix}removing {Guid.NewGuid():N}";
+            var unique = FirewallRulePlanner.RemovingName();
             rule.Name = unique;
             rules.Remove(unique);
         }

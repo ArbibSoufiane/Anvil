@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Anvil.Core.Paths;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
@@ -18,9 +19,8 @@ public sealed record ExistingFirewallRule(string Name, string? Program, int Prot
 /// Anvil's Windows Firewall rules: one per program and port, on the Private and Domain profiles and the local subnet only,
 /// so nothing is reachable from a network Windows calls Public, nor from the internet.
 /// </summary>
-public static class FirewallRulePlanner
+public static partial class FirewallRulePlanner
 {
-    public const string NamePrefix = "Anvil ";
     public const string WebServerRule = "Anvil web server";
     public const string NameServiceRule = "Anvil name service";
     public const int PrivateAndDomain = 3;
@@ -55,13 +55,22 @@ public static class FirewallRulePlanner
         return open ? new FirewallSetRequest(s.ActiveApache, [s.HttpPort, s.HttpsPort], NameService: s.NetworkDomain is not null) : null;
     }
 
+    /// <summary>The name a stale rule gets just before it is removed, unique so that only that rule goes.</summary>
+    public static string RemovingName() => $"Anvil removing {Guid.NewGuid():N}";
+
+    [GeneratedRegex("^Anvil removing [0-9a-f]{32}$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex Removing();
+
     /// <summary>
-    /// A rule Anvil may replace: one it named, or one for its own programs, such as the rule Windows makes when someone
-    /// answers its "Allow access?" prompt for an Apache under runtime\apache.
+    /// A rule Anvil may replace: one of its own names (other products start with "Anvil" too, so never a prefix), one
+    /// a removal left behind, or one for its own programs, such as the rule Windows makes when someone answers its
+    /// "Allow access?" prompt for an Apache under runtime\apache.
     /// </summary>
     public static bool IsOurs(ExistingFirewallRule rule, AppPaths paths)
     {
-        if (rule.Name.StartsWith(NamePrefix, StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(rule.Name, WebServerRule, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(rule.Name, NameServiceRule, StringComparison.OrdinalIgnoreCase)
+            || Removing().IsMatch(rule.Name)) return true;
         if (rule.Program is not { } program || !Path.IsPathFullyQualified(program)) return false;
         var full = Path.GetFullPath(program);
         if (string.Equals(full, Path.GetFullPath(AgentPath(paths)), StringComparison.OrdinalIgnoreCase)) return true;
