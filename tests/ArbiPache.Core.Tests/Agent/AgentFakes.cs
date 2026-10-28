@@ -52,12 +52,15 @@ internal sealed class FakeApache(List<string> events) : IApacheControl
     /// <summary>Versions that start but never answer, as ApacheControl reports them.</summary>
     public HashSet<string> Unhealthy { get; } = [];
 
+    /// <summary>Ports another program took after the preflight checked them.</summary>
+    public HashSet<int> BusyPorts { get; } = [];
+
     public event EventHandler<ProcessStatus>? StatusChanged;
 
     public Task StartAsync(string version, int httpPort, CancellationToken ct)
     {
         events.Add("apache start");
-        if (Unhealthy.Contains(version))
+        if (Unhealthy.Contains(version) || BusyPorts.Contains(httpPort))
         {
             Set(ProcessState.Failed);
             throw new InvalidOperationException($"Apache did not answer on port {httpPort} within 15 s.");

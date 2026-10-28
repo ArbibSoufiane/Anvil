@@ -235,6 +235,11 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             XdebugInProduction = previous.XdebugInProduction,
         };
         if (Validate(s) is { } invalid) return ApplyResult.Failure(invalid);
+        // A port another program holds would take the sites down: refuse it while they still run.
+        int[] fresh = [.. new[] { s.HttpPort, s.HttpsPort }.Except([previous.HttpPort, previous.HttpsPort])];
+        if (fresh.Length > 0
+            && preflight(s).FirstOrDefault(f => f.Severity == Severity.Blocking && fresh.Any(p => f.Id == $"port-{p}" || f.Id == $"http-sys-{p}")) is { } busy)
+            return ApplyResult.Failure($"{(busy.Fix is null ? busy.Message : $"{busy.Message} {busy.Fix}")} The settings were not saved.");
 
         if (InstalledApache(s.ActiveApache) is not { } version)
         {
@@ -247,15 +252,35 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         Save(s);
         if (!ApacheRunning) return ApplyResult.Success(applied.ChangedFiles, applied.TestOutput);
 
-        if (s.HttpPort != previous.HttpPort || s.HttpsPort != previous.HttpsPort)
-            return await Guard(async () =>
+        var served = s.HttpPort != previous.HttpPort || s.HttpsPort != previous.HttpsPort
+            ? await Guard(async () =>
             {
                 await apache.StopAsync(ct);
                 await apache.StartAsync(version, s.HttpPort, ct);
-            }, applied);
-        if (applied.ChangedFiles.Count == 0) return ApplyResult.Success();
-        return await Guard(() => apache.GracefulRestartAsync(ct), applied);
+            }, applied)
+            : applied.ChangedFiles.Count == 0
+                ? ApplyResult.Success()
+                : await Guard(() => apache.GracefulRestartAsync(ct), applied);
+        return served.Ok ? served : await RollBackAsync(previous, version, served, ct);
     }, ct));
+
+    /// <summary>Puts the previous settings and their configuration back after Apache could not serve new ones, and serves those again.</summary>
+    private async Task<ApplyResult> RollBackAsync(AppSettings previous, string version, ApplyResult failed, CancellationToken ct)
+    {
+        Save(previous);
+        var restored = await ApplyConfigAsync(previous, version, PlanPhp(previous), ct);
+        var serving = !restored.Ok
+            ? ApplyResult.Failure("Apache rejected the previous configuration too.")
+            : await Guard(async () =>
+            {
+                if (ApacheRunning) await apache.GracefulRestartAsync(ct);
+                else await apache.StartAsync(version, previous.HttpPort, ct);
+            });
+        return ApplyResult.Failure(serving.Ok
+                ? $"{failed.Error} ArbiPache went back to the previous settings, and Apache runs as before."
+                : $"{failed.Error} ArbiPache went back to the previous settings, but Apache did not start again: {serving.Error}",
+            failed.ConfigTestOutput, failed.ChangedFiles);
+    }
 
     public Task<IReadOnlyList<ComponentRelease>> GetAvailableAsync(ComponentKind k, CancellationToken ct) => catalog.GetAsync(k, ct);
 

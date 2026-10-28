@@ -4,10 +4,18 @@ using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.NetworkManagement.IpHelper;
 using Windows.Win32.System.Threading;
+using ArbiPache.Core.Paths;
 
 namespace ArbiPache.Core.Preflight;
 
-public sealed record PortHolder(int Port, int Pid, string ProcessName, string? ExePath);
+public sealed record PortHolder(int Port, int Pid, string ProcessName, string? ExePath)
+{
+    /// <summary>True for an httpd from this ArbiPache's runtimes.</summary>
+    public bool IsApacheOf(AppPaths paths) =>
+        string.Equals(ProcessName, "httpd", StringComparison.OrdinalIgnoreCase)
+        && ExePath is { } exe
+        && Path.GetFullPath(exe).StartsWith(Path.GetFullPath(paths.Runtime) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+}
 
 public interface IPortProbe
 {

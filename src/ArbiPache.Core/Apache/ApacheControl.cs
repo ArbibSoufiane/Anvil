@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using ArbiPache.Core.Paths;
+using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
 
 namespace ArbiPache.Core.Apache;
@@ -16,15 +17,18 @@ public sealed class ApacheControl : IApacheControl
     private readonly AppPaths paths;
     private readonly IConfigTester tester;
     private readonly HttpClient http;
+    private readonly IPortProbe? ports;
     private string? _version;
     private int _port;
 
-    public ApacheControl(ProcessSupervisor sup, AppPaths paths, IConfigTester tester, HttpClient http)
+    /// <param name="ports">Tells this httpd from another program answering on its port; without it any answer counts.</param>
+    public ApacheControl(ProcessSupervisor sup, AppPaths paths, IConfigTester tester, HttpClient http, IPortProbe? ports = null)
     {
         this.sup = sup;
         this.paths = paths;
         this.tester = tester;
         this.http = http;
+        this.ports = ports;
         sup.Changed += (_, s) =>
         {
             if (s.Name == ProcessName) StatusChanged?.Invoke(this, s);
@@ -45,6 +49,8 @@ public sealed class ApacheControl : IApacheControl
 
         var status = sup.Snapshot().FirstOrDefault(s => s.Name == ProcessName);
         await sup.StopAsync(ProcessName, TimeSpan.Zero);
+        if (Stranger(httpPort) is { } other)
+            throw new InvalidOperationException($"Port {httpPort} is used by {other.ProcessName} (PID {other.Pid}), so Apache cannot listen on it.");
         throw new InvalidOperationException(
             $"Apache did not answer on port {httpPort} within {ServeWait.TotalSeconds:0} s. {status?.LastError}".Trim());
     }
@@ -109,12 +115,15 @@ public sealed class ApacheControl : IApacheControl
         var deadline = Stopwatch.StartNew();
         while (deadline.Elapsed < ServeWait)
         {
-            if (await IsHealthyAsync(port, ct)) return true;
+            if (await IsHealthyAsync(port, ct) && Stranger(port) is null) return true;
             if (sup.Snapshot().FirstOrDefault(s => s.Name == ProcessName)?.State == ProcessState.Failed) return false;
             await Task.Delay(200, ct);
         }
         return false;
     }
+
+    /// <summary>The program other than this ArbiPache's httpd listening on the port, if any.</summary>
+    private PortHolder? Stranger(int port) => ports?.HolderOf(port) is { } holder && !holder.IsApacheOf(paths) ? holder : null;
 
     // "httpd -k restart|shutdown" only reaches an installed Windows service. A console httpd (how ArbiPache runs it)
     // waits on the named events ap<pid>_restart and ap<pid>_shutdown instead, in its session's namespace.

@@ -4,6 +4,7 @@ using ArbiPache.Core.Apache;
 using ArbiPache.Core.Components;
 using ArbiPache.Core.Modes;
 using ArbiPache.Core.Paths;
+using ArbiPache.Core.Preflight;
 using ArbiPache.Core.Processes;
 using ArbiPache.Core.Settings;
 using ArbiPache.Core.Sites;
@@ -51,7 +52,7 @@ public sealed class ApacheControlTests : IAsyncDisposable
         var tester = new ApacheConfigTester(_paths, () => version);
         var outcome = await new ConfigApplier(new ConfigRenderer(_paths), new ConfigWriter(_paths), tester).ApplyAsync(input, ct);
         Assert.True(outcome.Ok, outcome.TestOutput);
-        _apache = new ApacheControl(_supervisor, _paths, tester, Http);
+        _apache = new ApacheControl(_supervisor, _paths, tester, Http, new PortProbe());
         return (_apache, version);
     }
 
@@ -113,6 +114,41 @@ public sealed class ApacheControlTests : IAsyncDisposable
         Assert.Equal((HttpStatusCode.OK, "hello from shop"), await GetAsHostAsync("shop.test"));
         Assert.Equal(HttpStatusCode.Forbidden, (await GetAsHostAsync("shop.test", "/data/secret.txt")).Status);
         Assert.Equal(HttpStatusCode.Forbidden, (await GetAsHostAsync("shop.test", "/DATA/secret.txt")).Status);
+    }
+
+    // Another program answering on the port is not Apache serving: the start fails and names that program.
+    [Fact]
+    public async Task Start_fails_when_another_program_answers_on_the_port()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (apache, version) = await PrepareAsync();
+        using var other = new TcpListener(IPAddress.Loopback, Port) { ExclusiveAddressUse = true };
+        other.Start();
+        using var answering = new CancellationTokenSource();
+        var responder = Task.Run(async () =>
+        {
+            while (!answering.IsCancellationRequested)
+            {
+                using var client = await other.AcceptTcpClientAsync(answering.Token);
+                try
+                {
+                    var stream = client.GetStream();
+                    if (await stream.ReadAsync(new byte[4096], answering.Token) == 0) continue;
+                    await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray(), answering.Token);
+                }
+                catch (IOException)
+                {
+                    // The probe gave up on this connection.
+                }
+            }
+        }, answering.Token);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => apache.StartAsync(version, Port, ct));
+
+        Assert.Contains($"Port {Port} is used by ", error.Message);
+        Assert.Contains($"(PID {Environment.ProcessId}), so Apache cannot listen on it.", error.Message);
+        await answering.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => responder);
     }
 
     [Fact]

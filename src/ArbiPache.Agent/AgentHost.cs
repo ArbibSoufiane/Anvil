@@ -44,7 +44,7 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         var preflight = new Preflight(ports, Preflight.QueryHttpServiceState, new VcRedistCheck(new WindowsRegistryReader()), paths);
         var installer = new ComponentInstaller(paths, new Downloader(downloadHttp),
             k => k == ComponentKind.Apache ? orchestrator?.Settings.ActiveApache : null);
-        orchestrator = new Orchestrator(paths, store, tester, new ApacheControl(supervisor, paths, tester, probeHttp), preflight.Run,
+        orchestrator = new Orchestrator(paths, store, tester, new ApacheControl(supervisor, paths, tester, probeHttp, ports), preflight.Run,
             new ComponentCatalog([new PhpCatalogProvider(probeHttp), new MariaDbCatalogProvider(probeHttp)], new ShippedCatalogProvider(paths)), installer,
             pools, port => ports.HolderOf(port) is null, options.RunningAsService, db: new DatabaseServer(paths, supervisor, TimeProvider.System));
 

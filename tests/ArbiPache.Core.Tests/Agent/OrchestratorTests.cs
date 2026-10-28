@@ -153,6 +153,46 @@ public sealed class OrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Port_change_to_a_busy_port_is_refused_before_anything_stops()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+        await orchestrator.StartAsync(ServiceId.Apache, ct);
+        var settings = orchestrator.Settings;
+        _findings = [new PreflightFinding("port-8080", Severity.Blocking, "Port 8080 is used by node (PID 7).", "Close node, or change the HTTP port in Settings.")];
+
+        var result = await orchestrator.SaveSettingsAsync(settings with { HttpPort = 8080 }, ct);
+
+        Assert.Equal("Port 8080 is used by node (PID 7). Close node, or change the HTTP port in Settings. The settings were not saved.", result.Error);
+        Assert.Equal(0, _apache.Stops);
+        Assert.Equal(ProcessState.Running, _apache.Status?.State);
+        Assert.Equal(80, new SettingsStore(_paths).Load().HttpPort);
+        Assert.Equal(settings, orchestrator.Settings);
+    }
+
+    [Fact]
+    public async Task Port_apache_cannot_serve_goes_back_to_the_previous_settings()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+        await orchestrator.StartAsync(ServiceId.Apache, ct);
+        var settings = orchestrator.Settings;
+        _apache.BusyPorts.Add(8080);
+
+        var result = await orchestrator.SaveSettingsAsync(settings with { HttpPort = 8080 }, ct);
+
+        Assert.Equal("Apache did not answer on port 8080 within 15 s. ArbiPache went back to the previous settings, and Apache runs as before.",
+            result.Error);
+        Assert.Equal((Version, 80), _apache.StartedWith);
+        Assert.Equal(ProcessState.Running, _apache.Status?.State);
+        Assert.Equal(80, new SettingsStore(_paths).Load().HttpPort);
+        Assert.Equal(settings, orchestrator.Settings);
+        Assert.DoesNotContain("8080", ArbipacheConf);
+    }
+
+    [Fact]
     public async Task Launch_starts_apache_when_nothing_blocks()
     {
         new SettingsStore(_paths).Save(new AppSettings { ActiveApache = Version, StartServicesOnLaunch = true });

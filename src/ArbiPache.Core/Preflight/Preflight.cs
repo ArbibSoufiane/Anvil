@@ -30,7 +30,7 @@ public sealed class Preflight(IPortProbe probe, Func<string> netshHttpServiceSta
                     $"Stop the World Wide Web Publishing service (IIS) or the program that registered them, or {move}."));
 
             var holder = probe.HolderOf(port);
-            if (holder is null || IsOurs(holder)) continue;
+            if (holder is null || holder.IsApacheOf(paths)) continue;
             if (holder.Pid == SystemPid && httpSys.Count > 0) continue; // already reported, with more detail
             findings.Add(PortFinding(port, move, holder));
         }
@@ -76,11 +76,6 @@ public sealed class Preflight(IPortProbe probe, Func<string> netshHttpServiceSta
         foreach (var port in StockConfScanner.Scan(conf).ListenPorts.Where(p => p != s.HttpPort && p != s.HttpsPort).Order())
             yield return (port, $"remove \"Listen {port}\" from httpd.conf (open it from the Apache page)");
     }
-
-    private bool IsOurs(PortHolder holder) =>
-        string.Equals(holder.ProcessName, "httpd", StringComparison.OrdinalIgnoreCase)
-        && holder.ExePath is { } exe
-        && Path.GetFullPath(exe).StartsWith(Path.GetFullPath(paths.Runtime) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     private static PreflightFinding PortFinding(int port, string move, PortHolder holder) =>
         holder.Pid == SystemPid
