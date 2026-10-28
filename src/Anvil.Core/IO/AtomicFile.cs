@@ -18,4 +18,29 @@ public static class AtomicFile
         }
         File.Move(tmp, path, overwrite: true);
     }
+
+    /// <summary>
+    /// Replaces a file Windows owns (the hosts file): writes <c>&lt;path&gt;.anvil-tmp</c> beside it, then swaps it in
+    /// with <see cref="File.Replace(string, string, string?)"/>, which keeps the file's ACL and attributes. A crash
+    /// before the swap leaves the old file whole.
+    /// </summary>
+    public static void ReplaceText(string path, string text, Encoding encoding)
+    {
+        var tmp = path + ".anvil-tmp";
+        try
+        {
+            using (var stream = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                stream.Write(encoding.GetBytes(text));
+                stream.Flush(flushToDisk: true);
+            }
+            if (File.Exists(path)) File.Replace(tmp, path, destinationBackupFileName: null);
+            else File.Move(tmp, path);
+        }
+        catch
+        {
+            try { File.Delete(tmp); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            throw;
+        }
+    }
 }

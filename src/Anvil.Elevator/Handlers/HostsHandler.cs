@@ -1,6 +1,7 @@
 using System.Text;
 using Anvil.Core.Elevation;
 using Anvil.Core.Hosts;
+using Anvil.Core.IO;
 using Anvil.Core.Paths;
 
 namespace Anvil.Elevator.Handlers;
@@ -24,7 +25,7 @@ internal static class HostsHandler
             throw new IOException($"{paths.Backups} is a link to another folder.");
         SafeFile.CreateNew(Path.Combine(backups, $"{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt"), current, Bytes);
 
-        File.WriteAllText(hostsPath, next, Bytes);
+        AtomicFile.ReplaceText(hostsPath, next, Bytes);
         return new ElevatedResult(true, null);
     }
 }
