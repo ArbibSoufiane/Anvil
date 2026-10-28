@@ -21,6 +21,7 @@ public sealed class PhpPoolTests : IAsyncDisposable
     private readonly JobObject _job = new();
     private readonly ProcessSupervisor _supervisor;
     private readonly PhpPoolRunner _pools;
+    private int _phpPort;
 
     public PhpPoolTests()
     {
@@ -78,6 +79,7 @@ public sealed class PhpPoolTests : IAsyncDisposable
         };
         var pools = new PhpPoolPlanner(_paths).Plan(settings, [php.Version], [php], IsFree);
         await _pools.ApplyAsync(pools, ct);
+        _phpPort = pools.Single().Port;
 
         var input = new RenderInput
         {
@@ -94,6 +96,17 @@ public sealed class PhpPoolTests : IAsyncDisposable
 
     private static Task<HttpResponseMessage> GetAsync(string path) =>
         Http.GetAsync($"http://127.0.0.1:{Port}{path}", TestContext.Current.CancellationToken);
+
+    [Fact]
+    public async Task Real_pool_answers_the_probe()
+    {
+        await StartAsync();
+        var script = Path.Combine(_paths.Run, FastCgiProbe.ScriptName);
+        Directory.CreateDirectory(_paths.Run);
+        File.WriteAllText(script, FastCgiProbe.Script);
+
+        Assert.True(await FastCgiProbe.ProbeAsync(_phpPort, script, TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+    }
 
     [Fact]
     public async Task Path_info_and_script_filename_are_correct()

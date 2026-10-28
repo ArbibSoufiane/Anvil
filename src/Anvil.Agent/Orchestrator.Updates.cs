@@ -5,6 +5,7 @@ using Anvil.Core.Database;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
+using Serilog;
 
 namespace Anvil.Agent;
 
@@ -134,7 +135,7 @@ public sealed partial class Orchestrator
             await StartPoolsAsync(pools, ct);
             await apache.GracefulRestartAsync(ct);
         }, applied);
-        if (started.Ok) return started;
+        if (started.Ok && await PhpAnswersAsync(pools, version, ct)) return started;
 
         PutSitesBack();
         Save(previous);
@@ -145,9 +146,35 @@ public sealed partial class Orchestrator
             await StartPoolsAsync(oldPools, ct);
             await apache.GracefulRestartAsync(ct);
         });
+        if (started.Ok)
+            return ApplyResult.Failure(restored.Ok
+                ? $"PHP {version} started but did not answer a request, so Anvil went back to PHP {from}."
+                : $"PHP {version} started but did not answer a request, and PHP {from} did not start again: {restored.Error}");
         return ApplyResult.Failure(restored.Ok
             ? $"PHP {version} did not start: {started.Error} PHP {from} is running again."
             : $"PHP {version} did not start: {started.Error} PHP {from} did not start either: {restored.Error}");
+    }
+
+    /// <summary>Runs the probe script on every pool of <paramref name="version"/>: a pool that listens may still fail each request.</summary>
+    private async Task<bool> PhpAnswersAsync(IReadOnlyList<PhpPool> pools, string version, CancellationToken ct)
+    {
+        try
+        {
+            Directory.CreateDirectory(paths.Run);
+            File.WriteAllText(Path.Combine(paths.Run, FastCgiProbe.ScriptName), FastCgiProbe.Script);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log.Warning(e, "Writing the PHP probe script failed");
+            return false;
+        }
+        foreach (var pool in pools.Where(p => SameVersion(p.Version, version)))
+        {
+            if (await _phpProbe(pool.Port, ct)) continue;
+            Log.Warning("PHP {Version} on port {Port} did not answer the probe", version, pool.Port);
+            return false;
+        }
+        return true;
     }
 
     private async Task<ApplyResult> UpdateDbAsync(DbEngine engine, string version, CancellationToken ct)

@@ -24,6 +24,9 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
 
     private static readonly TimeSpan AddressSettleTime = TimeSpan.FromSeconds(2);
 
+    // A fresh php-cgi worker's first request loads its extensions; give it time before calling the update broken.
+    private static readonly TimeSpan PhpProbeTimeout = TimeSpan.FromSeconds(10);
+
     public async Task<int> RunAsync(CancellationToken ct)
     {
         using var mutex = TryClaim(options.MutexName);
@@ -51,7 +54,8 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         orchestrator = new Orchestrator(paths, store, tester, new ApacheControl(supervisor, paths, tester, probeHttp, ports), preflight.Run,
             new ComponentCatalog([new PhpCatalogProvider(probeHttp), new MariaDbCatalogProvider(probeHttp)], new ShippedCatalogProvider(paths)), installer,
             pools, port => ports.HolderOf(port) is null, db: new DatabaseServer(paths, supervisor, TimeProvider.System),
-            names: names, lanAddresses: LanAddresses.Find, publicAdapters: NetworkCategory.PublicAdapterIds, firewallRules: WindowsFirewallReader.Read);
+            names: names, lanAddresses: LanAddresses.Find, publicAdapters: NetworkCategory.PublicAdapterIds, firewallRules: WindowsFirewallReader.Read,
+            phpProbe: (port, ct) => FastCgiProbe.ProbeAsync(port, Path.Combine(paths.Run, FastCgiProbe.ScriptName), PhpProbeTimeout, ct));
 
         var shutdown = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var api = new AgentApi(orchestrator, stopServices => shutdown.TrySetResult(stopServices));

@@ -38,7 +38,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     IPhpPools php, Func<int, bool> portFree, Func<string>? hostsText = null,
     string? legacyHome = null, TimeProvider? time = null, IDatabaseServer? db = null,
     INameService? names = null, Func<IReadOnlyList<LanAddress>>? lanAddresses = null, Func<IReadOnlySet<string>>? publicAdapters = null,
-    Func<IReadOnlyList<ExistingFirewallRule>>? firewallRules = null)
+    Func<IReadOnlyList<ExistingFirewallRule>>? firewallRules = null, Func<int, CancellationToken, Task<bool>>? phpProbe = null)
 {
     public const int MaxWorkers = 64;
     public const int MaxRecycleRequests = 1_000_000;
@@ -46,6 +46,8 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private const string NotInstalled = "Install Apache first, on the Apache page.";
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Func<string> _hostsText = hostsText ?? ReadSystemHosts;
+    // Runs data\run\probe.php on the pool at a port. Without one, a pool that starts counts as answering.
+    private readonly Func<int, CancellationToken, Task<bool>> _phpProbe = phpProbe ?? ((_, _) => Task.FromResult(true));
     private readonly string _legacyHome = legacyHome ?? LegacyImporter.DefaultHome();
     private AppSettings _settings = new();
     private readonly TimeProvider _time = time ?? TimeProvider.System;

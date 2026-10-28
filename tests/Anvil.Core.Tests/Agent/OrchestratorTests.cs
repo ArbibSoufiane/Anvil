@@ -47,9 +47,11 @@ public sealed class OrchestratorTests : IDisposable
         try { Directory.Delete(_paths.Root, recursive: true); } catch (IOException) { }
     }
 
-    private Orchestrator Make(HttpMessageHandler? downloads = null) => new(_paths, new SettingsStore(_paths), _tester, _apache, _ => _findings,
-        new ComponentCatalog([], new ShippedCatalogProvider(_paths)),
-        new ComponentInstaller(_paths, new Downloader(new HttpClient(downloads ?? new HttpClientHandler())), _ => null), _pools, _ => true);
+    private Orchestrator Make(HttpMessageHandler? downloads = null, Func<int, CancellationToken, Task<bool>>? phpProbe = null) =>
+        new(_paths, new SettingsStore(_paths), _tester, _apache, _ => _findings,
+            new ComponentCatalog([], new ShippedCatalogProvider(_paths)),
+            new ComponentInstaller(_paths, new Downloader(new HttpClient(downloads ?? new HttpClientHandler())), _ => null), _pools, _ => true,
+            phpProbe: phpProbe);
 
     private void InstallPhp(string version, string toolset = "vs17") => TestPhp.Install(_paths, version, toolset);
 
@@ -638,6 +640,53 @@ public sealed class OrchestratorTests : IDisposable
         Assert.Equal("8.5.5", new SettingsStore(_paths).Load().DefaultPhp);
         Assert.Equal(before, sites.All(), SiteJson.Instance);
         Assert.Equal(["8.4.10", "8.5.5"], _pools.Running.Select(p => p.Version).Order());
+    }
+
+    [Fact]
+    public async Task Php_update_that_does_not_answer_goes_back()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sites = PhpSites();
+        var probed = new List<int>();
+        var orchestrator = Make(phpProbe: (port, _) =>
+        {
+            probed.Add(port);
+            return Task.FromResult(false);
+        });
+        await orchestrator.InitializeAsync(ct);
+        Assert.True((await orchestrator.StartAsync(ServiceId.Apache, ct)).Ok);
+        var before = sites.All();
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.Php, "8.5.12", ct);
+
+        Assert.False(result.Ok);
+        Assert.Equal("PHP 8.5.12 started but did not answer a request, so Anvil went back to PHP 8.5.5.", result.Error);
+        Assert.Equal("8.5.5", new SettingsStore(_paths).Load().DefaultPhp);
+        Assert.Equal("8.5.5", orchestrator.GetPhp().Single(p => p.IsDefault).Version);
+        Assert.Equal(before, sites.All(), SiteJson.Instance);
+        Assert.Equal(["8.4.10", "8.5.5"], _pools.Running.Select(p => p.Version).Order());
+        Assert.Single(probed);
+    }
+
+    [Fact]
+    public async Task Php_update_runs_the_probe_script_on_the_new_pool()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        PhpSites();
+        var probed = new List<int>();
+        var orchestrator = Make(phpProbe: (port, _) =>
+        {
+            probed.Add(port);
+            return Task.FromResult(true);
+        });
+        await orchestrator.InitializeAsync(ct);
+        Assert.True((await orchestrator.StartAsync(ServiceId.Apache, ct)).Ok);
+
+        var result = await orchestrator.ActivateAsync(ComponentKind.Php, "8.5.12", ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(_pools.Running.Single(p => p.Version == "8.5.12").Port, Assert.Single(probed));
+        Assert.Equal(FastCgiProbe.Script, File.ReadAllText(Path.Combine(_paths.Run, FastCgiProbe.ScriptName)));
     }
 
     [Fact]
