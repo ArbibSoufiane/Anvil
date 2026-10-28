@@ -4,6 +4,7 @@ using Anvil.App.ViewModels;
 using Anvil.Core;
 using Anvil.Core.Logging;
 using Anvil.Core.Elevation;
+using Anvil.Core.Network;
 using Anvil.Core.Paths;
 using Anvil.Core.Platform;
 using Anvil.Core.Settings;
@@ -55,7 +56,7 @@ public partial class App : Application
             var ca = new LocalCaTrust(paths);
             MainWindow? window = null;
             var picker = new AvaloniaFolderPicker(() => window);
-            static string? Lan() => LanAddress.Find()?.ToString();
+            static string? Lan() => LanAddresses.Find().FirstOrDefault()?.Address.ToString();
             var sites = new SitesViewModel(_agent.Api, elevator, ca, picker, paths, Lan);
             ShellViewModel vm = null!;
             var settingsPage = new SettingsViewModel(_agent.Api, elevator, new RegistryRunKey(), ca, picker, paths, Lan, s =>

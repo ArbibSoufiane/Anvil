@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Anvil.App.Services;
 using Anvil.Core.Agent;
 using Anvil.Core.Database;
+using Anvil.Core.Network;
 using Anvil.Core.Paths;
 using Anvil.Core.Preflight;
 using Anvil.Core.Processes;
@@ -217,7 +218,7 @@ public sealed partial class DashboardViewModel : ObservableObject
         var port = s.HttpPort == 80 ? "" : $":{s.HttpPort}";
         LocalUrl = $"http://localhost{port}/";
         LocalNote = $"htdocs · {s.HtdocsPath ?? _paths.Htdocs}";
-        NetworkUrl = s.Network.HtdocsOnNetwork && LanAddress.Find() is { } ip ? $"http://{ip}{port}/" : null;
+        NetworkUrl = s.Network.HtdocsOnNetwork && LanAddresses.Find().FirstOrDefault() is { } lan ? $"http://{lan.Address}{port}/" : null;
         NetworkNote = "Your network · Private networks only";
         ApplyDb();
     }
