@@ -1,0 +1,670 @@
+<title>Anvil Test Checklist</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a sticky progress bar over one reading column of numbered test steps; a section index sits beside it on wide screens. */
+:root {
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --raised: #eceef1;
+  --ink: #161b22;
+  --muted: #566170;
+  --line: #d9dde3;
+  --accent: #b5520f;
+  --on-accent: #ffffff;
+  --ok: #1d7348;
+  --ok-bg: #e3f3ea;
+  --bad: #b3261e;
+  --bad-bg: #fbe7e5;
+  --code-bg: #eef0f3;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "IBM Plex Sans Condensed", Bahnschrift, "Arial Narrow", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1116; --surface: #151a21; --raised: #1b212a; --ink: #e7eaee; --muted: #a3acb8; --line: #252c36;
+    --accent: #f08a3c; --on-accent: #15100b; --ok: #7be3ac; --ok-bg: #12321f; --bad: #ffb4b4; --bad-bg: #3a1a1a;
+    --code-bg: #0f1318; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1116; --surface: #151a21; --raised: #1b212a; --ink: #e7eaee; --muted: #a3acb8; --line: #252c36;
+  --accent: #f08a3c; --on-accent: #15100b; --ok: #7be3ac; --ok-bg: #12321f; --bad: #ffb4b4; --bad-bg: #3a1a1a;
+  --code-bg: #0f1318; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+code, pre, .ref { font-family: var(--font-mono); }
+code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 0.88em; overflow-wrap: anywhere; }
+a { color: var(--accent); }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.page { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; padding-block: 0 64px; }
+@media (min-width: 980px) { .page { grid-template-columns: 220px minmax(0, 1fr); } }
+
+header.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; grid-column: 1 / -1;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+  margin-left: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.bar-inner { max-width: 1120px; margin: 0 auto; padding-block: 14px 12px; display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; }
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: 1.45rem; letter-spacing: 0.01em; margin: 0; text-wrap: balance; }
+.ver { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+.meter { flex: 1 1 260px; min-width: 0; display: grid; gap: 6px; }
+.meter-text { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.86rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.meter-text strong { color: var(--ink); font-weight: 600; }
+.meter-text .bad { color: var(--bad); }
+.track { height: 6px; background: var(--raised); border-radius: 3px; overflow: hidden; display: flex; }
+.fill { background: var(--accent); width: 0; transition: width 0.25s ease; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 5px 12px; font-size: 0.86rem; }
+.btn:hover { border-color: var(--muted); }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn.danger { color: var(--bad); border-color: var(--bad); }
+.save { font-size: 0.78rem; color: var(--muted); width: 100%; }
+
+nav.toc { display: none; }
+@media (min-width: 980px) {
+  nav.toc { display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 112px); align-self: start; }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  nav.toc a { display: flex; justify-content: space-between; gap: 8px; padding: 5px 8px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 0.86rem; }
+  nav.toc a:hover { background: var(--raised); }
+  nav.toc .n { font-family: var(--font-mono); color: var(--muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+  nav.toc a.done .n { color: var(--ok); }
+}
+
+main { min-width: 0; display: grid; gap: 40px; }
+.intro { max-width: 68ch; color: var(--muted); display: grid; gap: 8px; }
+.intro p { margin: 0; }
+section.sec { display: grid; gap: 14px; scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 120px); }
+.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+.sec-head h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; margin: 0; text-wrap: balance; }
+.sec-head .ref { color: var(--accent); font-size: 0.9rem; font-weight: 600; }
+.sec-head .count { margin-left: auto; font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sec-note { margin: 0; color: var(--muted); max-width: 68ch; font-size: 0.92rem; }
+
+ol.items { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+li.item { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; min-width: 0; }
+li.item.checked { background: var(--ok-bg); border-color: transparent; }
+li.item.problem { border-color: var(--bad); box-shadow: inset 3px 0 0 var(--bad); }
+.hide-checked li.item.checked:not(.problem) { display: none; }
+.check { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 10px; align-items: start; cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--ok); }
+.check .ref { font-size: 0.8rem; color: var(--muted); padding-top: 2px; font-variant-numeric: tabular-nums; }
+.check .t { font-weight: 600; }
+li.item.checked .check .t { color: var(--ok); }
+.body { padding-left: 28px; display: grid; gap: 6px; min-width: 0; }
+.body p { margin: 0; max-width: 72ch; }
+.how { color: var(--ink); }
+.expect { color: var(--muted); }
+.expect b { color: var(--ink); font-weight: 600; font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; margin-right: 6px; }
+.cmd { position: relative; display: flex; align-items: flex-start; gap: 8px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.cmd pre { margin: 0; flex: 1; min-width: 0; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; white-space: pre; }
+.cmd button { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 4px; font-size: 0.74rem; padding: 2px 8px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.tool { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 2px 10px; font-size: 0.78rem; color: var(--muted); }
+.tool[aria-pressed="true"] { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
+textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+
+.confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 0.86rem; }
+
+@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+
+@media print {
+  :root { --bg: #fff; --surface: #fff; --ink: #000; --muted: #333; --line: #bbb; --ok-bg: #fff; }
+  body::before, nav.toc, .actions, .save, .tools, .cmd button { display: none !important; }
+  header.bar { position: static; border: 0; }
+  .page { display: block; }
+  li.item { break-inside: avoid; }
+  textarea[hidden] { display: none !important; }
+  textarea { border: 0; padding: 0; min-height: 0; }
+  .hide-checked li.item.checked { display: grid; }
+}
+</style>
+
+<div class="page">
+  <header class="bar">
+    <div class="bar-inner">
+      <div class="brand"><h1>Anvil Test Checklist</h1><span class="ver">1.0.0</span></div>
+      <div class="meter">
+        <div class="meter-text" id="meter-text"><span><strong id="done">0</strong> of <strong id="total">0</strong> checked</span><span id="problems"></span></div>
+        <div class="track" role="progressbar" id="track" aria-valuemin="0" aria-valuenow="0"><div class="fill" id="fill"></div></div>
+      </div>
+      <div class="actions" id="actions">
+        <button class="btn" id="hide-checked" type="button" aria-pressed="false">Hide checked</button>
+        <button class="btn" id="reset" type="button">Reset</button>
+      </div>
+      <p class="save" id="save-status">Ticks and notes are saved in this browser.</p>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Sections"><ol id="toc"></ol></nav>
+
+  <main id="main">
+    <div class="intro">
+      <p>Work top to bottom on the PC that runs Anvil; section 8 needs a second PC on the same network. Tick a step when it behaves as <b>Expect</b> says. When it does not, mark <b>Problem</b> and write what you saw in the note.</p>
+      <p>Commands are PowerShell unless they say otherwise. <code>&lt;IP&gt;</code> is this PC's address as Settings → Network sharing shows it.</p>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  // A command block with a Copy button. The text is plain, not HTML.
+  function cmd(text) {
+    return '<div class="cmd"><pre>' + esc(text) + '</pre><button type="button" data-copy>Copy</button></div>';
+  }
+
+  var SECTIONS = [
+    { id: "cleanup", title: "Clean up ArbiPache 4 leftovers",
+      note: "Before the first Anvil start. Earlier test builds were called ArbiPache 4; their traces would confuse every later step.",
+      items: [
+        ["hosts", "Old hosts block is gone",
+          "Open Notepad as administrator, then <code>C:\\Windows\\System32\\drivers\\etc\\hosts</code>.",
+          "No block between <code># &gt;&gt;&gt; ArbiPache &gt;&gt;&gt;</code> and <code># &lt;&lt;&lt; ArbiPache &lt;&lt;&lt;</code>. Delete it if it is there and save."],
+        ["firewall", "Old firewall rules are gone",
+          "PowerShell as administrator:" + cmd("Get-NetFirewallRule -DisplayName 'ArbiPache*' | Format-Table DisplayName, Enabled\nGet-NetFirewallRule -DisplayName 'ArbiPache*' | Remove-NetFirewallRule"),
+          "Running the first line again lists nothing."],
+        ["ca", "Old certificate authority is untrusted",
+          "Run <code>certmgr.msc</code> → Trusted Root Certification Authorities → Certificates, or:" + cmd("Get-ChildItem Cert:\\CurrentUser\\Root | Where-Object Subject -like '*ArbiPache*' | Remove-Item"),
+          "Windows asks to confirm each removal. No “ArbiPache Local CA” certificate remains."],
+        ["runkey", "Old Run key is gone",
+          "Check and remove the start-with-Windows entry:" + cmd("Get-ItemProperty HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\nRemove-ItemProperty HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run -Name ArbiPache -ErrorAction SilentlyContinue"),
+          "The first command lists no <code>ArbiPache</code> value."],
+        ["service", "Old Windows service is gone",
+          "Check for the service; if it exists, remove it as administrator:" + cmd("sc.exe query ArbiPacheAgent\nsc.exe stop ArbiPacheAgent\nsc.exe delete ArbiPacheAgent"),
+          "<code>sc.exe query ArbiPacheAgent</code> says the service does not exist."],
+        ["ports", "Ports 80 and 443 are free",
+          "Close any old ArbiPache window, then:" + cmd("Get-NetTCPConnection -LocalPort 80,443 -State Listen -ErrorAction SilentlyContinue"),
+          "Nothing listens, and Task Manager shows no <code>ArbiPache*.exe</code>, <code>httpd.exe</code> or <code>php-cgi.exe</code>."]
+      ] },
+
+    { id: "first-run", title: "First run",
+      items: [
+        ["unzip", "Unzip into a folder of your own",
+          "Unzip <code>Anvil-1.0.0-win64.zip</code> to <code>D:\\Anvil</code> (or copy <code>dist\\Anvil</code> from a trial build).",
+          "The folder holds <code>Anvil.exe</code>, <code>Anvil.Agent.exe</code>, <code>Anvil.Elevator.exe</code>, <code>catalog\\</code>, <code>README.txt</code>, <code>LICENSE.txt</code> and <code>release-files.txt</code>."],
+        ["open", "Open Anvil",
+          "Run <code>Anvil.exe</code>. If SmartScreen appears: More info → Run anyway.",
+          "The window opens on the Dashboard with no administrator prompt. <code>data\\</code> and <code>htdocs\\</code> appear beside <code>Anvil.exe</code>."],
+        ["tray", "Close keeps it in the tray",
+          "Close the window with ×, then click the tray icon. Then choose Quit in the tray menu.",
+          "The icon brings the window back. Quit ends <code>Anvil.exe</code> and <code>Anvil.Agent.exe</code> in Task Manager."],
+        ["twice", "Opening it twice",
+          "With Anvil open and minimised, run <code>Anvil.exe</code> again.",
+          "The open window comes to the front. Task Manager still shows one <code>Anvil.exe</code>."],
+        ["logs", "Logs page lists Anvil's own logs",
+          "Open the Logs page.",
+          "Sources include “Anvil” and “Anvil window”. <code>data\\logs\\anvil\\agent-*.log</code> and <code>data\\logs\\app\\app-*.log</code> exist."]
+      ] },
+
+    { id: "apache", title: "Apache",
+      items: [
+        ["install", "Install Apache",
+          "Apache page → install the version offered.",
+          "Progress shows, then the version is listed as active. <code>runtime\\apache\\&lt;version&gt;\\</code> exists."],
+        ["start", "Start and open localhost",
+          "Dashboard → Start, then open <code>http://localhost/</code>.",
+          "Apache shows Running, and the browser shows the <code>htdocs</code> folder list."],
+        ["port-busy", "A busy port is named",
+          "Optional: before Start, hold port 80 with another program, for example <code>python -m http.server 80</code>.",
+          "Anvil refuses to start Apache and names the program that holds port 80."],
+        ["threads", "Change threads per child",
+          "Apache page → change threads per child and apply.",
+          "Apache reloads without dropping <code>http://localhost/</code>, and the value is in <code>data\\conf\\anvil.conf</code>."],
+        ["modules", "Switch an optional module",
+          "Apache page → turn an optional module such as http2 on, then off.",
+          "Each change is tested and applied. A change Apache rejects is refused with Apache's own message, and the old configuration keeps running."],
+        ["httpd-conf", "Your httpd.conf edit stays",
+          "Apache page → open <code>httpd.conf</code>, add a comment line, save, restart Apache.",
+          "It opens in your editor. Your line is still there after the restart; Anvil changes only its own marked block."]
+      ] },
+
+    { id: "php", title: "PHP",
+      note: "Put <code>&lt;?php phpinfo();</code> in <code>htdocs\\info\\index.php</code> first; several steps read <code>http://localhost/info/</code>.",
+      items: [
+        ["install", "Install two PHP versions",
+          "PHP page → install two branches, for example 8.5 and 8.4.",
+          "Both are listed, each with its own <code>data\\php\\&lt;version&gt;\\php.ini</code>."],
+        ["default", "Choose the default",
+          "Select one version → Make default.",
+          "<code>http://localhost/info/</code> shows that version."],
+        ["workers", "Worker pool and recycling",
+          "Set 2 workers that recycle after 5 requests → Apply. Reload the info page 20 times.",
+          "Every reload answers. Task Manager shows two <code>php-cgi.exe</code> for that version, and their process IDs change as they recycle."],
+        ["crash", "A killed worker comes back",
+          "End one <code>php-cgi.exe</code> in Task Manager, then reload the info page.",
+          "The page answers, and a new worker appears within a few seconds."],
+        ["extension", "Switch an extension",
+          "Turn <code>intl</code> on, check the info page, then turn it off.",
+          "The intl section appears after on and disappears after off. The pool restarts by itself."],
+        ["xdebug", "Xdebug on and off",
+          "Get Xdebug, turn it on, check the info page, then turn it off.",
+          "An Xdebug section appears while it is on and is gone when it is off. Nothing else in <code>php.ini</code> changes."],
+        ["ini-wins", "Your php.ini edit wins",
+          "Open <code>php.ini</code> from the PHP page, set <code>memory_limit = 2G</code>, save, restart PHP.",
+          "The info page shows 2G, and Anvil never sets it back."],
+        ["per-site", "A site on another version",
+          "Give one domain site the non-default version (do this after section 6).",
+          "That site's info page shows its own version while <code>localhost</code> shows the default."]
+      ] },
+
+    { id: "database", title: "Database",
+      items: [
+        ["install", "Install MariaDB or MySQL",
+          "Database page → MariaDB → install, and choose a root password.",
+          "It starts and listens on this PC only:" + cmd("Get-NetTCPConnection -LocalPort 3306 -State Listen")],
+        ["connect", "Connect as root",
+          "Connect with HeidiSQL or <code>runtime\\mariadb\\&lt;version&gt;\\bin\\mariadb.exe -u root -p</code>.",
+          "The password you chose works."],
+        ["password", "Change the root password",
+          "Change root password → Set password.",
+          "The old password is refused and the new one works."],
+        ["settings", "Database settings page",
+          "Change <code>max_connections</code> and save.",
+          "Each row shows the current value, default and meaning. After the restart <code>SHOW VARIABLES LIKE 'max_connections'</code> shows the new value."],
+        ["backup", "Back up all",
+          "Back up all.",
+          "A dated <code>.sql.gz</code> of every database appears under <code>data\\backups\\db\\</code>; only the newest 14 are kept."],
+        ["pma", "phpMyAdmin (optional)",
+          "Unzip phpMyAdmin into <code>htdocs\\pma</code>.",
+          "<code>http://localhost/pma/</code> logs in as root."]
+      ] },
+
+    { id: "sites", title: "Sites",
+      items: [
+        ["add-test", "Add a .test site",
+          "Sites → Add, choose a folder, name it <code>shop.test</code>.",
+          "Windows asks for permission once. <code>http://shop.test/</code> opens the folder."],
+        ["hosts", "The hosts block",
+          "Open the hosts file in Notepad.",
+          "A <code># &gt;&gt;&gt; Anvil &gt;&gt;&gt;</code> block lists <code>127.0.0.1 shop.test</code> and <code>::1 shop.test</code>."],
+        ["https", "Local HTTPS and the padlock",
+          "Edit <code>shop.test</code> → HTTPS certificate → Local development certificate. Click “Trust it” when Sites offers it, then restart the browser.",
+          "Windows asks to confirm adding “Anvil Local CA (&lt;PC name&gt;)”. <code>https://shop.test/</code> shows a padlock, and <code>http://shop.test/</code> redirects to it."],
+        ["proxy", "Proxy to a Vite dev server",
+          "Run a Vite project (<code>npm run dev</code>, port 5173). Sites → Add → PHP version “Forward to another server (proxy)”, Forward requests to <code>http://127.0.0.1:5173</code>, name <code>vite.test</code>.",
+          "<code>http://vite.test/</code> shows the app, and saving a source file hot-reloads it."],
+        ["laravel", "A Laravel project is recognised",
+          "Sites → Add → choose a Laravel project's root folder.",
+          "Anvil says “Laravel detected. Serving the public\\ folder.”"],
+        ["own-files", "Anvil's own folder is refused",
+          "Try a site whose folder is the Anvil folder or its <code>data\\</code> folder.",
+          "Refused: “This folder holds Anvil's own files, so the site would publish its settings and keys.”"],
+        ["bad-chars", "A folder Apache would misread is refused",
+          "Create <code>D:\\Sites\\a${b}</code> and try it as a site folder.",
+          "Refused: “The folder cannot contain quotes, line breaks, %{ or ${.”"],
+        ["delete", "Delete a site",
+          "Delete <code>shop.test</code>.",
+          "Windows asks for permission; its hosts lines go, and <code>http://shop.test/</code> no longer answers."]
+      ] },
+
+    { id: "network-here", title: "Network sharing on this PC",
+      items: [
+        ["domain", "Set the network domain",
+          "Settings → Network sharing → Network domain <code>arbib.pc</code> → Save. Start Apache.",
+          "Name service: “Answering for *.arbib.pc on &lt;IP&gt;.” With Apache stopped: “Off while Apache is stopped.”"],
+        ["my-network", "Open sites to My network",
+          "Set one domain site's “Who can open it” to My network. Turn on Settings → Network sharing → “Let devices on my network open htdocs at &lt;IP&gt;”.",
+          "The site answers at <code>http://&lt;name&gt;.arbib.pc/</code> as well, and <code>htdocs</code> folders at <code>http://&lt;IP&gt;/&lt;folder&gt;</code>. Sites can copy each address."],
+        ["public", "Public network warning",
+          "Windows Settings → Network &amp; internet → your connection → Network profile type → Public.",
+          "The Dashboard says Windows treats this network as Public and offers <b>Open network settings</b>, which opens that Windows page."],
+        ["private", "Switch to Private",
+          "On that page choose Private.",
+          "The Public warning leaves the Dashboard within a few seconds."],
+        ["firewall", "Open the firewall",
+          "If the Dashboard says other devices cannot reach this PC yet, click <b>Open firewall</b>.",
+          "One Windows permission prompt, then the warning goes. <code>wf.msc</code> shows inbound rules “Anvil web server” and “Anvil name service”, for Private and Domain, scope Local subnet."],
+        ["no-prompt", "No Windows firewall pop-up",
+          "Stop and start Apache.",
+          "No “Windows Defender Firewall has blocked some features” dialog for <code>httpd.exe</code> or <code>Anvil.Agent.exe</code>."],
+        ["copy", "Copy the colleague command",
+          "Settings → Network sharing → Windows → Copy. Paste it into Notepad.",
+          "Anvil says “Copied.”, and the text is <code>Add-DnsClientNrptRule -Namespace \".arbib.pc\" -NameServers &lt;IP&gt;</code>."],
+        ["lookup", "The name service answers here",
+          "On this PC:" + cmd("Resolve-DnsName shop.arbib.pc -Server <IP>\nResolve-DnsName example.com -Server <IP>"),
+          "The first answers with &lt;IP&gt;. The second is refused."]
+      ] },
+
+    { id: "colleague", title: "From a colleague's PC",
+      note: "On a second PC on the same network.",
+      items: [
+        ["command", "Run the copied command",
+          "Paste the command into PowerShell as administrator.",
+          "No error, and <code>Get-DnsClientNrptRule</code> lists <code>.arbib.pc</code>."],
+        ["by-name", "Open a site by name",
+          "Open <code>http://shop.arbib.pc/</code> (a site set to My network).",
+          "The site opens."],
+        ["by-ip", "Open a folder by address",
+          "Open <code>http://&lt;IP&gt;/&lt;folder&gt;</code>.",
+          "The <code>htdocs</code> folder opens."],
+        ["new-app", "A new folder answers at once",
+          "On the Anvil PC create <code>htdocs\\newapp\\index.php</code>. On the colleague's PC open <code>http://newapp.arbib.pc/</code>.",
+          "It opens with nothing new to do on the colleague's PC. If the <code>htdocs</code> list shows instead, note it, open Anvil's Sites page and try again."],
+        ["this-pc", "A This PC site is refused",
+          "Set a site to This PC and open it from the colleague's PC, by name and by address.",
+          "403 Forbidden both ways."],
+        ["https", "HTTPS on a network name is refused",
+          "Open <code>https://shop.arbib.pc/</code>.",
+          "The site's content never shows: a certificate warning or a refusal. Network names are HTTP only."],
+        ["mac", "From a Mac (optional)",
+          "Run the Mac command from Settings in Terminal, then open the same addresses in Safari.",
+          "Same results as on Windows."],
+        ["undo", "Undo the command",
+          "PowerShell as administrator:" + cmd("Get-DnsClientNrptRule | Where-Object Namespace -eq '.arbib.pc' | Remove-DnsClientNrptRule -Force\nResolve-DnsName shop.arbib.pc"),
+          "The lookup fails, and internet names still work."]
+      ] },
+
+    { id: "port-53", title: "Port 53 already in use",
+      items: [
+        ["busy", "Windows' hotspot holds port 53",
+          "Turn on Mobile hotspot (or Internet Connection Sharing), then restart Apache.",
+          "The Dashboard: “Network names are off on 192.168.137.1: port 53 is in use there.” with “Sites still open at http://192.168.137.1/&lt;folder&gt;.” Your other addresses still answer names."],
+        ["ip-works", "Address and folder still work",
+          "From a device on the hotspot, open <code>http://192.168.137.1/&lt;folder&gt;</code>.",
+          "The folder opens."],
+        ["recover", "Names come back",
+          "Turn the hotspot off.",
+          "The finding clears and the name service lists that address again, or drops it with the adapter."]
+      ] },
+
+    { id: "address", title: "Address change",
+      items: [
+        ["switch", "Switch networks",
+          "Move from Wi-Fi to Ethernet, or to another Wi-Fi.",
+          "Within a few seconds Settings shows the new This PC address, the command names it, and the name service lists it."],
+        ["old-rule", "A colleague's old rule",
+          "On the colleague's PC, open <code>http://shop.arbib.pc/</code> without re-running the command.",
+          "It fails until they run the new command. The Settings card already tells them to."]
+      ] },
+
+    { id: "updates", title: "Updates",
+      items: [
+        ["component", "Update Apache or PHP",
+          "With an older patch installed, take the update the Apache or PHP page offers.",
+          "The new version becomes active and your sites keep working. A PHP update keeps your <code>php.ini</code> changes."],
+        ["rollback", "A failed update goes back",
+          "Only if one fails: read the message.",
+          "It names the version that runs again, and your sites keep working on it."],
+        ["self-update", "Update Anvil itself",
+          "After the first GitHub release, on an older copy: Settings → Check for updates → install.",
+          "Download, checksum check, the window closes and the new version opens. Sites start again when “Start services when Anvil opens” is on."],
+        ["user-file", "Your files beside Anvil.exe stay",
+          "Before that update, put <code>my-notes.txt</code> next to <code>Anvil.exe</code>.",
+          "It is still there afterwards, and <code>.update\\previous-&lt;version&gt;\\</code> holds the old program files only."]
+      ] },
+
+    { id: "startup", title: "Start with Windows and the tray",
+      items: [
+        ["on", "Start Anvil with Windows",
+          "Settings → Start Anvil with Windows on. Sign out and back in.",
+          "Anvil starts in the tray. Services start when “Start services when Anvil opens” is on."],
+        ["off", "Turn it off",
+          "Turn it off, then sign out and back in.",
+          "Anvil does not start, and the Run key has no Anvil value."],
+        ["close", "Close without the tray",
+          "Turn off “Closing the window keeps it in the tray”, then close the window.",
+          "Anvil quits: <code>Anvil.Agent.exe</code>, <code>httpd.exe</code> and <code>php-cgi.exe</code> are gone from Task Manager."]
+      ] },
+
+    { id: "release", title: "Release checks",
+      items: [
+        ["defender", "Defender scan",
+          "With fresh definitions:" + cmd("& \"$env:ProgramFiles\\Windows Defender\\MpCmdRun.exe\" -SignatureUpdate\n& \"$env:ProgramFiles\\Windows Defender\\MpCmdRun.exe\" -Scan -ScanType 3 -File D:\\Anvil"),
+          "“found no threats”."],
+        ["virustotal", "VirusTotal",
+          "Upload <code>Anvil-1.0.0-win64.zip</code> to virustotal.com.",
+          "No detection from Microsoft or other major engines. Note any small-engine hits."],
+        ["checksum", "Checksum matches",
+          "Compare with the published <code>SHA256SUMS</code>:" + cmd("(Get-FileHash Anvil-1.0.0-win64.zip -Algorithm SHA256).Hash.ToLower()"),
+          "The same 64 characters."],
+        ["signature", "Signature (after SignPath)",
+          "On a signed release:" + cmd("Get-AuthenticodeSignature D:\\Anvil\\Anvil*.exe | Format-Table Status, SignerCertificate"),
+          "Every row: Valid, signed by SignPath Foundation."]
+      ] }
+  ];
+
+  var KEY = "anvil-checklist-v1";
+  var VIEW_KEY = "anvil-checklist-view";
+  var state = { ticks: {}, flags: {}, notes: {} };
+  var allIds = [];
+
+  function local(get, value) {
+    try {
+      if (get) return window.localStorage.getItem(KEY);
+      window.localStorage.setItem(KEY, value);
+      return true;
+    } catch (e) { return null; }
+  }
+  function clean(s) {
+    var out = { ticks: {}, flags: {}, notes: {} };
+    if (!s || typeof s !== "object") return out;
+    ["ticks", "flags", "notes"].forEach(function (k) {
+      var v = s[k];
+      if (v && typeof v === "object") Object.keys(v).forEach(function (id) {
+        if (k === "notes" ? typeof v[id] === "string" && v[id] !== "" : v[id] === true) out[k][id] = v[id];
+      });
+    });
+    return out;
+  }
+  try { var saved = local(true); if (saved) state = clean(JSON.parse(saved)); } catch (e) { /* unreadable: start empty */ }
+
+  // ---- render --------------------------------------------------------------------------------------------------
+  var main = document.getElementById("main");
+  var toc = document.getElementById("toc");
+  SECTIONS.forEach(function (sec, si) {
+    var n = si + 1;
+    var s = document.createElement("section");
+    s.className = "sec";
+    s.id = sec.id;
+    var html = '<div class="sec-head"><span class="ref">' + n + '</span><h2>' + sec.title + '</h2><span class="count" data-count="' + sec.id + '"></span></div>';
+    if (sec.note) html += '<p class="sec-note">' + sec.note + '</p>';
+    html += '<ol class="items">';
+    sec.items.forEach(function (it, ii) {
+      var id = sec.id + "." + it[0];
+      allIds.push(id);
+      var key = id.replace(/[^a-z0-9-]/g, "_");
+      html += '<li class="item" data-id="' + id + '">' +
+        '<label class="check"><input type="checkbox" id="c_' + key + '"><span class="ref">' + n + '.' + (ii + 1) + '</span><span class="t">' + it[1] + '</span></label>' +
+        '<div class="body"><div class="how">' + it[2] + '</div><div class="expect"><b>Expect</b>' + it[3] + '</div>' +
+        '<div class="tools"><button type="button" class="tool" data-flag aria-pressed="false">Problem</button>' +
+        '<button type="button" class="tool" data-note aria-expanded="false">Note</button></div>' +
+        '<textarea id="n_' + key + '" placeholder="What happened? Version, page, exact message." hidden></textarea></div></li>';
+    });
+    html += '</ol>';
+    s.innerHTML = html;
+    main.appendChild(s);
+    var li = document.createElement("li");
+    li.innerHTML = '<a href="#' + sec.id + '"><span>' + n + '. ' + sec.title + '</span><span class="n" data-toc="' + sec.id + '"></span></a>';
+    toc.appendChild(li);
+  });
+  document.getElementById("total").textContent = allIds.length;
+
+  function itemEl(id) { return main.querySelector('li.item[data-id="' + id + '"]'); }
+
+  function paint() {
+    allIds.forEach(function (id) {
+      var li = itemEl(id);
+      var box = li.querySelector('input[type="checkbox"]');
+      var flag = li.querySelector("[data-flag]");
+      var area = li.querySelector("textarea");
+      var noteBtn = li.querySelector("[data-note]");
+      var ticked = state.ticks[id] === true, flagged = state.flags[id] === true, note = state.notes[id] || "";
+      box.checked = ticked;
+      li.classList.toggle("checked", ticked);
+      li.classList.toggle("problem", flagged);
+      flag.setAttribute("aria-pressed", flagged ? "true" : "false");
+      if (document.activeElement !== area) area.value = note;
+      if (note) area.hidden = false;
+      noteBtn.setAttribute("aria-expanded", area.hidden ? "false" : "true");
+      noteBtn.textContent = note ? "Note ✓" : "Note";
+    });
+    var done = allIds.filter(function (id) { return state.ticks[id]; }).length;
+    var problems = allIds.filter(function (id) { return state.flags[id]; }).length;
+    document.getElementById("done").textContent = done;
+    document.getElementById("problems").innerHTML = problems ? '<span class="bad">' + problems + (problems === 1 ? " problem" : " problems") + '</span>' : "";
+    document.getElementById("fill").style.width = (100 * done / allIds.length) + "%";
+    var track = document.getElementById("track");
+    track.setAttribute("aria-valuemax", String(allIds.length));
+    track.setAttribute("aria-valuenow", String(done));
+    SECTIONS.forEach(function (sec) {
+      var ids = allIds.filter(function (id) { return id.indexOf(sec.id + ".") === 0; });
+      var d = ids.filter(function (id) { return state.ticks[id]; }).length;
+      var text = d + " / " + ids.length;
+      main.querySelector('[data-count="' + sec.id + '"]').textContent = text;
+      var t = toc.querySelector('[data-toc="' + sec.id + '"]');
+      t.textContent = text;
+      t.parentNode.classList.toggle("done", d === ids.length);
+    });
+  }
+
+  // ---- saving: this browser always, the artifact's store when the published page has one --------------------------
+  var status = document.getElementById("save-status");
+  var store = null, writing = false, dirty = false, noteTimer = null;
+
+  function snapshot() { return { ticks: state.ticks, flags: state.flags, notes: state.notes, savedAt: new Date().toISOString() }; }
+
+  function flush() {
+    if (!store) return;
+    if (writing) { dirty = true; return; }
+    writing = true;
+    (function loop() {
+      dirty = false;
+      store.set(snapshot()).then(function () {
+        if (dirty) return loop();
+        writing = false;
+        status.textContent = "Saved with this checklist, on every device you open it on.";
+      }, function (e) {
+        writing = false;
+        status.textContent = "Not saved to the checklist (" + (e && e.code ? e.code : "error") + "). Ticks stay in this browser.";
+      });
+    })();
+  }
+
+  function changed(fromNote) {
+    var ok = local(false, JSON.stringify(state));
+    if (!store) status.textContent = ok ? "Ticks and notes are saved in this browser." : "This browser does not keep ticks and notes; they last until you close the page.";
+    if (fromNote) {
+      clearTimeout(noteTimer);
+      noteTimer = setTimeout(function () { noteTimer = null; flush(); }, 700);
+    } else {
+      flush();
+    }
+  }
+
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("db").then(function (db) {
+      if (!db) return;
+      var ref = db.doc("checklist/progress");
+      var first = true;
+      ref.onSnapshot(function (snap) {
+        if (writing || dirty || noteTimer) return; // our own edit is newer
+        if (snap.exists) {
+          state = clean(snap.data());
+          local(false, JSON.stringify(state));
+          paint();
+        }
+        if (first) {
+          first = false;
+          store = ref;
+          if (!snap.exists && (Object.keys(state.ticks).length || Object.keys(state.notes).length || Object.keys(state.flags).length)) flush();
+          status.textContent = "Saved with this checklist, on every device you open it on.";
+        }
+      }, function () {
+        store = null;
+        status.textContent = "Ticks and notes are saved in this browser.";
+      });
+    }, function () { /* no store: this browser only */ });
+  }
+
+  // ---- interaction ----------------------------------------------------------------------------------------------
+  main.addEventListener("change", function (e) {
+    var box = e.target;
+    if (box.type !== "checkbox") return;
+    var id = box.closest("li.item").getAttribute("data-id");
+    if (box.checked) state.ticks[id] = true; else delete state.ticks[id];
+    paint();
+    changed(false);
+  });
+  main.addEventListener("input", function (e) {
+    if (e.target.tagName !== "TEXTAREA") return;
+    var id = e.target.closest("li.item").getAttribute("data-id");
+    if (e.target.value) state.notes[id] = e.target.value; else delete state.notes[id];
+    changed(true);
+  });
+  main.addEventListener("focusout", function (e) {
+    if (e.target.tagName === "TEXTAREA") paint();
+  });
+  main.addEventListener("click", function (e) {
+    var t = e.target.closest("button");
+    if (!t) return;
+    var li = t.closest("li.item");
+    if (t.hasAttribute("data-copy")) {
+      var pre = t.parentNode.querySelector("pre");
+      var text = pre.textContent;
+      var done = function () { t.textContent = "Copied"; setTimeout(function () { t.textContent = "Copy"; }, 1500); };
+      var select = function () { var r = document.createRange(); r.selectNodeContents(pre); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); t.textContent = "Press Ctrl+C"; };
+      try { navigator.clipboard.writeText(text).then(done, select); } catch (err) { select(); }
+      return;
+    }
+    if (!li) return;
+    var id = li.getAttribute("data-id");
+    if (t.hasAttribute("data-flag")) {
+      if (state.flags[id]) delete state.flags[id]; else state.flags[id] = true;
+      paint();
+      changed(false);
+    } else if (t.hasAttribute("data-note")) {
+      var area = li.querySelector("textarea");
+      area.hidden = !area.hidden;
+      if (!area.hidden) area.focus();
+      paint();
+    }
+  });
+
+  var hideBtn = document.getElementById("hide-checked");
+  function setHide(on) {
+    document.body.classList.toggle("hide-checked", on);
+    hideBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    try { window.localStorage.setItem(VIEW_KEY, on ? "hide" : "show"); } catch (e) { /* not kept */ }
+  }
+  hideBtn.addEventListener("click", function () { setHide(hideBtn.getAttribute("aria-pressed") !== "true"); });
+  try { if (window.localStorage.getItem(VIEW_KEY) === "hide") setHide(true); } catch (e) { /* default view */ }
+
+  // Reset asks in the page itself: the viewer shows no confirm() dialogs.
+  var actions = document.getElementById("actions");
+  var resetBtn = document.getElementById("reset");
+  resetBtn.addEventListener("click", function () {
+    var box = document.createElement("span");
+    box.className = "confirm";
+    box.innerHTML = '<span>Clear every tick, problem and note?</span><button type="button" class="btn danger" id="reset-yes">Clear all</button><button type="button" class="btn" id="reset-no">Keep</button>';
+    resetBtn.hidden = true;
+    actions.appendChild(box);
+    document.getElementById("reset-no").focus();
+    document.getElementById("reset-no").addEventListener("click", function () { box.remove(); resetBtn.hidden = false; resetBtn.focus(); });
+    document.getElementById("reset-yes").addEventListener("click", function () {
+      state = { ticks: {}, flags: {}, notes: {} };
+      main.querySelectorAll("textarea").forEach(function (a) { a.value = ""; a.hidden = true; });
+      box.remove();
+      resetBtn.hidden = false;
+      paint();
+      changed(false);
+    });
+  });
+
+  paint();
+})();
+</script>
