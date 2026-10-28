@@ -198,12 +198,15 @@ public sealed class UpdaterTests : IDisposable
         Assert.False(AuthenticodeCheck.IsSignedBy(tampered, ".NET"));
     }
 
-    private string Installed()
+    /// <param name="withList">Writes release-files.txt as publish.ps1 does; a copy from before 1.0.0 has none.</param>
+    private string Installed(bool withList = true)
     {
         var target = _paths.Root;
-        foreach (var name in Exes.Append("Anvil.Core.dll").Append("Old.Removed.dll")) File.WriteAllText(Path.Combine(target, name), "old " + name);
+        string[] release = [.. Exes, "Anvil.Core.dll", "Old.Removed.dll"];
+        foreach (var name in release) File.WriteAllText(Path.Combine(target, name), "old " + name);
         Directory.CreateDirectory(Path.Combine(target, "catalog"));
         File.WriteAllText(Path.Combine(target, "catalog", "components.json"), "old catalog");
+        if (withList) File.WriteAllLines(Path.Combine(target, Updater.FileList), [.. release, "catalog", Updater.FileList]);
         foreach (var dir in new[] { "runtime", "data", "htdocs", "my-projects" })
         {
             Directory.CreateDirectory(Path.Combine(target, dir));
@@ -215,9 +218,11 @@ public sealed class UpdaterTests : IDisposable
     private string Staged(params string[] extra)
     {
         var staged = Directory.CreateDirectory(Path.Combine(_paths.Root, ".update", "staged-4.1.0", "Anvil")).FullName;
-        foreach (var name in Exes.Append("Anvil.Core.dll").Concat(extra)) File.WriteAllText(Path.Combine(staged, name), "new " + name);
+        string[] release = [.. Exes, "Anvil.Core.dll", .. extra];
+        foreach (var name in release) File.WriteAllText(Path.Combine(staged, name), "new " + name);
         Directory.CreateDirectory(Path.Combine(staged, "catalog"));
         File.WriteAllText(Path.Combine(staged, "catalog", "components.json"), "new catalog");
+        File.WriteAllLines(Path.Combine(staged, Updater.FileList), [.. release, "catalog", Updater.FileList]);
         return staged;
     }
 
@@ -322,5 +327,57 @@ public sealed class UpdaterTests : IDisposable
             Task.FromResult(files.TryGetValue(request.RequestUri!.AbsolutePath, out var file)
                 ? new HttpResponseMessage(file.Status) { Content = new ByteArrayContent(file.Body) }
                 : new HttpResponseMessage(HttpStatusCode.NotFound));
+    }
+
+    [Fact]
+    public void User_file_at_the_root_survives_two_updates()
+    {
+        var target = Installed();
+        File.WriteAllText(Path.Combine(target, "my-notes.txt"), "mine");
+
+        Updater.Swap(Staged(), target, GonePid());
+        Updater.Swap(Staged(), target, GonePid());
+
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(target, "my-notes.txt")));
+        Assert.Equal("new Anvil.exe", File.ReadAllText(Path.Combine(target, "Anvil.exe")));
+        Assert.Contains("Anvil.exe", File.ReadAllLines(Path.Combine(target, Updater.FileList)));
+    }
+
+    [Fact]
+    public void Copy_without_a_file_list_moves_only_names_the_new_release_brings()
+    {
+        var target = Installed(withList: false);
+        File.WriteAllText(Path.Combine(target, "my-notes.txt"), "mine");
+
+        Updater.Swap(Staged(), target, GonePid());
+
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(target, "my-notes.txt")));
+        Assert.Equal("new Anvil.exe", File.ReadAllText(Path.Combine(target, "Anvil.exe")));
+        Assert.True(File.Exists(Path.Combine(target, "Old.Removed.dll"))); // without a list it may be the user's
+    }
+
+    [Fact]
+    public void A_list_never_moves_the_folders_that_hold_sites_and_data()
+    {
+        var target = Installed(withList: false);
+        File.WriteAllLines(Path.Combine(target, Updater.FileList), ["Anvil.exe", "data", "runtime", "htdocs", ".update", @"..\outside", "catalog"]);
+
+        Updater.Swap(Staged(), target, GonePid());
+
+        foreach (var dir in new[] { "runtime", "data", "htdocs" })
+            Assert.Equal(dir, File.ReadAllText(Path.Combine(target, dir, "keep.txt")));
+    }
+
+    [Fact]
+    public void A_user_file_named_like_a_new_release_file_is_kept_in_previous()
+    {
+        var target = Installed();
+        File.WriteAllText(Path.Combine(target, "Anvil.New.dll"), "mine");
+
+        Updater.Swap(Staged("Anvil.New.dll"), target, GonePid());
+
+        Assert.Equal("new Anvil.New.dll", File.ReadAllText(Path.Combine(target, "Anvil.New.dll")));
+        var previous = Assert.Single(Directory.GetDirectories(Path.Combine(target, ".update"), "previous-*"));
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(previous, "Anvil.New.dll")));
     }
 }

@@ -88,6 +88,12 @@ Copy-Item (Join-Path $root 'packaging\README.txt') (Join-Path $out 'README.txt')
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $out 'LICENSE.txt')
 Copy-Item (Join-Path $root 'src\Anvil.App\Assets\Fonts\OFL.txt') (Join-Path $out 'licenses\IBM-Plex-OFL.txt')
 
+# The in-app updater moves aside only the names this list holds (Updater.FileList), so files a user keeps next to
+# Anvil.exe survive updates. Written last, so it names everything in the folder, itself included.
+$listName = 'release-files.txt'
+$names = @(Get-ChildItem $out -Force | ForEach-Object Name) + $listName | Sort-Object -Unique
+[System.IO.File]::WriteAllLines((Join-Path $out $listName), [string[]]$names)
+
 Say 'Checking the published folder'
 $env:ANVIL_REQUIRE_DIST = '1'
 try {

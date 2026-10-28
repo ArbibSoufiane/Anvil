@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Anvil.Core.Update;
 
 namespace Anvil.Core.Tests.Packaging;
 
@@ -30,6 +31,19 @@ public sealed class PublishLayoutTests
             Assert.Skip("No dist\\Anvil yet: run build\\publish.ps1 first.");
         }
         return dist;
+    }
+
+    [Fact]
+    public void Release_file_list_names_the_programs_and_itself()
+    {
+        var dist = Dist();
+        var list = Path.Combine(dist, Updater.FileList);
+
+        Assert.True(File.Exists(list), $"{Updater.FileList} is missing");
+        var names = File.ReadAllLines(list).Where(l => l.Length > 0).ToList();
+        Assert.All(Programs.Append(Updater.FileList).Append("catalog"), n => Assert.Contains(n, names));
+        Assert.All(names, n => Assert.True(File.Exists(Path.Combine(dist, n)) || Directory.Exists(Path.Combine(dist, n)), $"{n} is listed but missing"));
+        Assert.DoesNotContain(names, n => n is "runtime" or "data" or "htdocs" or ".update");
     }
 
     [Fact]

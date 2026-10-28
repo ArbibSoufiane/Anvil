@@ -26,6 +26,9 @@ public sealed record ApplyUpdateArgs(string Staged, string Target, int Pid)
 /// <param name="requiredPublisher">Once releases are signed: the certificate name every program file must carry.</param>
 public sealed class Updater(AppPaths paths, HttpClient http, string? requiredPublisher = null, Func<string, string, bool>? isSignedBy = null)
 {
+    /// <summary>The top-level names a release owns, one per line, written by publish.ps1 and listing itself.</summary>
+    public const string FileList = "release-files.txt";
+
     public static readonly TimeSpan ExitWait = TimeSpan.FromMinutes(1);
 
     private static readonly string[] Programs = ["Anvil.exe", "Anvil.Agent.exe", "Anvil.Elevator.exe"];
@@ -90,11 +93,13 @@ public sealed class Updater(AppPaths paths, HttpClient http, string? requiredPub
 
         var incoming = Directory.EnumerateFileSystemEntries(staged).Where(p => !NeverSwapped.Contains(Path.GetFileName(p)))
             .Order(StringComparer.OrdinalIgnoreCase).ToList();
-        var incomingFolders = incoming.Where(Directory.Exists).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        // Every old file goes, so none lingers from an older version; a folder only when the release brings its own.
-        var outgoing = Directory.EnumerateFiles(target)
-            .Concat(Directory.EnumerateDirectories(target).Where(d => incomingFolders.Contains(Path.GetFileName(d))))
-            .Where(p => !NeverSwapped.Contains(Path.GetFileName(p)))
+        var incomingNames = incoming.Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // The installed release's own names go, so none lingers from an older version; so does any name the new release
+        // brings, so nothing is in its way. Everything else in the folder is the user's and stays.
+        var owned = ReleaseNames(target);
+        var outgoing = Directory.EnumerateFileSystemEntries(target)
+            .Where(p => Path.GetFileName(p) is var name && !NeverSwapped.Contains(name)
+                        && (incomingNames.Contains(name) || owned?.Contains(name) == true))
             .ToList();
 
         var moved = new List<string>();
@@ -175,6 +180,23 @@ public sealed class Updater(AppPaths paths, HttpClient http, string? requiredPub
         using (process)
             if (!process.WaitForExit(wait))
                 throw new InvalidOperationException($"Anvil (process {pid}) is still running, so its files cannot be replaced.");
+    }
+
+    /// <summary>The names the installed copy's release-files.txt lists; null when it has none (a copy from before 1.0.0).</summary>
+    private static HashSet<string>? ReleaseNames(string target)
+    {
+        var list = Path.Combine(target, FileList);
+        if (!File.Exists(list)) return null;
+        try
+        {
+            return File.ReadAllLines(list).Select(l => l.Trim())
+                .Where(n => n.Length > 0 && n.IndexOfAny(['\\', '/', ':']) < 0 && n != "." && n != "..")
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private static string InstalledVersion(string target)
