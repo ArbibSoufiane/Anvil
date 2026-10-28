@@ -97,6 +97,7 @@ public sealed class FirewallRulePlannerTests
     [InlineData("443,80", "LocalSubnet", true)]
     [InlineData("80, 443", "LocalSubnet", true)]
     [InlineData("80,443", " LocalSubnet ", true)]
+    [InlineData("80,443,", "LocalSubnet", true)] // as Windows shows "RPC,"
     [InlineData("80,443,8080", "LocalSubnet", false)]
     [InlineData("80,443", "LocalSubnet,10.0.0.0/255.0.0.0", false)]
     public void Lists_are_compared_the_way_windows_may_hand_them_back(string ports, string remote, bool satisfied)
