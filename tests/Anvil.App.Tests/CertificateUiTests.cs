@@ -19,7 +19,7 @@ public sealed class CertificateUiTests
     {
         _api.Sites.Add(Site("shop.test", CertSource.LocalDev));
         _api.Sites.Add(Site("plain.test", CertSource.None));
-        var vm = new SitesViewModel(_api, new FakeElevator(), new FakeCa(), new FakeFolderPicker(), new AppPaths(@"D:\Anvil"), () => ["192.168.10.2"],
+        var vm = new SitesViewModel(_api, new FakeElevator(), new FakeCa(), new FakeFolderPicker(), new AppPaths(@"D:\Anvil"),
             () => "192.168.10.2", ui: a => a());
 
         await vm.LoadAsync(Ct);

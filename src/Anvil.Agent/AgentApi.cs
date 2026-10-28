@@ -66,8 +66,7 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
     public Task<IReadOnlyList<ValidationError>> ValidateSiteAsync(SiteDefinition s, CancellationToken ct = default) =>
         Task.FromResult(orchestrator.ValidateSite(s));
 
-    public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct = default) =>
-        orchestrator.SaveSiteAsync(s, secrets, ct);
+    public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, CancellationToken ct = default) => orchestrator.SaveSiteAsync(s, ct);
 
     public Task<ApplyResult> RemoveSiteAsync(string id, CancellationToken ct = default) => orchestrator.RemoveSiteAsync(id, ct);
 

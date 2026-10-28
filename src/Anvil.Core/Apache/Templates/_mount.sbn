@@ -1,10 +1,3 @@
-{{~ if proxy ~}}
-ProxyPass "{{ path }}/" "{{ proxy }}"
-ProxyPassReverse "{{ path }}/" "{{ proxy }}"
-<Location "{{ path }}/">
-{{ rules }}
-</Location>
-{{~ else ~}}
 {{~ if alias ~}}
 Alias "{{ path }}" "{{ root }}"
 {{~ end ~}}
@@ -16,14 +9,10 @@ Alias "{{ path }}" "{{ root }}"
 {{~ if php ~}}
 {{ php }}
 {{~ end ~}}
-{{~ if fallback ~}}
-    FallbackResource {{ path }}/index.php
-{{~ end ~}}
 </Directory>
 {{~ if guard ~}}
 <LocationMatch "{{ guard }}">
     AuthMerging And
 {{ rules }}
 </LocationMatch>
-{{~ end ~}}
 {{~ end ~}}

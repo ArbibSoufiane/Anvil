@@ -81,15 +81,13 @@ public sealed class ApacheControlTests : IAsyncDisposable
         var (apache, version) = await PrepareAsync(ServerMode.Production,
         [
             StaticSite(SiteKind.Domain, "shop.test", "hello from shop"),
-            StaticSite(SiteKind.Ip, "192.168.10.2", "hello from ipv4 site"),
-            StaticSite(SiteKind.Ip, "2001:db8::10", "hello from ipv6 site"),
+            StaticSite(SiteKind.Domain, "blog.test", "hello from blog"),
         ]);
 
         await apache.StartAsync(version, Port, TestContext.Current.CancellationToken);
 
         Assert.Equal((HttpStatusCode.OK, "hello from shop"), await GetAsHostAsync("shop.test"));
-        Assert.Equal((HttpStatusCode.OK, "hello from ipv4 site"), await GetAsHostAsync("192.168.10.2"));
-        Assert.Equal((HttpStatusCode.OK, "hello from ipv6 site"), await GetAsHostAsync("[2001:db8::10]"));
+        Assert.Equal((HttpStatusCode.OK, "hello from blog"), await GetAsHostAsync("blog.test"));
         Assert.Equal((HttpStatusCode.OK, "hello from htdocs"), await GetAsHostAsync("[::1]"));
         Assert.Equal(HttpStatusCode.Forbidden, (await GetAsHostAsync("unknown.example")).Status);
     }

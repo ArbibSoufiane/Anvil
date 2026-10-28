@@ -16,7 +16,7 @@ public static class ComponentUpdater
 {
     private static readonly Comparer<string> Newest = Comparer<string>.Create((a, b) => SemVer.Compare(b, a));
 
-    /// <param name="phpInUse">The PHP versions the default, the sites and their mounts use.</param>
+    /// <param name="phpInUse">The PHP versions the default and the sites use.</param>
     public static IReadOnlyList<UpdateOffer> Offers(AppSettings s, IReadOnlyCollection<string> phpInUse,
         IReadOnlyList<InstalledComponent> installed, IReadOnlyList<ComponentRelease> available)
     {

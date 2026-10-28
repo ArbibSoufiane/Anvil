@@ -15,15 +15,6 @@ public sealed class SiteValidatorTests
         Aliases = aliases,
     };
 
-    private static SiteDefinition Ip(string address) => new()
-    {
-        Id = SiteSet.IdFor(SiteKind.Ip, address),
-        Kind = SiteKind.Ip,
-        Type = SiteType.Php,
-        Name = address,
-        Root = @"D:\Sites\shop\public",
-    };
-
     private static SiteDefinition Htdocs(string folder) => new()
     {
         Id = SiteSet.IdFor(SiteKind.Htdocs, folder),
@@ -66,69 +57,8 @@ public sealed class SiteValidatorTests
     }
 
     [Fact]
-    public void Rejects_second_ip_site_same_ip()
-    {
-        Assert.Equal(["Name"], Fields(Ip("192.168.10.2"), Ip("192.168.10.2") with { Id = "other" }));
-        Assert.Empty(Fields(Ip("192.168.10.3"), Ip("192.168.10.2")));
-    }
-
-    [Theory]
-    [InlineData("192.168.10.300")]
-    [InlineData("shop.example.com")]
-    public void Rejects_invalid_ip(string address) => Assert.Equal(["Name"], Fields(Ip(address)));
-
-    [Theory]
-    [InlineData("demo")]
-    [InlineData("/")]
-    [InlineData("/Demo")]
-    [InlineData("/demo/")]
-    [InlineData("/de mo")]
-    public void Rejects_bad_mount_path(string path) =>
-        Assert.Equal(["Mounts"], Fields(Ip("*") with { Mounts = [new SiteMount(path, @"D:\Sites\demo", SiteType.Php, null)] }));
-
-    [Fact]
-    public void Rejects_duplicate_mount_path() =>
-        Assert.Equal(["Mounts"], Fields(Ip("*") with
-        {
-            Mounts = [new SiteMount("/demo", @"D:\Sites\a", SiteType.Php, null), new SiteMount("/demo", @"D:\Sites\b", SiteType.Static, null)],
-        }));
-
-    [Fact]
-    public void Mounts_only_on_ip_and_domain_sites() =>
-        Assert.Equal(["Mounts"], Fields(Htdocs("blog") with { Mounts = [new SiteMount("/demo", @"D:\Sites\demo", SiteType.Php, null)] }));
-
-    [Fact]
-    public void SpecificIps_requires_ip()
-    {
-        var site = Domain("shop.example.com") with { Access = AccessLevel.SpecificIps };
-
-        Assert.Equal(["AllowedIps"], Fields(site));
-        Assert.Equal(["AllowedIps"], Fields(site with { AllowedIps = ["10.0.0.1", "not-an-ip"] }));
-        Assert.Empty(Fields(site with { AllowedIps = ["10.0.0.1", "192.168.0.0/16", "2001:db8::/32"] }));
-    }
-
-    [Fact]
-    public void LoadBalancer_requires_proxy()
-    {
-        var site = Domain("shop.example.com") with { Cert = CertSource.LoadBalancer };
-
-        Assert.Equal(["TrustedProxies"], Fields(site));
-        Assert.Equal(["TrustedProxies"], Fields(site with { TrustedProxies = ["lb.example.com"] }));
-        Assert.Empty(Fields(site with { TrustedProxies = ["10.0.0.5", "10.0.1.0/24"] }));
-    }
-
-    [Fact]
-    public void LetsEncrypt_rejected_for_ip_site() => Assert.Equal(["Cert"], Fields(Ip("192.168.10.2") with { Cert = CertSource.LetsEncrypt }));
-
-    [Theory]
-    [InlineData("shop.test")]
-    [InlineData("shop.local")]
-    [InlineData("shop.localhost")]
-    public void LetsEncrypt_rejected_for_test_tld(string name) =>
-        Assert.Equal(["Cert"], Fields(Domain(name) with { Cert = CertSource.LetsEncrypt }));
-
-    [Fact]
-    public void Htdocs_cannot_be_everyone() => Assert.Equal(["Access"], Fields(Htdocs("blog") with { Access = AccessLevel.Everyone }));
+    public void Rejects_an_unknown_access_or_certificate_value() =>
+        Assert.Equal(["Access", "Cert"], Fields(Domain("shop.example.com") with { Access = (AccessLevel)7, Cert = (CertSource)7 }));
 
     [Theory]
     [InlineData(".hidden")]
@@ -144,18 +74,12 @@ public sealed class SiteValidatorTests
         Assert.Equal(["Root"], Fields(Domain("app.test") with { Type = SiteType.Proxy, Root = root }));
 
     [Fact]
-    public void Accepts_valid_ip_site_with_demo_mount()
+    public void Accepts_a_valid_domain_site()
     {
-        var site = Ip("192.168.10.2") with
-        {
-            Cert = CertSource.LoadBalancer,
-            TrustedProxies = ["10.0.0.5"],
-            Mounts = [new SiteMount("/demo", @"D:\Sites\shop-demo\public", SiteType.Php, "8.4.27"), new SiteMount("/staging/v2", @"D:\Sites\v2", SiteType.Static, null)],
-        };
+        var site = Domain("shop.example.com", "www.shop.example.com") with { Cert = CertSource.LocalDev, Access = AccessLevel.ThisPc };
 
-        Assert.Empty(SiteValidator.Validate(site, [Domain("shop.example.com"), Ip("*")]));
-        Assert.Equal("ip-192-168-10-2", site.Id);
-        Assert.Equal("ip-all", SiteSet.IdFor(SiteKind.Ip, "*"));
+        Assert.Empty(SiteValidator.Validate(site, [Domain("blog.test"), Htdocs("blog")]));
+        Assert.Equal("shop.example.com", site.Id);
         Assert.Equal("htdocs-blog", SiteSet.IdFor(SiteKind.Htdocs, "Blog"));
     }
 
@@ -193,12 +117,4 @@ public sealed class SiteValidatorTests
     [InlineData(@"D:\AnvilSites\shop")]
     public void Accepts_a_root_beside_anvil_files(string root) =>
         Assert.Empty(SiteValidator.Validate(Domain("shop.example.com") with { Root = root }, [], App));
-
-    [Fact]
-    public void Rejects_a_mount_that_would_publish_anvil_files()
-    {
-        var site = Domain("shop.example.com") with { Mounts = [new SiteMount("/demo", @"D:\Anvil\data", SiteType.Static, null)] };
-
-        Assert.Equal(["Mounts"], SiteValidator.Validate(site, [], App).Select(e => e.Field));
-    }
 }

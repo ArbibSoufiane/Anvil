@@ -32,12 +32,12 @@ public sealed class ConfigRendererTests
         ApacheVersion = "2.4.69",
     };
 
-    private static RenderInput WithHttpsSite(RenderInput input, string name = "shop.example.com", SiteKind kind = SiteKind.Domain) => input with
+    private static RenderInput WithHttpsSite(RenderInput input, string name = "shop.example.com") => input with
     {
-        Sites = [new SiteDefinition { Id = "shop", Kind = kind, Type = SiteType.Static, Name = name, Root = @"D:\www\shop", Cert = CertSource.Imported }],
+        Sites = [new SiteDefinition { Id = "shop", Kind = SiteKind.Domain, Type = SiteType.Static, Name = name, Root = @"D:\www\shop", Cert = CertSource.LocalDev }],
         Certificates = new Dictionary<string, SiteCertificate>
         {
-            ["shop"] = new(CertSource.Imported, [name], DateTimeOffset.UtcNow.AddDays(60), @"D:\Anvil\data\certs\shop\cert.pem",
+            ["shop"] = new(CertSource.LocalDev, [name], DateTimeOffset.UtcNow.AddDays(60), @"D:\Anvil\data\certs\shop\cert.pem",
                 @"D:\Anvil\data\certs\shop\key.pem", null),
         },
     };
@@ -142,15 +142,6 @@ public sealed class ConfigRendererTests
 
         Assert.DoesNotContain("Listen 443", files["anvil.conf"]);
         Assert.DoesNotContain(@"vhosts\00-catchall-https.conf", files.Keys);
-    }
-
-    [Fact]
-    public void An_https_ip_site_for_all_addresses_answers_unknown_names_itself()
-    {
-        var files = new ConfigRenderer(Paths).Render(WithHttpsSite(Input(ServerMode.Production), "*", SiteKind.Ip)).Files;
-
-        Assert.DoesNotContain(@"vhosts\00-catchall-https.conf", files.Keys);
-        Assert.Contains("<VirtualHost *:443>", files[@"vhosts\00-catchall.conf"]);
     }
 
     [Fact]

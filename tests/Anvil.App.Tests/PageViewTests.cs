@@ -233,7 +233,7 @@ public sealed class PageViewTests
 
     private (MainWindow Window, ShellViewModel Shell, SitesViewModel Sites, SettingsViewModel Settings) ShowSitePages()
     {
-        var sites = new SitesViewModel(_api, new FakeElevator(), new FakeCa(), new FakeFolderPicker(), Paths, () => ["192.168.10.2"], () => "192.168.10.2",
+        var sites = new SitesViewModel(_api, new FakeElevator(), new FakeCa(), new FakeFolderPicker(), Paths, () => "192.168.10.2",
             ui: a => a());
         var settings = new SettingsViewModel(_api, new FakeElevator(), new FakeRunKey(), new FakeCa(), new FakeFolderPicker(), Paths, () => "192.168.10.2");
         sites.LoadAsync().GetAwaiter().GetResult();
@@ -274,7 +274,7 @@ public sealed class PageViewTests
         Assert.True(Named<AddSiteDialog>(window, "Editor").IsEffectivelyVisible);
         Assert.Contains("selected", Named<Button>(window, "KindDomain").Classes);
         var access = Named<ItemsControl>(window, "AccessOptions").GetVisualDescendants().OfType<Button>().Select(b => b.Content).ToList();
-        Assert.Equal(["Everyone (internet)", "My network only", "This PC only", "Specific IPs"], access);
+        Assert.Equal(["This PC only", "My network"], access);
         Assert.Equal("Create site", Named<Button>(window, "SaveSite").Content);
     }
 

@@ -33,7 +33,7 @@ public sealed class FakeAgentApi : IAgentApi
     public List<SiteDefinition> Sites { get; } = [];
     public List<HtdocsEntry> Htdocs { get; } = [];
     public List<ValidationError> ValidationErrors { get; } = [];
-    public List<(SiteDefinition Site, SiteSecrets? Secrets)> SavedSites { get; } = [];
+    public List<SiteDefinition> SavedSites { get; } = [];
     public Detected? Detected { get; set; }
     public ImportReport Import { get; set; } = new([], [], []);
     public Dictionary<string, SiteCertificate> Certificates { get; } = [];
@@ -127,9 +127,9 @@ public sealed class FakeAgentApi : IAgentApi
     public Task<IReadOnlyList<ValidationError>> ValidateSiteAsync(SiteDefinition s, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ValidationError>>(ValidationErrors.ToList());
 
-    public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct = default)
+    public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, CancellationToken ct = default)
     {
-        SavedSites.Add((s, secrets));
+        SavedSites.Add(s);
         if (NextResult.Ok)
         {
             Sites.RemoveAll(x => x.Id == s.Id);

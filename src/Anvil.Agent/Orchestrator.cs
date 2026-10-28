@@ -108,7 +108,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     }
 
     /// <summary>
-    /// After the folder was moved or copied: saved paths inside the old folder (site and mount roots, the htdocs folder,
+    /// After the folder was moved or copied: saved paths inside the old folder (site roots, the htdocs folder,
     /// my.ini) name the same place inside this one, so a copy never serves or writes into the original.
     /// </summary>
     private void RebaseSavedPaths(string oldRoot)
@@ -123,12 +123,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         var sites = new SiteStore(paths);
         foreach (var site in sites.All())
         {
-            var rebased = site with
-            {
-                Root = paths.Rebase(site.Root, oldRoot) ?? site.Root,
-                Mounts = [.. site.Mounts.Select(m => m with { Root = paths.Rebase(m.Root, oldRoot) ?? m.Root })],
-            };
-            if (rebased.Root != site.Root || !rebased.Mounts.SequenceEqual(site.Mounts)) sites.Save(rebased);
+            if (paths.Rebase(site.Root, oldRoot) is { } root && root != site.Root) sites.Save(site with { Root = root });
         }
 
         foreach (var engine in Enum.GetValues<DbEngine>()) MyIni.Rebase(engine, oldRoot);
@@ -325,8 +320,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         }).ToList();
 
         static bool Uses(SiteDefinition site, string version, string? defaultPhp) =>
-            (site.Type == SiteType.Php && SameVersion(version, site.PhpVersion ?? defaultPhp))
-            || site.Mounts.Any(m => m.Type == SiteType.Php && SameVersion(version, m.PhpVersion ?? site.PhpVersion ?? defaultPhp));
+            site.Type == SiteType.Php && SameVersion(version, site.PhpVersion ?? defaultPhp);
     }
 
     public IReadOnlyList<SiteDefinition> GetSites() => new SiteStore(paths).All();
@@ -341,43 +335,19 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     }
 
     /// <summary>
-    /// Validates, writes the password file and a local development certificate when needed, saves the site, then keeps
-    /// it only if Apache accepts the configuration; a rejected change puts every file back as it was.
+    /// Validates, writes a local development certificate when needed, saves the site, then keeps it only if Apache
+    /// accepts the configuration; a rejected change puts every file back as it was.
     /// </summary>
-    public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct) => Locked(async () =>
+    public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, CancellationToken ct) => Locked(async () =>
     {
         var sites = new SiteStore(paths);
         var (site, renamedFrom, others) = Prepare(s, sites.All());
         if (ValidateAgainst(site, others) is { Count: > 0 } errors) return ApplyResult.Failure(string.Join(" ", errors.Select(e => e.Message)));
 
-        var htpasswd = HtpasswdPath(site.Id);
-        var oldHtpasswd = renamedFrom is null ? null : HtpasswdPath(renamedFrom);
-        var newSecrets = secrets is { User.Length: > 0, Password.Length: > 0 };
-        if (site.PasswordProtected && !newSecrets && !File.Exists(htpasswd) && !File.Exists(oldHtpasswd))
-            return ApplyResult.Failure("Enter a user name and password for this site.");
-
         var undo = new List<Action>();
         var certs = new CertificateStore(paths);
         try
         {
-            if (newSecrets)
-            {
-                Remember(htpasswd, undo);
-                HtpasswdFile.Write(htpasswd, secrets!.User!, secrets.Password!);
-            }
-            else if (site.PasswordProtected && !File.Exists(htpasswd) && File.Exists(oldHtpasswd))
-            {
-                Remember(htpasswd, undo);
-                File.Copy(oldHtpasswd!, htpasswd);
-            }
-
-            if (renamedFrom is not null && site.Cert is CertSource.Imported or CertSource.LetsEncrypt
-                && certs.Get(site.Id) is null && certs.Get(renamedFrom) is not null)
-            {
-                RememberFolder(CertDir(site.Id), undo);
-                CopyTree(CertDir(renamedFrom), CertDir(site.Id));
-            }
-
             if (site.Cert == CertSource.LocalDev && NeedsLocalCertificate(certs.Get(site.Id), CertNames(site)))
             {
                 RememberFolder(CertDir(site.Id), undo);
@@ -400,17 +370,12 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
 
         var (applied, result) = await ApplySitesAsync(undo, "The site was not saved.", ct);
         if (!applied) return result;
-        if (!site.PasswordProtected) TryDelete(htpasswd);
-        if (renamedFrom is not null)
-        {
-            TryDelete(oldHtpasswd!);
-            certs.Delete(renamedFrom);
-        }
+        if (renamedFrom is not null) certs.Delete(renamedFrom);
 
         return result with { HostsDomains = HostsChange() };
     }, ct);
 
-    /// <summary>Removes the site with its certificate and password file. Its logs stay.</summary>
+    /// <summary>Removes the site with its certificate. Its logs stay.</summary>
     public Task<ApplyResult> RemoveSiteAsync(string id, CancellationToken ct) => Locked(async () =>
     {
         var sites = new SiteStore(paths);
@@ -422,7 +387,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         var (applied, result) = await ApplySitesAsync(undo, "The site was not removed.", ct);
         if (!applied) return result;
         new CertificateStore(paths).Delete(id);
-        TryDelete(HtpasswdPath(id));
         return result with { HostsDomains = HostsChange() };
     }, ct);
 
@@ -629,7 +593,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         }, applied);
     }
 
-    // htdocs needs the default version; enabled sites, mounts and htdocs folders add theirs.
+    // htdocs needs the default version; enabled sites and htdocs folders add theirs.
     private IReadOnlyList<PhpPool> PlanPhp(AppSettings s)
     {
         var sites = new SiteStore(paths).All();
@@ -656,9 +620,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         var errors = SiteValidator.Validate(site, others, paths).ToList();
         if (site.Type == SiteType.Php && site.PhpVersion is { } version && InstalledPhp(version) is null && errors.All(e => e.Field != "PhpVersion"))
             errors.Add(new ValidationError("PhpVersion", $"PHP {version} is not installed. Install it on the PHP page."));
-        if (site.Mounts.FirstOrDefault(m => m.Type == SiteType.Php && m.PhpVersion is { } v && InstalledPhp(v) is null) is { } mount
-            && errors.All(e => e.Field != "Mounts"))
-            errors.Add(new ValidationError("Mounts", $"{mount.UrlPath}: PHP {mount.PhpVersion} is not installed."));
         return errors;
     }
 
@@ -719,13 +680,9 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         return File.Exists(hosts) ? File.ReadAllText(hosts, Encoding.Latin1) : "";
     }
 
-    /// <summary>Domain sites: the domain and its aliases. IP sites: the address; all addresses: localhost.</summary>
-    private static IReadOnlyList<string> CertNames(SiteDefinition site) => site.Kind switch
-    {
-        SiteKind.Domain => site.Aliases.Prepend(site.Name).Select(n => SiteSet.NormalizeHost(n) ?? n).Distinct(StringComparer.Ordinal).ToList(),
-        _ when site.Name == "*" => ["localhost"],
-        _ => [site.Name],
-    };
+    /// <summary>The domain and its aliases.</summary>
+    private static IReadOnlyList<string> CertNames(SiteDefinition site) =>
+        site.Aliases.Prepend(site.Name).Select(n => SiteSet.NormalizeHost(n) ?? n).Distinct(StringComparer.Ordinal).ToList();
 
     private static bool NeedsLocalCertificate(SiteCertificate? current, IReadOnlyList<string> names) =>
         current is null || current.Source != CertSource.LocalDev || current.NotAfter < DateTimeOffset.UtcNow.AddDays(30)
@@ -737,8 +694,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     private string HtdocsDir(AppSettings s) => s.HtdocsPath ?? paths.Htdocs;
 
     private string SiteFile(string id) => Path.Combine(paths.Sites, id + ".json");
-
-    private string HtpasswdPath(string id) => Path.Combine(paths.Auth, id + ".htpasswd");
 
     private string CertDir(string id) => Path.Combine(paths.Certs, id);
 

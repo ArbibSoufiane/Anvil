@@ -1,18 +1,15 @@
 namespace Anvil.Core.Sites;
 
-/// <summary>How a site is reached: by a domain name, by one of this machine's IPs (single-site mode), or as an htdocs folder.</summary>
-public enum SiteKind { Domain, Ip, Htdocs }
+/// <summary>How a site is reached: by a domain name, or as an htdocs folder.</summary>
+public enum SiteKind { Domain, Htdocs }
 
 public enum SiteType { Php, Static, Proxy }
 
-/// <summary>Where HTTPS comes from. LoadBalancer means plain HTTP here, TLS ends at the client's load balancer.</summary>
-public enum CertSource { None, LetsEncrypt, Imported, LoadBalancer, LocalDev }
+/// <summary>Where HTTPS comes from: nowhere (plain HTTP), or a certificate from Anvil's local CA.</summary>
+public enum CertSource { None, LocalDev }
 
-/// <summary>Who may open the site: anyone, the local network, this PC only, or listed addresses.</summary>
-public enum AccessLevel { Everyone, Network, ThisPc, SpecificIps }
-
-/// <summary>A sub-path served from its own folder, such as /demo on an IP site.</summary>
-public sealed record SiteMount(string UrlPath, string Root, SiteType Type, string? PhpVersion);
+/// <summary>Who may open the site: this PC only, or the local network as well.</summary>
+public enum AccessLevel { ThisPc, Network }
 
 /// <summary>One site as saved in data\sites\&lt;id&gt;.json.</summary>
 public sealed record SiteDefinition
@@ -23,7 +20,7 @@ public sealed record SiteDefinition
 
     public required SiteType Type { get; init; }
 
-    /// <summary>The domain, the IP (or "*" for all addresses), or the htdocs folder name.</summary>
+    /// <summary>The domain, or the htdocs folder name.</summary>
     public required string Name { get; init; }
 
     /// <summary>The site's folder, or the target URL of a Proxy site.</summary>
@@ -36,19 +33,9 @@ public sealed record SiteDefinition
 
     public IReadOnlyList<string> Index { get; init; } = ["index.php", "index.html"];
 
-    public IReadOnlyList<SiteMount> Mounts { get; init; } = [];
-
     public CertSource Cert { get; init; } = CertSource.None;
 
-    public IReadOnlyList<string> TrustedProxies { get; init; } = [];
-
-    public bool AcceptOnlyFromProxies { get; init; }
-
-    public AccessLevel Access { get; init; } = AccessLevel.Everyone;
-
-    public IReadOnlyList<string> AllowedIps { get; init; } = [];
-
-    public bool PasswordProtected { get; init; }
+    public AccessLevel Access { get; init; } = AccessLevel.Network;
 
     public bool HttpRedirect { get; init; } = true;
 

@@ -30,16 +30,30 @@ public sealed class CertificateStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_lets_encrypt_certificate_from_an_older_build_counts_as_missing()
+    {
+        var (cert, key, _) = SelfSigned("shop.example.com");
+        var store = new CertificateStore(_paths);
+        store.Save("shop.example.com", cert, key, chainPem: null, CertSource.LocalDev);
+        store.Save("dev.test", cert, key, chainPem: null, CertSource.LocalDev);
+        var meta = Path.Combine(_paths.Certs, "shop.example.com", "meta.json");
+        File.WriteAllText(meta, File.ReadAllText(meta).Replace("\"LocalDev\"", "\"LetsEncrypt\""));
+
+        Assert.Null(store.Get("shop.example.com"));
+        Assert.Equal(["dev.test"], store.All().Keys);
+    }
+
+    [Fact]
     public void CertificateStore_round_trip()
     {
         var (cert, key, notAfter) = SelfSigned("shop.example.com", "www.shop.example.com");
         var store = new CertificateStore(_paths);
 
-        store.Save("shop.example.com", cert, key, chainPem: null, CertSource.Imported);
+        store.Save("shop.example.com", cert, key, chainPem: null, CertSource.LocalDev);
 
         var saved = new CertificateStore(_paths).Get("shop.example.com");
         Assert.NotNull(saved);
-        Assert.Equal(CertSource.Imported, saved.Source);
+        Assert.Equal(CertSource.LocalDev, saved.Source);
         Assert.Equal(["shop.example.com", "www.shop.example.com"], saved.Names);
         Assert.Equal(notAfter, saved.NotAfter);
         Assert.Equal(Path.Combine(_paths.Certs, "shop.example.com", "cert.pem"), saved.CertFile);
@@ -56,7 +70,7 @@ public sealed class CertificateStoreTests : IDisposable
         var (chain, _, _) = SelfSigned("ca.clientco.com");
         var store = new CertificateStore(_paths);
 
-        store.Save("portal.clientco.com", cert, key, chain, CertSource.Imported);
+        store.Save("portal.clientco.com", cert, key, chain, CertSource.LocalDev);
         Assert.Equal(chain, File.ReadAllText(store.Get("portal.clientco.com")!.ChainFile!));
 
         store.Delete("portal.clientco.com");

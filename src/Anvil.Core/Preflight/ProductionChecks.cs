@@ -6,9 +6,8 @@ using Anvil.Core.Sites;
 namespace Anvil.Core.Preflight;
 
 /// <summary>
-/// In Production, what would leave the server weaker than it looks: a database or
-/// phpMyAdmin reachable from the internet, PHP errors shown to visitors, and public sites without trusted HTTPS.
-/// Certificate expiry is reported in both modes by the renewal planner.
+/// In Production, what would leave the server weaker than it looks: a database reachable from other computers and PHP
+/// errors shown to visitors.
 /// </summary>
 public static class ProductionChecks
 {
@@ -31,24 +30,10 @@ public static class ProductionChecks
                     : $"The database accepts connections from other computers: bind-address is {bind}.",
                 "Set bind-address to 127.0.0.1 on the Database page, unless another server must reach the database."));
 
-        var open = sites.Where(site => site.Enabled && site.Access == AccessLevel.Everyone).ToList();
-
-        var phpMyAdmin = open.Where(site => !site.PasswordProtected).SelectMany(site => PhpMyAdminUrls(site, looksLikePhpMyAdmin)).ToList();
-        if (phpMyAdmin.Count > 0)
-            findings.Add(new("prod-pma-public", Severity.Warning,
-                $"phpMyAdmin is open to everyone on the internet at {string.Join(", ", phpMyAdmin)}.",
-                "In the site's settings, set \"Who can open it\" to My network only, This PC only or Specific IPs, or ask for a username and password."));
-
         if (production.Php.TryGetValue("display_errors", out var display) && DisplayedErrors.Contains(Unquote(display), StringComparer.OrdinalIgnoreCase))
             findings.Add(new("prod-display-errors", Severity.Warning,
                 $"The Production profile shows PHP errors to visitors (display_errors = {display}).",
                 "Set display_errors back to Off on the Dev / Production page."));
-
-        var plainHttp = open.Where(site => site.Cert is CertSource.None or CertSource.LocalDev).Select(site => site.Name).ToList();
-        if (plainHttp.Count > 0)
-            findings.Add(new("prod-no-https", Severity.Warning,
-                $"{string.Join(", ", plainHttp)} {(plainHttp.Count == 1 ? "is" : "are")} open to everyone without a trusted HTTPS certificate.",
-                "In the site's settings, use Let's Encrypt, the certificate the client sent, or HTTP only behind the client's load balancer."));
 
         return findings;
     }
@@ -56,13 +41,6 @@ public static class ProductionChecks
     /// <summary>A phpMyAdmin folder: <c>libraries\classes\</c> and <c>config.sample.inc.php</c> side by side.</summary>
     public static bool LooksLikePhpMyAdmin(string root) =>
         Directory.Exists(Path.Combine(root, "libraries", "classes")) && File.Exists(Path.Combine(root, "config.sample.inc.php"));
-
-    private static IEnumerable<string> PhpMyAdminUrls(SiteDefinition site, Func<string, bool> looksLikePhpMyAdmin)
-    {
-        if (site.Type != SiteType.Proxy && looksLikePhpMyAdmin(site.Root)) yield return site.Name;
-        foreach (var mount in site.Mounts.Where(m => m.Type != SiteType.Proxy && looksLikePhpMyAdmin(m.Root)))
-            yield return site.Name + mount.UrlPath;
-    }
 
     // Null when only this PC can connect; "" when my.ini leaves the server listening on every address.
     private static string? ExposedBind(IReadOnlyDictionary<string, string> ini)

@@ -21,7 +21,7 @@ public sealed class ProductionChecksTests
 
     private static readonly IReadOnlyDictionary<string, string> LocalDb = Db(("bind-address", "127.0.0.1"));
 
-    private static SiteDefinition Site(string name, AccessLevel access = AccessLevel.Everyone, CertSource cert = CertSource.LetsEncrypt,
+    private static SiteDefinition Site(string name, AccessLevel access = AccessLevel.Network, CertSource cert = CertSource.None,
         string root = @"D:\www\shop") =>
         new() { Id = name, Kind = SiteKind.Domain, Type = SiteType.Php, Name = name, Root = root, Access = access, Cert = cert };
 
@@ -89,38 +89,6 @@ public sealed class ProductionChecksTests
     }
 
     [Fact]
-    public void Prod_pma_public_names_each_phpmyadmin_site_open_to_everyone()
-    {
-        var sites = new[]
-        {
-            Site("shop.example.com"),
-            Site("pma.example.com", root: PmaRoot),
-            Site("db.example.com") with { Mounts = [new SiteMount("/phpmyadmin", PmaRoot, SiteType.Php, null)] },
-        };
-
-        var finding = Assert.Single(Run(sites: sites));
-
-        Assert.Equal("prod-pma-public", finding.Id);
-        Assert.Equal(Severity.Warning, finding.Severity);
-        Assert.Contains("pma.example.com", finding.Message);
-        Assert.Contains("db.example.com/phpmyadmin", finding.Message);
-        Assert.DoesNotContain("shop.example.com", finding.Message);
-        Assert.Contains("Who can open it", finding.Fix);
-    }
-
-    [Fact]
-    public void Phpmyadmin_behind_an_address_rule_a_password_or_switched_off_is_not_public()
-    {
-        Assert.Empty(Run(sites:
-        [
-            Site("a.example.com", AccessLevel.SpecificIps, root: PmaRoot),
-            Site("b.example.com", AccessLevel.ThisPc, root: PmaRoot),
-            Site("c.example.com", root: PmaRoot) with { PasswordProtected = true },
-            Site("d.example.com", root: PmaRoot) with { Enabled = false },
-        ]));
-    }
-
-    [Fact]
     public void Phpmyadmin_is_recognised_by_its_classes_folder_and_sample_config()
     {
         var root = Directory.CreateTempSubdirectory("ap-pma-").FullName;
@@ -163,27 +131,4 @@ public sealed class ProductionChecksTests
         Assert.Empty(Run(profile: ProfileWith("display_errors", value)));
     }
 
-    [Fact]
-    public void Prod_no_https_names_sites_open_to_everyone_over_plain_http()
-    {
-        var sites = new[]
-        {
-            Site("shop.example.com", cert: CertSource.None),
-            Site("blog.example.com", cert: CertSource.LocalDev),
-            Site("lb.example.com", cert: CertSource.LoadBalancer),
-            Site("given.example.com", cert: CertSource.Imported),
-            Site("intranet.example.com", AccessLevel.Network, CertSource.None),
-            Site("old.example.com", cert: CertSource.None) with { Enabled = false },
-        };
-
-        var finding = Assert.Single(Run(sites: sites));
-
-        Assert.Equal("prod-no-https", finding.Id);
-        Assert.Contains("shop.example.com", finding.Message);
-        Assert.Contains("blog.example.com", finding.Message);
-        Assert.DoesNotContain("lb.example.com", finding.Message);
-        Assert.DoesNotContain("given.example.com", finding.Message);
-        Assert.DoesNotContain("intranet.example.com", finding.Message);
-        Assert.DoesNotContain("old.example.com", finding.Message);
-    }
 }

@@ -56,7 +56,7 @@ public partial class App : Application
             MainWindow? window = null;
             var picker = new AvaloniaFolderPicker(() => window);
             static string? Lan() => LanAddress.Find()?.ToString();
-            var sites = new SitesViewModel(_agent.Api, elevator, ca, picker, paths, LanAddress.All, Lan);
+            var sites = new SitesViewModel(_agent.Api, elevator, ca, picker, paths, Lan);
             ShellViewModel vm = null!;
             var settingsPage = new SettingsViewModel(_agent.Api, elevator, new RegistryRunKey(), ca, picker, paths, Lan, s =>
             {

@@ -95,8 +95,8 @@ public sealed class OrchestratorTests : IDisposable
         sites.Save(new SiteDefinition
         {
             Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Static, Name = "shop.test", Root = @"E:\Old\htdocs\shop",
-            Mounts = [new SiteMount("/demo", @"e:\old\demo", SiteType.Static, null)],
         });
+        sites.Save(new SiteDefinition { Id = "demo.test", Kind = SiteKind.Domain, Type = SiteType.Static, Name = "demo.test", Root = @"e:\old\demo" });
         sites.Save(new SiteDefinition { Id = "other.test", Kind = SiteKind.Domain, Type = SiteType.Static, Name = "other.test", Root = @"E:\Older\other" });
         var store = new SettingsStore(_paths);
         store.Save(store.Load() with { HtdocsPath = @"E:\Old\www" });
@@ -105,7 +105,7 @@ public sealed class OrchestratorTests : IDisposable
 
         var shop = sites.All().Single(s => s.Id == "shop.test");
         Assert.Equal(Path.Combine(_paths.Root, "htdocs", "shop"), shop.Root);
-        Assert.Equal(Path.Combine(_paths.Root, "demo"), shop.Mounts.Single().Root);
+        Assert.Equal(Path.Combine(_paths.Root, "demo"), sites.All().Single(s => s.Id == "demo.test").Root);
         Assert.Equal(@"E:\Older\other", sites.All().Single(s => s.Id == "other.test").Root);
         Assert.Equal(Path.Combine(_paths.Root, "www"), store.Load().HtdocsPath);
     }
@@ -533,7 +533,6 @@ public sealed class OrchestratorTests : IDisposable
         sites.Save(new SiteDefinition
         {
             Id = "shop.example.com", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "shop.example.com", Root = root, PhpVersion = "8.5.5",
-            Mounts = [new SiteMount("/demo", root, SiteType.Php, "8.5.5")],
         });
         sites.Save(new SiteDefinition { Id = "old.example.com", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "old.example.com", Root = root, PhpVersion = "8.4.10" });
         return sites;
@@ -557,7 +556,6 @@ public sealed class OrchestratorTests : IDisposable
         Assert.Equal(new PhpPoolSettings(2, 100), settings.PhpPools["8.4.10"]);
         var shop = sites.All().Single(s => s.Id == "shop.example.com");
         Assert.Equal("8.5.12", shop.PhpVersion);
-        Assert.Equal("8.5.12", Assert.Single(shop.Mounts).PhpVersion);
         Assert.Equal("8.4.10", sites.All().Single(s => s.Id == "old.example.com").PhpVersion);
         Assert.DoesNotContain("8.5.5", Vhost("01-localhost.conf"));
     }

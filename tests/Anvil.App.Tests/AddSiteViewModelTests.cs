@@ -22,7 +22,7 @@ public sealed class AddSiteViewModelTests
     ];
 
     private AddSiteViewModel Make(SiteDefinition? editing = null, ServerMode mode = ServerMode.Development) =>
-        new(_api, _picker, new SiteFormContext(Php, ["192.168.10.2"], new AppSettings { Mode = mode }, Htdocs, "192.168.10.2"),
+        new(_api, _picker, new SiteFormContext(Php, new AppSettings { Mode = mode }, Htdocs, "192.168.10.2"),
             (site, result) =>
             {
                 _done.Add((site, result));
@@ -30,43 +30,51 @@ public sealed class AddSiteViewModelTests
             }, () => { }, editing);
 
     [Fact]
-    public void Domain_sites_default_to_a_local_certificate_and_drop_lets_encrypt()
+    public void New_site_defaults_to_my_network_and_offers_two_levels()
     {
-        var vm = Make(mode: ServerMode.Production);
+        var vm = Make();
+
+        Assert.Equal(AccessLevel.Network, vm.Access);
+        Assert.Equal([AccessLevel.ThisPc, AccessLevel.Network], vm.AccessOptions.Select(c => c.Level));
+        Assert.Equal([CertSource.None, CertSource.LocalDev], Enum.GetValues<CertSource>());
+    }
+
+    [Fact]
+    public void Domain_sites_default_to_a_local_certificate_and_htdocs_folders_to_none()
+    {
+        var vm = Make();
         Assert.Equal(CertSource.LocalDev, vm.Cert);
 
-        vm.Cert = CertSource.LetsEncrypt;
+        vm.Kind = SiteKind.Htdocs;
+        Assert.Equal(CertSource.None, vm.Cert);
+        Assert.False(vm.ShowCert);
 
+        vm.Kind = SiteKind.Domain;
         Assert.Equal(CertSource.LocalDev, vm.Cert);
     }
 
     [Fact]
-    public void Everyone_hidden_for_htdocs()
+    public void Htdocs_folders_offer_the_same_two_levels()
     {
         var vm = Make();
-        Assert.Contains(vm.AccessOptions, o => o.Level == AccessLevel.Everyone);
 
         vm.Kind = SiteKind.Htdocs;
 
-        Assert.DoesNotContain(vm.AccessOptions, o => o.Level == AccessLevel.Everyone);
         Assert.Equal(AccessLevel.Network, vm.Access);
-        Assert.Equal(["My network only", "This PC only", "Specific IPs"], vm.AccessOptions.Select(o => o.Label));
-        Assert.False(vm.ShowCert);
+        Assert.Equal(["This PC only", "My network"], vm.AccessOptions.Select(o => o.Label));
     }
 
     [Fact]
-    public void Preview_urls_for_ip_site_include_mounts()
+    public void Preview_urls_for_an_htdocs_folder_add_the_network_address_when_open()
     {
         var vm = Make();
-        vm.Kind = SiteKind.Ip;
-        vm.SelectedAddress = vm.Addresses.Single(a => a.Value == "192.168.10.2");
-        vm.Cert = CertSource.None;
+        vm.Kind = SiteKind.Htdocs;
+        vm.FolderName = "blog";
 
-        vm.AddMountCommand.Execute(null);
-        vm.Mounts[0].UrlPath = "/demo";
+        Assert.Equal(["http://localhost/blog", "http://192.168.10.2/blog"], vm.PreviewUrls);
 
-        Assert.Equal(["http://192.168.10.2/", "http://192.168.10.2/demo"], vm.PreviewUrls);
-        Assert.Equal("This replaces the htdocs listing on 192.168.10.2. Domain sites keep working.", vm.Footnote);
+        vm.Access = AccessLevel.ThisPc;
+        Assert.Equal(["http://localhost/blog"], vm.PreviewUrls);
     }
 
     [Fact]
@@ -78,8 +86,8 @@ public sealed class AddSiteViewModelTests
         vm.Cert = CertSource.LocalDev;
         Assert.Equal(["https://shop.test"], vm.PreviewUrls);
 
-        vm.Cert = CertSource.LoadBalancer;
-        Assert.Equal(["https://shop.test  (TLS at load balancer)", "http://shop.test  (load balancer → this server)"], vm.PreviewUrls);
+        vm.Cert = CertSource.None;
+        Assert.Equal(["http://shop.test"], vm.PreviewUrls);
     }
 
     [Fact]
@@ -111,7 +119,7 @@ public sealed class AddSiteViewModelTests
 
         Assert.Equal(@"D:\Projects\shop", vm.ProjectFolder);
         Assert.Equal(@"Laravel detected. Serving the public\ folder.", vm.DetectedText);
-        var saved = Assert.Single(_api.SavedSites).Site;
+        var saved = Assert.Single(_api.SavedSites);
         Assert.Equal(@"D:\Projects\shop\public", saved.Root);
         Assert.Equal("shop.test", saved.Id);
         Assert.Equal(CertSource.LocalDev, saved.Cert);
@@ -148,27 +156,13 @@ public sealed class AddSiteViewModelTests
 
         await vm.SaveCommand.ExecuteAsync(null);
 
-        var saved = Assert.Single(_api.SavedSites).Site;
+        var saved = Assert.Single(_api.SavedSites);
         Assert.Equal(SiteKind.Htdocs, saved.Kind);
         Assert.Equal("pma", saved.Name);
         Assert.Equal(@"D:\Tools\phpMyAdmin", saved.Root);
         Assert.Equal(AccessLevel.ThisPc, saved.Access);
         Assert.Equal(CertSource.None, saved.Cert);
         Assert.DoesNotContain(_api.Calls, c => c.StartsWith("copy", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task Password_sent_once_with_the_site()
-    {
-        var vm = Make();
-        vm.Name = "admin.test";
-        vm.PasswordProtected = true;
-        vm.User = "client";
-        vm.Password = "s3cret";
-
-        await vm.SaveCommand.ExecuteAsync(null);
-
-        Assert.Equal(new SiteSecrets("client", "s3cret"), Assert.Single(_api.SavedSites).Secrets);
     }
 
     [Fact]
@@ -185,7 +179,7 @@ public sealed class AddSiteViewModelTests
         vm.Name = "shop2.test";
         await vm.SaveCommand.ExecuteAsync(null);
 
-        var saved = Assert.Single(_api.SavedSites).Site;
+        var saved = Assert.Single(_api.SavedSites);
         Assert.Equal("shop.test", saved.Id);
         Assert.Equal("shop2.test", saved.Name);
         Assert.True(saved.AddToHosts);

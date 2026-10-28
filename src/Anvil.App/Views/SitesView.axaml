@@ -88,9 +88,9 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
             <TextBlock Classes="note" Margin="8,4,8,0" IsVisible="{Binding !HasSites}"
-                       Text="No domain or IP site yet. Press + Add site to serve a project at its own domain or at this PC's address." />
+                       Text="No domain site yet. Press + Add site to serve a project at its own domain." />
             <TextBlock Classes="note" Margin="8,4,8,0"
-                       Text="Each site picks its own PHP version, certificate source and who can reach it. The IP site (single site mode) takes over the machine's address in place of the htdocs listing." />
+                       Text="Each site picks its own PHP version, certificate and who can reach it: this PC only, or your network." />
           </StackPanel>
         </Border>
 

@@ -18,11 +18,15 @@
         Options Indexes FollowSymLinks
         AllowOverride All
         DirectoryIndex index.php index.html
-        Require all granted
+        Require ip 127.0.0.0/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7 fe80::/10
         <FilesMatch "\.php$">
             <If "-f %{REQUEST_FILENAME}">
                 SetHandler "proxy:fcgi://127.0.0.1:9100/"
             </If>
         </FilesMatch>
     </Directory>
+    <Location "/">
+        AuthMerging And
+        Require ip 127.0.0.0/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7 fe80::/10
+    </Location>
 </VirtualHost>

@@ -237,8 +237,8 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
         public async Task<IReadOnlyList<ValidationError>> ValidateSiteAsync(SiteDefinition s, CancellationToken ct = default) =>
             await (await Remote()).ValidateSiteAsync(s, ct);
 
-        public async Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct = default) =>
-            await (await Remote()).SaveSiteAsync(s, secrets, ct);
+        public async Task<ApplyResult> SaveSiteAsync(SiteDefinition s, CancellationToken ct = default) =>
+            await (await Remote()).SaveSiteAsync(s, ct);
 
         public async Task<ApplyResult> RemoveSiteAsync(string id, CancellationToken ct = default) => await (await Remote()).RemoveSiteAsync(id, ct);
 

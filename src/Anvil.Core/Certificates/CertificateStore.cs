@@ -1,4 +1,5 @@
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
 using Anvil.Core.IO;
 using Anvil.Core.Paths;
 using Anvil.Core.Sites;
@@ -14,7 +15,7 @@ public sealed class CertificateStore(AppPaths paths)
     {
         var dir = DirFor(siteId);
         var meta = Path.Combine(dir, "meta.json");
-        return File.Exists(meta) && JsonFiles.Read<Meta>(meta) is { } m ? ToCertificate(dir, m) : null;
+        return ReadMeta(meta) is { } m ? ToCertificate(dir, m) : null;
     }
 
     /// <summary>
@@ -49,7 +50,7 @@ public sealed class CertificateStore(AppPaths paths)
         foreach (var dir in Directory.GetDirectories(paths.Certs))
         {
             var meta = Path.Combine(dir, "meta.json");
-            if (File.Exists(meta) && JsonFiles.Read<Meta>(meta) is { } m) all[Path.GetFileName(dir)] = ToCertificate(dir, m);
+            if (ReadMeta(meta) is { } m) all[Path.GetFileName(dir)] = ToCertificate(dir, m);
         }
 
         return all;
@@ -61,6 +62,23 @@ public sealed class CertificateStore(AppPaths paths)
         var sans = cert.Extensions.OfType<X509SubjectAlternativeNameExtension>().ToList();
         var names = sans.SelectMany(e => e.EnumerateDnsNames()).Concat(sans.SelectMany(e => e.EnumerateIPAddresses()).Select(ip => ip.ToString())).ToList();
         return names.Count > 0 ? names : [cert.GetNameInfo(X509NameType.SimpleName, forIssuer: false)];
+    }
+
+    /// <summary>
+    /// Null when the folder has no certificate, or one from a source this build no longer serves (Let's Encrypt, a
+    /// client's certificate): such a site is served over HTTP until it gets a local certificate.
+    /// </summary>
+    private static Meta? ReadMeta(string meta)
+    {
+        if (!File.Exists(meta)) return null;
+        try
+        {
+            return JsonFiles.Read<Meta>(meta);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static SiteCertificate ToCertificate(string dir, Meta m)

@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using Anvil.Core.Paths;
 
@@ -10,13 +8,8 @@ public sealed record ValidationError(string Field, string Message);
 /// <summary>Checks a site before it is saved. Field names match SiteDefinition properties so the form can mark them.</summary>
 public static partial class SiteValidator
 {
-    private static readonly string[] TestSuffixes = [".test", ".local", ".localhost"];
-
     [GeneratedRegex(@"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")]
     private static partial Regex DomainName();
-
-    [GeneratedRegex(@"^/[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)*$")]
-    private static partial Regex MountPath();
 
     /// <summary>
     /// Every problem with <paramref name="s"/>, at most one per field. <paramref name="others"/> may include the saved copy of s
@@ -34,17 +27,8 @@ public static partial class SiteValidator
         Check(nameof(SiteDefinition.Name), NameError(s, rest));
         Check(nameof(SiteDefinition.Aliases), AliasError(s, rest));
         Check(nameof(SiteDefinition.Root), RootError(s.Type, s.Root, app));
-        Check(nameof(SiteDefinition.Mounts), MountError(s, app));
-        Check(nameof(SiteDefinition.Access), s.Kind == SiteKind.Htdocs && s.Access == AccessLevel.Everyone
-            ? "An htdocs folder cannot be open to everyone. Add it as a domain or IP site to publish it."
-            : null);
-        Check(nameof(SiteDefinition.AllowedIps), s.Access == AccessLevel.SpecificIps
-            ? AddressListError(s.AllowedIps, "Add at least one allowed IP address or range.")
-            : null);
-        Check(nameof(SiteDefinition.TrustedProxies), s.Cert == CertSource.LoadBalancer
-            ? AddressListError(s.TrustedProxies, "Add the load balancer's IP address or range.")
-            : null);
-        Check(nameof(SiteDefinition.Cert), CertError(s));
+        Check(nameof(SiteDefinition.Access), Enum.IsDefined(s.Access) ? null : "Choose who can open the site.");
+        Check(nameof(SiteDefinition.Cert), Enum.IsDefined(s.Cert) ? null : "Choose how the site is served.");
         return errors;
     }
 
@@ -60,13 +44,6 @@ public static partial class SiteValidator
                 if (host == "localhost") return "localhost is reserved for the htdocs folders.";
                 if (host is null || !DomainName().IsMatch(host)) return "Enter a domain such as shop.example.com.";
                 return HostsOf(rest).Contains(host) ? $"{host} is already used by another site." : null;
-
-            case SiteKind.Ip:
-                if (s.Name != "*" && !IsAddress(s.Name)) return "Enter an IP address of this machine, or choose all addresses.";
-                var ip = IpKey(s.Name);
-                return rest.Any(o => o.Kind == SiteKind.Ip && IpKey(o.Name) == ip)
-                    ? $"Another site already answers on {(s.Name == "*" ? "all addresses" : s.Name)}."
-                    : null;
 
             default:
                 if (!SiteSet.FolderName().IsMatch(s.Name)) return "Use letters, digits, dots, dashes and underscores, starting with a letter or digit.";
@@ -125,52 +102,9 @@ public static partial class SiteValidator
             || p.StartsWith(Path.EndsInDirectorySeparator(f) ? f : f + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? MountError(SiteDefinition s, AppPaths? app)
-    {
-        if (s.Mounts.Count == 0) return null;
-        if (s.Kind == SiteKind.Htdocs) return "Sub-paths are available on domain and IP sites.";
-        var paths = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var mount in s.Mounts)
-        {
-            if (!MountPath().IsMatch(mount.UrlPath)) return $"{mount.UrlPath} is not a valid path. Use lower case, such as /demo.";
-            if (!paths.Add(mount.UrlPath)) return $"{mount.UrlPath} is listed twice.";
-            if (RootError(mount.Type, mount.Root, app) is { } rootError) return $"{mount.UrlPath}: {rootError}";
-        }
-
-        return null;
-    }
-
-    private static string? CertError(SiteDefinition s)
-    {
-        if (s.Cert != CertSource.LetsEncrypt) return null;
-        if (s.Kind != SiteKind.Domain) return "Let's Encrypt issues certificates for public domains only.";
-        var hosts = s.Aliases.Prepend(s.Name).Select(h => SiteSet.NormalizeHost(h) ?? h);
-        return hosts.FirstOrDefault(h => TestSuffixes.Any(t => h.EndsWith(t, StringComparison.Ordinal))) is { } local
-            ? $"Let's Encrypt cannot issue a certificate for {local}. Use a local development certificate."
-            : null;
-    }
-
-    private static string? AddressListError(IReadOnlyList<string> list, string emptyMessage)
-    {
-        if (list.Count == 0) return emptyMessage;
-        return list.FirstOrDefault(a => !IsAddressOrRange(a)) is { } bad ? $"{bad} is not an IP address or range such as 10.0.0.0/24." : null;
-    }
-
     private static HashSet<string> HostsOf(IEnumerable<SiteDefinition> sites) =>
         sites.Where(o => o.Kind == SiteKind.Domain)
             .SelectMany(o => o.Aliases.Prepend(o.Name))
             .Select(h => SiteSet.NormalizeHost(h) ?? h)
             .ToHashSet(StringComparer.Ordinal);
-
-    private static string IpKey(string name) => IPAddress.TryParse(name, out var a) ? a.ToString() : name.Trim();
-
-    /// <summary>A literal IPv4 address in dotted-quad form, or any IPv6 address.</summary>
-    internal static bool IsAddress(string text) =>
-        IPAddress.TryParse(text, out var a) && (a.AddressFamily == AddressFamily.InterNetworkV6 || text.Split('.').Length == 4);
-
-    internal static bool IsAddressOrRange(string text)
-    {
-        var slash = text.IndexOf('/');
-        return slash < 0 ? IsAddress(text) : IsAddress(text[..slash]) && IPNetwork.TryParse(text, out _);
-    }
 }

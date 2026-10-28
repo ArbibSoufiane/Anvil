@@ -30,17 +30,8 @@ public sealed class VhostRenderTests
         Root = @"D:\Sites\shop\public",
     };
 
-    private static SiteDefinition Ip(string address) => new()
-    {
-        Id = SiteSet.IdFor(SiteKind.Ip, address),
-        Kind = SiteKind.Ip,
-        Type = SiteType.Php,
-        Name = address,
-        Root = @"D:\Sites\shop\public",
-    };
-
     private static SiteCertificate Cert(string id, bool chain = false) =>
-        new(CertSource.Imported, [id], DateTimeOffset.UtcNow.AddDays(90), $@"D:\Anvil\data\certs\{id}\cert.pem",
+        new(CertSource.LocalDev, [id], DateTimeOffset.UtcNow.AddDays(90), $@"D:\Anvil\data\certs\{id}\cert.pem",
             $@"D:\Anvil\data\certs\{id}\key.pem", chain ? $@"D:\Anvil\data\certs\{id}\chain.pem" : null);
 
     private static RenderedConfig RenderConfig(
@@ -67,7 +58,7 @@ public sealed class VhostRenderTests
     [Fact]
     public void Domain_https_with_redirect()
     {
-        var site = Domain() with { Cert = CertSource.Imported };
+        var site = Domain() with { Cert = CertSource.LocalDev };
 
         var files = Render([site], certs: new Dictionary<string, SiteCertificate> { [site.Id] = Cert(site.Id, chain: true) });
 
@@ -77,7 +68,7 @@ public sealed class VhostRenderTests
     [Fact]
     public void Https_redirect_can_be_turned_off()
     {
-        var site = Domain() with { Cert = CertSource.Imported, HttpRedirect = false };
+        var site = Domain() with { Cert = CertSource.LocalDev, HttpRedirect = false };
 
         var conf = Render([site], certs: new Dictionary<string, SiteCertificate> { [site.Id] = Cert(site.Id) })[SiteFile(site.Id)];
 
@@ -89,7 +80,7 @@ public sealed class VhostRenderTests
     [Fact]
     public void Https_without_certificate_yet_serves_http_only()
     {
-        var site = Domain() with { Cert = CertSource.LetsEncrypt };
+        var site = Domain() with { Cert = CertSource.LocalDev };
 
         var conf = Render([site])[SiteFile(site.Id)];
 
@@ -109,71 +100,8 @@ public sealed class VhostRenderTests
     }
 
     [Fact]
-    public void Ip_site_with_demo_mount()
-    {
-        var site = Ip("192.168.10.2") with
-        {
-            Access = AccessLevel.Network,
-            Mounts =
-            [
-                new SiteMount("/demo", @"D:\Sites\shop-demo\public", SiteType.Php, "8.4.27"),
-                new SiteMount("/docs", @"D:\Sites\docs", SiteType.Static, null),
-            ],
-        };
-
-        Snapshot.Match(Render([site])[SiteFile("ip-192-168-10-2")], "site-ip-mount");
-    }
-
-    [Fact]
-    public void Php_mount_gets_fallback_resource()
-    {
-        var site = Domain() with
-        {
-            Mounts =
-            [
-                new SiteMount("/demo", @"D:\Sites\demo", SiteType.Php, null),
-                new SiteMount("/docs", @"D:\Sites\docs", SiteType.Static, null),
-            ],
-        };
-
-        var conf = Render([site])[SiteFile(site.Id)];
-
-        Assert.Contains("    Alias \"/demo\" \"D:/Sites/demo\"\n", conf);
-        Assert.Contains("        FallbackResource /demo/index.php\n", conf);
-        Assert.DoesNotContain("FallbackResource /docs", conf);
-    }
-
-    [Fact]
-    public void Ipv6_site_matches_by_alias_without_brackets()
-    {
-        var site = Ip("2001:db8::10") with { Cert = CertSource.Imported };
-
-        var conf = Render([site], certs: new Dictionary<string, SiteCertificate> { [site.Id] = Cert(site.Id) })[SiteFile("ip-2001-db8--10")];
-
-        // Apache reads "[" in ServerName as a wildcard and matches IPv6 hosts without brackets.
-        Assert.Contains("    ServerName ip-2001-db8--10.invalid\n    ServerAlias 2001:db8::10\n", conf);
-        Assert.Contains(" https://[2001:db8::10]/$1\n", conf);
-    }
-
-    [Fact]
     public void Localhost_alias_matches_ipv6_loopback() =>
         Assert.Contains("    ServerAlias 127.0.0.1 ::1\n", Render([])[@"vhosts\01-localhost.conf"]);
-
-    [Theory]
-    [InlineData(ServerMode.Development)]
-    [InlineData(ServerMode.Production)]
-    public void All_addresses_ip_site_replaces_catchall(ServerMode mode)
-    {
-        var files = Render([Ip("*") with { Root = @"D:\Sites\kiosk" }], mode);
-
-        var catchall = files[@"vhosts\00-catchall.conf"];
-        Assert.Contains("    ServerName anvil-catchall.invalid\n", catchall);
-        Assert.Contains("    DocumentRoot \"D:/Sites/kiosk\"\n", catchall);
-        Assert.DoesNotContain("D:/Anvil/htdocs", catchall);
-        Assert.DoesNotContain("Require all denied", catchall);
-        Assert.DoesNotContain(SiteFile("ip-all"), files.Keys);
-        Assert.Contains("D:/Anvil/htdocs", files[@"vhosts\01-localhost.conf"]);
-    }
 
     [Fact]
     public void Static_site_has_no_php_handler()
@@ -211,7 +139,6 @@ public sealed class VhostRenderTests
             Type = SiteType.Proxy,
             Root = "http://127.0.0.1:5173",
             Access = AccessLevel.ThisPc,
-            Mounts = [new SiteMount("/files", @"D:\Sites\files", SiteType.Static, null)],
         };
 
         Snapshot.Match(Render([site])[SiteFile("app.test")], "site-proxy");
@@ -227,22 +154,9 @@ public sealed class VhostRenderTests
     }
 
     [Fact]
-    public void Load_balancer_site_trusts_only_listed_proxies()
-    {
-        var site = Domain() with
-        {
-            Cert = CertSource.LoadBalancer,
-            TrustedProxies = ["10.0.0.5", "10.0.1.0/24"],
-            AcceptOnlyFromProxies = true,
-        };
-
-        Snapshot.Match(Render([site])[SiteFile(site.Id)], "site-lb");
-    }
-
-    [Fact]
     public void Disabled_site_not_rendered()
     {
-        var files = Render([Domain() with { Enabled = false }, Ip("*") with { Enabled = false }]);
+        var files = Render([Domain() with { Enabled = false }]);
 
         Assert.DoesNotContain(SiteFile("shop.example.com"), files.Keys);
         Assert.Contains("D:/Anvil/htdocs", files[@"vhosts\00-catchall.conf"]);
@@ -251,25 +165,11 @@ public sealed class VhostRenderTests
     [Fact]
     public void Paths_with_spaces_and_unicode_render_quoted()
     {
-        var site = Domain() with
-        {
-            Root = @"D:\Mes Sites\café\public",
-            Mounts = [new SiteMount("/demo", @"D:\Mes Sites\démo", SiteType.Php, null)],
-        };
+        var site = Domain() with { Root = @"D:\Mes Sites\café\public" };
 
         var conf = Render([site])[SiteFile(site.Id)];
 
         Assert.Contains("    DocumentRoot \"D:/Mes Sites/café/public\"\n    <Directory \"D:/Mes Sites/café/public\">\n", conf);
-        Assert.Contains("    Alias \"/demo\" \"D:/Mes Sites/démo\"\n    <Directory \"D:/Mes Sites/démo\">\n", conf);
-    }
-
-    [Fact]
-    public void Password_protected_site_uses_its_htpasswd_file()
-    {
-        var conf = Render([Domain() with { PasswordProtected = true }])[SiteFile("shop.example.com")];
-
-        Assert.Contains("        AuthUserFile \"D:/Anvil/data/auth/shop.example.com.htpasswd\"\n", conf);
-        Assert.Contains("            Require valid-user\n", conf);
     }
 
     [Fact]
@@ -288,7 +188,7 @@ public sealed class VhostRenderTests
     [Fact]
     public void Htaccess_cannot_widen_a_restricted_site()
     {
-        var site = Domain() with { Access = AccessLevel.ThisPc, Mounts = [new SiteMount("/demo", @"D:\Sites\demo", SiteType.Static, null)] };
+        var site = Domain() with { Access = AccessLevel.ThisPc };
 
         var conf = Render([site])[SiteFile(site.Id)];
 
@@ -296,9 +196,12 @@ public sealed class VhostRenderTests
     }
 
     [Fact]
-    public void A_site_open_to_everyone_needs_no_location_guard()
+    public void Htaccess_cannot_open_a_network_site_to_the_internet()
     {
-        Assert.DoesNotContain("AuthMerging", Render([Domain()])[SiteFile(Domain().Id)]);
+        var conf = Render([Domain() with { Access = AccessLevel.Network }])[SiteFile(Domain().Id)];
+
+        Assert.Contains("    <Location \"/\">\n        AuthMerging And\n"
+            + "        Require ip 127.0.0.0/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7 fe80::/10\n    </Location>\n", conf);
     }
 
     [Fact]
@@ -336,15 +239,15 @@ public sealed class VhostRenderTests
     }
 
     [Fact]
-    public void Htdocs_entry_with_own_php_and_ips_gets_directory_block()
+    public void Htdocs_entry_with_own_php_and_access_gets_directory_block()
     {
-        HtdocsEntry[] htdocs = [new("legacy", @"D:\Anvil\htdocs\legacy", false, "8.4.27", AccessLevel.SpecificIps)];
+        HtdocsEntry[] htdocs = [new("legacy", @"D:\Anvil\htdocs\legacy", false, "8.4.27", AccessLevel.ThisPc)];
         SiteDefinition[] saved =
         [
             new()
             {
                 Id = "htdocs-legacy", Kind = SiteKind.Htdocs, Type = SiteType.Php, Name = "legacy", Root = @"D:\Anvil\htdocs\legacy",
-                PhpVersion = "8.4.27", Access = AccessLevel.SpecificIps, AllowedIps = ["192.168.1.50"],
+                PhpVersion = "8.4.27", Access = AccessLevel.ThisPc,
             },
         ];
 
@@ -352,7 +255,7 @@ public sealed class VhostRenderTests
 
         var catchall = files[@"vhosts\00-catchall.conf"];
         Assert.Contains("    <Directory \"D:/Anvil/htdocs/legacy\">\n", catchall);
-        Assert.Contains("        Require local\n        Require ip 192.168.1.50\n", catchall);
+        Assert.Matches("(?s)<Directory \"D:/Anvil/htdocs/legacy\">.*?Require local\n.*?</Directory>", catchall);
         Assert.Contains("proxy:fcgi://127.0.0.1:9101/", catchall);
         Assert.DoesNotContain("Alias \"/legacy\"", catchall);
         Assert.Contains("proxy:fcgi://127.0.0.1:9101/", files[@"vhosts\01-localhost.conf"]);
@@ -371,15 +274,12 @@ public sealed class VhostRenderTests
     [Fact]
     public void No_ip_specific_virtualhost_anywhere()
     {
-        var shop = Domain() with { Cert = CertSource.Imported, Aliases = ["www.shop.example.com"] };
+        var shop = Domain() with { Cert = CertSource.LocalDev, Aliases = ["www.shop.example.com"] };
         SiteDefinition[] sites =
         [
             shop,
-            Ip("192.168.10.2") with { Mounts = [new SiteMount("/demo", @"D:\Sites\demo", SiteType.Php, null)] },
-            Ip("2001:db8::10"),
-            Ip("*"),
             Domain("app.test") with { Type = SiteType.Proxy, Root = "http://127.0.0.1:5173" },
-            Domain("lb.example.com") with { Cert = CertSource.LoadBalancer, TrustedProxies = ["10.0.0.5"] },
+            Domain("static.test") with { Type = SiteType.Static, Access = AccessLevel.ThisPc },
         ];
 
         var files = Render(sites, certs: new Dictionary<string, SiteCertificate> { [shop.Id] = Cert(shop.Id) });

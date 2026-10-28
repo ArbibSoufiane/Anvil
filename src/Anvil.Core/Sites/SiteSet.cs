@@ -33,12 +33,11 @@ public static partial class SiteSet
     public static string IdFor(SiteKind kind, string name) => kind switch
     {
         SiteKind.Domain => NormalizeHost(name) ?? name.Trim().ToLowerInvariant(),
-        SiteKind.Ip => name.Trim() == "*" ? "ip-all" : "ip-" + name.Trim().ToLowerInvariant().Replace('.', '-').Replace(':', '-'),
         SiteKind.Htdocs => "htdocs-" + name.Trim().ToLowerInvariant(),
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
-    /// <summary>Every PHP version an enabled site, mount or htdocs entry runs on, the default first, without repeats.</summary>
+    /// <summary>Every PHP version an enabled site or htdocs entry runs on, the default first, without repeats.</summary>
     public static IReadOnlyCollection<string> RequiredPhpVersions(
         IReadOnlyList<SiteDefinition> sites, IReadOnlyList<HtdocsEntry> htdocs, string? defaultPhp)
     {
@@ -52,8 +51,6 @@ public static partial class SiteSet
         foreach (var site in sites.Where(s => s.Enabled))
         {
             if (site.Type == SiteType.Php) Add(site.PhpVersion ?? defaultPhp);
-            foreach (var mount in site.Mounts.Where(m => m.Type == SiteType.Php))
-                Add(mount.PhpVersion ?? site.PhpVersion ?? defaultPhp);
         }
 
         foreach (var entry in htdocs) Add(entry.PhpVersion ?? defaultPhp);

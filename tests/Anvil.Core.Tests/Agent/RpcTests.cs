@@ -87,7 +87,7 @@ public sealed class RpcTests
 
         var sites = await client.Api.GetSitesAsync(ct);
         var htdocs = await client.Api.GetHtdocsAsync(ct);
-        var saved = await client.Api.SaveSiteAsync(FakeApi.Shop, new SiteSecrets("client", "pw"), ct);
+        var saved = await client.Api.SaveSiteAsync(FakeApi.Shop, ct);
         var detected = await client.Api.DetectAsync("D:/Sites/vite", ct);
         var imported = await client.Api.ImportLegacyAsync(ct);
 
@@ -95,7 +95,7 @@ public sealed class RpcTests
         Assert.Equal(JsonSerializer.Serialize(FakeApi.Shop), JsonSerializer.Serialize(site));
         Assert.Equal("blog", Assert.Single(htdocs).Folder);
         Assert.Equal(["shop.test"], saved.HostsDomains);
-        Assert.Equal(new SiteSecrets("client", "pw"), fake.SavedSite!.Value.Secrets);
+        Assert.Equal(JsonSerializer.Serialize(FakeApi.Shop), JsonSerializer.Serialize(fake.SavedSite));
         Assert.Equal(new Detected(SiteType.Proxy, "D:/Sites/vite", "Vite", "http://127.0.0.1:5173"), detected);
         Assert.Equal(["afaq.test"], imported.Imported);
         Assert.Equal(["shop.test: already exists"], imported.Skipped);
@@ -338,20 +338,20 @@ public sealed class RpcTests
         public static readonly SiteDefinition Shop = new()
         {
             Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "shop.test", Root = "D:/Sites/shop/public",
-            Aliases = ["www.shop.test"], Mounts = [new SiteMount("/demo", "D:/Sites/demo", SiteType.Static, null)], Cert = CertSource.LocalDev,
+            Aliases = ["www.shop.test"], Cert = CertSource.LocalDev,
             Created = new DateTimeOffset(2026, 10, 27, 9, 0, 0, TimeSpan.Zero),
         };
 
-        public (SiteDefinition Site, SiteSecrets? Secrets)? SavedSite { get; private set; }
+        public SiteDefinition? SavedSite { get; private set; }
 
         public Task<IReadOnlyList<SiteDefinition>> GetSitesAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<SiteDefinition>>([Shop]);
         public Task<IReadOnlyList<HtdocsEntry>> GetHtdocsAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<HtdocsEntry>>([new HtdocsEntry("blog", "D:/htdocs/blog", false, null, AccessLevel.Network)]);
         public Task<IReadOnlyList<ValidationError>> ValidateSiteAsync(SiteDefinition s, CancellationToken ct = default) => throw new NotSupportedException();
 
-        public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct = default)
+        public Task<ApplyResult> SaveSiteAsync(SiteDefinition s, CancellationToken ct = default)
         {
-            SavedSite = (s, secrets);
+            SavedSite = s;
             return Task.FromResult(ApplyResult.Success() with { HostsDomains = ["shop.test"] });
         }
 

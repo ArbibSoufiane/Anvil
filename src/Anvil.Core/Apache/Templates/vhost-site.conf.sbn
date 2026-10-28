@@ -18,13 +18,7 @@
 {{~ if v.redirect ~}}
     RedirectMatch 301 ^/(.*)$ {{ redirect }}$1
 {{~ else ~}}
-{{~ if lb ~}}
-{{ lb }}
-{{~ end ~}}
 {{~ if proxy ~}}
-{{~ for m in mounts ~}}
-{{ m }}
-{{~ end ~}}
 {{ proxy }}
 {{~ else ~}}
     DocumentRoot "{{ root }}"
@@ -37,15 +31,10 @@
 {{ php }}
 {{~ end ~}}
     </Directory>
-{{~ for m in mounts ~}}
-{{ m }}
-{{~ end ~}}
-{{~ if guard ~}}
     <Location "/">
         AuthMerging And
 {{ rules }}
     </Location>
-{{~ end ~}}
 {{~ end ~}}
 {{~ end ~}}
 </VirtualHost>

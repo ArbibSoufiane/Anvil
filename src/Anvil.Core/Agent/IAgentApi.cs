@@ -62,9 +62,9 @@ public partial interface IAgentApi
 
     /// <summary>
     /// Kept only when Apache accepts the result. HostsDomains in the result, when set, is the list the GUI must hand to
-    /// the Elevator. Secrets are needed the first time a site is password protected.
+    /// the Elevator.
     /// </summary>
-    Task<ApplyResult> SaveSiteAsync(SiteDefinition s, SiteSecrets? secrets, CancellationToken ct = default);
+    Task<ApplyResult> SaveSiteAsync(SiteDefinition s, CancellationToken ct = default);
 
     Task<ApplyResult> RemoveSiteAsync(string id, CancellationToken ct = default);
     Task<ApplyResult> SetSiteEnabledAsync(string id, bool enabled, CancellationToken ct = default);

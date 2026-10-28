@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using Anvil.App.Services;
 using Anvil.Core.Agent;
 using Anvil.Core.Certificates;
@@ -13,19 +12,11 @@ using Serilog;
 namespace Anvil.App.ViewModels;
 
 /// <summary>What the site form needs from the rest of the app.</summary>
-/// <param name="Addresses">This PC's IPv4 addresses, offered to IP sites.</param>
 /// <param name="LanIp">The address other devices use to open htdocs, or null.</param>
-public sealed record SiteFormContext(IReadOnlyList<PhpVersionInfo> Php, IReadOnlyList<string> Addresses, AppSettings Settings, string HtdocsDir,
-    string? LanIp)
-{
-    /// <summary>Each saved site's certificate, by site id.</summary>
-}
+public sealed record SiteFormContext(IReadOnlyList<PhpVersionInfo> Php, AppSettings Settings, string HtdocsDir, string? LanIp);
 
 /// <summary>One entry of the PHP list: a version (null follows the default), no PHP, or forwarding to another server.</summary>
 public sealed record PhpChoice(string Label, SiteType Type, string? Version);
-
-/// <summary>An address an IP site can take; "*" is every address of this machine.</summary>
-public sealed record AddressChoice(string Value, string Label);
 
 /// <summary>One button of the "Who can open it" control.</summary>
 public sealed partial class AccessChoice : ObservableObject
@@ -45,49 +36,16 @@ public sealed partial class AccessChoice : ObservableObject
     public partial bool IsSelected { get; set; }
 }
 
-/// <summary>An extra folder on an IP site, such as /demo.</summary>
-public sealed partial class MountRow : ObservableObject
-{
-    public MountRow(IReadOnlyList<PhpChoice> php, Action<MountRow> remove, Func<MountRow, Task> browse)
-    {
-        PhpChoices = php;
-        Php = php[0];
-        RemoveCommand = new RelayCommand(() => remove(this));
-        BrowseCommand = new AsyncRelayCommand(() => browse(this));
-    }
-
-    public IReadOnlyList<PhpChoice> PhpChoices { get; }
-    public IRelayCommand RemoveCommand { get; }
-    public IAsyncRelayCommand BrowseCommand { get; }
-
-    [ObservableProperty]
-    public partial string UrlPath { get; set; } = "/";
-
-    [ObservableProperty]
-    public partial string Root { get; set; } = "";
-
-    [ObservableProperty]
-    public partial PhpChoice? Php { get; set; }
-
-    public SiteMount ToMount()
-    {
-        var choice = Php ?? PhpChoices[0];
-        return new SiteMount(UrlPath.Trim(), Root.Trim(), choice.Type, choice.Type == SiteType.Php ? choice.Version : null);
-    }
-}
-
 /// <summary>
-/// The Add site / Edit site form: a domain site, an IP site (single site mode) or an htdocs folder. Saving validates
+/// The Add site / Edit site form: a domain site or an htdocs folder. Saving validates
 /// through the Agent, marks each error next to its field, and hands the result to <c>done</c> only when the Agent kept it.
 /// </summary>
 public sealed partial class AddSiteViewModel : ObservableObject
 {
     private static readonly (AccessLevel Level, string Label)[] AccessLabels =
     [
-        (AccessLevel.Everyone, "Everyone (internet)"),
-        (AccessLevel.Network, "My network only"),
         (AccessLevel.ThisPc, "This PC only"),
-        (AccessLevel.SpecificIps, "Specific IPs"),
+        (AccessLevel.Network, "My network"),
     ];
 
     private readonly IAgentApi _api;
@@ -120,24 +78,11 @@ public sealed partial class AddSiteViewModel : ObservableObject
         php.Add(new PhpChoice("Forward to another server (proxy)", SiteType.Proxy, null));
         PhpChoices = php;
 
-        var port = context.Settings.HttpPort;
-        List<AddressChoice> addresses = [.. context.Addresses.Select(a => new AddressChoice(a, $"{a} · port {port}"))];
-        if (editing is { Kind: SiteKind.Ip } ip && ip.Name != "*" && addresses.All(a => a.Value != ip.Name))
-            addresses.Add(new AddressChoice(ip.Name, $"{ip.Name} · port {port}"));
-        addresses.Add(new AddressChoice("*", $"All addresses of this machine · port {port}"));
-        Addresses = addresses;
-
-        Mounts.CollectionChanged += (_, e) =>
-        {
-            foreach (MountRow row in e.NewItems ?? Array.Empty<MountRow>()) row.PropertyChanged += OnMountChanged;
-            OnPropertyChanged(nameof(PreviewUrls));
-        };
-
         if (editing is null)
         {
             SelectedPhp = PhpChoices[0];
-            SelectedAddress = Addresses[0];
             Cert = DefaultCert(SiteKind.Domain);
+            Access = AccessLevel.Network;
         }
         else
         {
@@ -147,21 +92,18 @@ public sealed partial class AddSiteViewModel : ObservableObject
     }
 
     public IReadOnlyList<PhpChoice> PhpChoices { get; }
-    public IReadOnlyList<AddressChoice> Addresses { get; }
     public ObservableCollection<AccessChoice> AccessOptions { get; } = [];
-    public ObservableCollection<MountRow> Mounts { get; } = [];
 
     public bool IsEditing => _editing is not null;
     public string Title => _editing is { } e ? $"Edit {e.Name}" : "Add a site";
     public string SaveLabel => IsEditing ? "Save" : "Create site";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDomain), nameof(IsIp), nameof(IsHtdocs), nameof(ShowCert),
+    [NotifyPropertyChangedFor(nameof(IsDomain), nameof(IsHtdocs), nameof(ShowCert),
         nameof(PreviewUrls), nameof(Footnote), nameof(ShowCopyChoice))]
     public partial SiteKind Kind { get; set; }
 
     public bool IsDomain => Kind == SiteKind.Domain;
-    public bool IsIp => Kind == SiteKind.Ip;
     public bool IsHtdocs => Kind == SiteKind.Htdocs;
     public bool ShowCert => Kind != SiteKind.Htdocs;
 
@@ -171,10 +113,6 @@ public sealed partial class AddSiteViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string Aliases { get; set; } = "";
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PreviewUrls), nameof(Footnote))]
-    public partial AddressChoice? SelectedAddress { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PreviewUrls))]
@@ -211,17 +149,11 @@ public sealed partial class AddSiteViewModel : ObservableObject
     public partial string ProxyTarget { get; set; } = ProjectDetector.ViteTarget;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsLoadBalancer), nameof(IsLocalDev), nameof(IsHttpOnly),
-        nameof(PreviewUrls), nameof(Footnote))]
+    [NotifyPropertyChangedFor(nameof(IsLocalDev), nameof(IsHttpOnly), nameof(PreviewUrls), nameof(Footnote))]
     public partial CertSource Cert { get; set; }
 
-    public bool IsLoadBalancer { get => Cert == CertSource.LoadBalancer; set { if (value) Cert = CertSource.LoadBalancer; } }
     public bool IsLocalDev { get => Cert == CertSource.LocalDev; set { if (value) Cert = CertSource.LocalDev; } }
     public bool IsHttpOnly { get => Cert == CertSource.None; set { if (value) Cert = CertSource.None; } }
-
-    [ObservableProperty]
-    public partial string TrustedProxies { get; set; } = "";
-
 
     [ObservableProperty]
     public partial bool Busy { get; set; }
@@ -230,24 +162,8 @@ public sealed partial class AddSiteViewModel : ObservableObject
     public string CancelLabel => _saved is null ? "Cancel" : "Close";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowAllowedIps), nameof(PreviewUrls))]
+    [NotifyPropertyChangedFor(nameof(PreviewUrls))]
     public partial AccessLevel Access { get; set; }
-
-    public bool ShowAllowedIps => Access == AccessLevel.SpecificIps;
-
-    [ObservableProperty]
-    public partial string AllowedIps { get; set; } = "";
-
-    [ObservableProperty]
-    public partial bool PasswordProtected { get; set; }
-
-    [ObservableProperty]
-    public partial string User { get; set; } = "";
-
-    [ObservableProperty]
-    public partial string Password { get; set; } = "";
-
-    public string? PasswordHint => _editing is { PasswordProtected: true } ? "Leave both empty to keep the current user name and password." : null;
 
     [ObservableProperty]
     public partial string? NameError { get; set; }
@@ -262,13 +178,7 @@ public sealed partial class AddSiteViewModel : ObservableObject
     public partial string? PhpError { get; set; }
 
     [ObservableProperty]
-    public partial string? MountsError { get; set; }
-
-    [ObservableProperty]
     public partial string? CertError { get; set; }
-
-    [ObservableProperty]
-    public partial string? TrustedProxiesError { get; set; }
 
     [ObservableProperty]
     public partial string? AccessError { get; set; }
@@ -280,19 +190,12 @@ public sealed partial class AddSiteViewModel : ObservableObject
     {
         get
         {
-            var https = Cert is CertSource.LetsEncrypt or CertSource.Imported or CertSource.LocalDev;
+            var https = Cert == CertSource.LocalDev;
             switch (Kind)
             {
                 case SiteKind.Domain:
                     var name = Name.Trim().ToLowerInvariant();
-                    if (name.Length == 0) return [];
-                    if (Cert == CertSource.LoadBalancer)
-                        return [$"https://{name}  (TLS at load balancer)", $"http://{WithPort(name, false)}  (load balancer → this server)"];
-                    return [(https ? "https://" : "http://") + WithPort(name, https)];
-                case SiteKind.Ip:
-                    if (AddressShown is not { } address) return [];
-                    var host = (https ? "https://" : "http://") + WithPort(address.Contains(':') ? $"[{address}]" : address, https);
-                    return [host + "/", .. Mounts.Select(m => m.UrlPath.Trim().Trim('/')).Where(p => p.Length > 0).Select(p => $"{host}/{p}")];
+                    return name.Length == 0 ? [] : [(https ? "https://" : "http://") + WithPort(name, https)];
                 default:
                     var folder = FolderName.Trim();
                     if (folder.Length == 0) return [];
@@ -306,18 +209,10 @@ public sealed partial class AddSiteViewModel : ObservableObject
 
     public string Footnote => Kind switch
     {
-        SiteKind.Ip when SelectedAddress?.Value == "*" => "This replaces the htdocs listing on every address of this machine. Domain sites keep working.",
-        SiteKind.Ip => $"This replaces the htdocs listing on {SelectedAddress?.Value}. Domain sites keep working.",
         SiteKind.Htdocs => "htdocs folders are never served to the internet.",
-        _ => Cert switch
-        {
-            CertSource.LocalDev => "Trusted on this PC only. Anvil adds .test names to the hosts file for you.",
-            CertSource.LoadBalancer => "The domain points at the load balancer; the load balancer forwards to this server.",
-            _ => "Domain must point at this server.",
-        },
+        _ when Cert == CertSource.LocalDev => "Trusted on this PC only. Anvil adds .test names to the hosts file for you.",
+        _ => "Anvil adds .test names to the hosts file for you.",
     };
-
-    private string? AddressShown => SelectedAddress?.Value == "*" ? _context.LanIp ?? "localhost" : SelectedAddress?.Value;
 
     private bool IsInsideHtdocs
     {
@@ -341,14 +236,6 @@ public sealed partial class AddSiteViewModel : ObservableObject
     partial void OnKindChanged(SiteKind value)
     {
         if (!IsEditing) Cert = DefaultCert(value);
-        if (value == SiteKind.Htdocs) Access = AccessLevel.Network;
-        RebuildAccess();
-    }
-
-    // Let's Encrypt and imported certificates are gone: a site saved with one falls back to the kind's default.
-    partial void OnCertChanged(CertSource value)
-    {
-        if (value is CertSource.LetsEncrypt or CertSource.Imported) Cert = DefaultCert(Kind);
     }
 
     partial void OnAccessChanged(AccessLevel value)
@@ -358,9 +245,6 @@ public sealed partial class AddSiteViewModel : ObservableObject
 
     [RelayCommand]
     private void PickDomain() => Kind = SiteKind.Domain;
-
-    [RelayCommand]
-    private void PickIp() => Kind = SiteKind.Ip;
 
     [RelayCommand]
     private void PickHtdocs() => Kind = SiteKind.Htdocs;
@@ -398,13 +282,6 @@ public sealed partial class AddSiteViewModel : ObservableObject
             _ => SelectedPhp is { Type: SiteType.Php } current ? current : PhpChoices[0],
         };
         if (detected.ProxyTarget is { } target) ProxyTarget = target;
-    }
-
-    [RelayCommand]
-    private void AddMount()
-    {
-        var row = new MountRow(PhpChoices, r => Mounts.Remove(r), BrowseMountAsync);
-        Mounts.Add(row);
     }
 
     [RelayCommand]
@@ -447,8 +324,7 @@ public sealed partial class AddSiteViewModel : ObservableObject
                 return;
             }
 
-            var secrets = PasswordProtected && User.Trim().Length > 0 && Password.Length > 0 ? new SiteSecrets(User.Trim(), Password) : null;
-            var result = await _api.SaveSiteAsync(site, secrets);
+            var result = await _api.SaveSiteAsync(site);
             if (!result.Ok)
             {
                 GeneralError = Describe(result);
@@ -481,12 +357,7 @@ public sealed partial class AddSiteViewModel : ObservableObject
     private SiteDefinition Build()
     {
         var choice = SelectedPhp ?? PhpChoices[0];
-        var name = Kind switch
-        {
-            SiteKind.Domain => Name.Trim().ToLowerInvariant(),
-            SiteKind.Ip => SelectedAddress?.Value ?? "",
-            _ => FolderName.Trim(),
-        };
+        var name = IsDomain ? Name.Trim().ToLowerInvariant() : FolderName.Trim();
         var root = choice.Type == SiteType.Proxy ? ProxyTarget.Trim()
             : IsHtdocs && !IsEditing && !IsInsideHtdocs && CopyIntoHtdocs ? Path.Combine(_context.HtdocsDir, FolderName.Trim())
             : ServeRoot;
@@ -500,12 +371,8 @@ public sealed partial class AddSiteViewModel : ObservableObject
             Root = root,
             PhpVersion = choice.Type == SiteType.Php ? choice.Version : null,
             Aliases = IsDomain ? Split(Aliases) : [],
-            Mounts = IsIp ? Mounts.Select(m => m.ToMount()).ToList() : [],
             Cert = IsHtdocs ? CertSource.None : Cert,
-            TrustedProxies = !IsHtdocs && Cert == CertSource.LoadBalancer ? Split(TrustedProxies) : [],
             Access = Access,
-            AllowedIps = Access == AccessLevel.SpecificIps ? Split(AllowedIps) : [],
-            PasswordProtected = PasswordProtected,
         };
     }
 
@@ -514,7 +381,6 @@ public sealed partial class AddSiteViewModel : ObservableObject
         Kind = e.Kind;
         Name = e.Kind == SiteKind.Domain ? e.Name : "";
         FolderName = e.Kind == SiteKind.Htdocs ? e.Name : "";
-        SelectedAddress = Addresses.FirstOrDefault(a => a.Value == e.Name) ?? Addresses[0];
         ProjectFolder = e.Type == SiteType.Proxy ? "" : e.Root;
         if (e.Type == SiteType.Proxy) ProxyTarget = e.Root;
         SelectedPhp = e.Type switch
@@ -524,55 +390,18 @@ public sealed partial class AddSiteViewModel : ObservableObject
             _ => PhpChoices.First(c => c.Type == SiteType.Php && c.Version == e.PhpVersion),
         };
         Aliases = string.Join(" ", e.Aliases);
-        foreach (var mount in e.Mounts)
-        {
-            AddMount();
-            var row = Mounts[^1];
-            row.UrlPath = mount.UrlPath;
-            row.Root = mount.Root;
-            row.Php = PhpChoices.FirstOrDefault(c => c.Type == mount.Type && c.Version == mount.PhpVersion) ?? PhpChoices[0];
-        }
         Cert = e.Cert;
-        TrustedProxies = string.Join(" ", e.TrustedProxies);
         Access = e.Access;
-        AllowedIps = string.Join(" ", e.AllowedIps);
-        PasswordProtected = e.PasswordProtected;
     }
 
     private void RebuildAccess()
     {
         AccessOptions.Clear();
-        foreach (var (level, label) in AccessLabels.Where(a => !(IsHtdocs && a.Level == AccessLevel.Everyone)))
+        foreach (var (level, label) in AccessLabels)
             AccessOptions.Add(new AccessChoice(level, label, l => Access = l) { IsSelected = level == Access });
     }
 
-    private async Task BrowseMountAsync(MountRow row)
-    {
-        if (await _picker.PickFolderAsync("Choose the folder for " + row.UrlPath) is not { } folder) return;
-        row.Root = folder;
-        try
-        {
-            var detected = await _api.DetectAsync(folder);
-            row.Root = detected.Type == SiteType.Proxy ? folder : detected.ServeRoot;
-            if (detected.Type == SiteType.Static) row.Php = PhpChoices.First(c => c.Type == SiteType.Static);
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            Log.Warning(e, "Project detection failed");
-        }
-    }
-
-    private void OnMountChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(MountRow.UrlPath)) OnPropertyChanged(nameof(PreviewUrls));
-    }
-
-    private CertSource DefaultCert(SiteKind kind) => (kind, _context.Settings.Mode) switch
-    {
-        (SiteKind.Domain, _) => CertSource.LocalDev,
-        (SiteKind.Ip, ServerMode.Production) => CertSource.LoadBalancer,
-        _ => CertSource.None,
-    };
+    private static CertSource DefaultCert(SiteKind kind) => kind == SiteKind.Domain ? CertSource.LocalDev : CertSource.None;
 
     private string WithPort(string host, bool https)
     {
@@ -581,11 +410,11 @@ public sealed partial class AddSiteViewModel : ObservableObject
     }
 
     private static bool NeedsHtdocsEntry(SiteDefinition site) =>
-        site.Access != SiteSet.DefaultHtdocsAccess || site.PhpVersion is not null || site.PasswordProtected || site.Type != SiteType.Php;
+        site.Access != SiteSet.DefaultHtdocsAccess || site.PhpVersion is not null || site.Type != SiteType.Php;
 
     private void ClearErrors()
     {
-        NameError = AliasesError = RootError = PhpError = MountsError = CertError = TrustedProxiesError = AccessError = GeneralError = null;
+        NameError = AliasesError = RootError = PhpError = CertError = AccessError = GeneralError = null;
     }
 
     private void Show(IReadOnlyList<ValidationError> errors)
@@ -599,10 +428,8 @@ public sealed partial class AddSiteViewModel : ObservableObject
                 case nameof(SiteDefinition.Aliases): AliasesError = error.Message; break;
                 case nameof(SiteDefinition.Root): RootError = error.Message; break;
                 case nameof(SiteDefinition.PhpVersion): PhpError = error.Message; break;
-                case nameof(SiteDefinition.Mounts): MountsError = error.Message; break;
                 case nameof(SiteDefinition.Cert): CertError = error.Message; break;
-                case nameof(SiteDefinition.TrustedProxies): TrustedProxiesError = error.Message; break;
-                case nameof(SiteDefinition.Access) or nameof(SiteDefinition.AllowedIps): AccessError = error.Message; break;
+                case nameof(SiteDefinition.Access): AccessError = error.Message; break;
                 default: other.Add(error.Message); break;
             }
         }

@@ -17,7 +17,6 @@ namespace Anvil.Integration.Tests;
 public sealed class AccentedRootTests : IAsyncDisposable
 {
     private const int Port = 18080;
-    private const string Address = "192.0.2.10";
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
     private readonly AppPaths _paths = Runtimes.NewRoot("ap-it-Tëst Ärbi");
     private readonly JobObject _job = new();
@@ -52,7 +51,7 @@ public sealed class AccentedRootTests : IAsyncDisposable
         }
     }
 
-    /// <summary>htdocs with ini.php, and an IP site whose /demo mount is a Laravel-style app with one front controller.</summary>
+    /// <summary>htdocs with ini.php, a static domain site, and a PHP domain site under an accented folder.</summary>
     private async Task StartAsync()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -72,11 +71,11 @@ public sealed class AccentedRootTests : IAsyncDisposable
         Directory.CreateDirectory(demo);
         File.WriteAllText(Path.Combine(main, "index.html"), "vitrine");
         File.WriteAllText(Path.Combine(demo, "index.php"), "<?php echo 'front|', $_SERVER['REQUEST_URI'], '|', $_SERVER['SCRIPT_NAME'];");
-        var site = new SiteDefinition
-        {
-            Id = SiteSet.IdFor(SiteKind.Ip, Address), Kind = SiteKind.Ip, Type = SiteType.Static, Name = Address, Root = main,
-            Index = ["index.html"], Mounts = [new SiteMount("/demo", demo, SiteType.Php, null)],
-        };
+        SiteDefinition[] sites =
+        [
+            new() { Id = "vitrine.test", Kind = SiteKind.Domain, Type = SiteType.Static, Name = "vitrine.test", Root = main, Index = ["index.html"] },
+            new() { Id = "demo.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "demo.test", Root = demo },
+        ];
 
         var settings = new AppSettings
         {
@@ -96,7 +95,7 @@ public sealed class AccentedRootTests : IAsyncDisposable
             Profile = BuiltInProfiles.Development,
             ApacheVersion = apache,
             Pools = pools,
-            Sites = [site],
+            Sites = sites,
         };
         var tester = new ApacheConfigTester(_paths, () => apache);
         var outcome = await new ConfigApplier(new ConfigRenderer(_paths), new ConfigWriter(_paths), tester).ApplyAsync(input, ct);
@@ -122,12 +121,11 @@ public sealed class AccentedRootTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Laravel_style_app_under_a_mount_answers_its_routes()
+    public async Task Domain_sites_under_an_accented_folder_answer()
     {
         await StartAsync();
 
-        Assert.Equal((HttpStatusCode.OK, "vitrine"), await GetAsync("/", Address));
-        Assert.Equal((HttpStatusCode.OK, "front|/demo/login|/demo/index.php"), await GetAsync("/demo/login", Address));
-        Assert.Equal((HttpStatusCode.OK, "front|/demo/|/demo/index.php"), await GetAsync("/demo/", Address));
+        Assert.Equal((HttpStatusCode.OK, "vitrine"), await GetAsync("/", "vitrine.test"));
+        Assert.Equal((HttpStatusCode.OK, "front|/|/index.php"), await GetAsync("/", "demo.test"));
     }
 }

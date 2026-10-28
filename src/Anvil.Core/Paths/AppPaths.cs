@@ -21,7 +21,6 @@ public sealed class AppPaths(string root)
     public string HttpdConf => Path.Combine(ApacheConfDir, "httpd.conf");
     public string PhpConfRoot => Path.Combine(Data, "php");
     public string Certs => Path.Combine(Data, "certs");
-    public string Auth => Path.Combine(Data, "auth");
     public string Logs => Path.Combine(Data, "logs");
     public string Backups => Path.Combine(Data, "backups");
     public string Run => Path.Combine(Data, "run");
@@ -75,7 +74,7 @@ public sealed class AppPaths(string root)
     public void EnsureCreated()
     {
         foreach (var dir in new[] { Runtime, Catalog, Htdocs, Data, Conf, Vhosts, Sites, ApacheConfDir,
-                     PhpConfRoot, Certs, Auth, Logs, Backups, Run, Tmp, Secrets, Profiles })
+                     PhpConfRoot, Certs, Logs, Backups, Run, Tmp, Secrets, Profiles })
             Directory.CreateDirectory(dir);
     }
 

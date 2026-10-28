@@ -91,7 +91,7 @@ public sealed class SiteOperationsTests : IDisposable
         var orchestrator = await StartedAsync();
         await orchestrator.StartAsync(null, Ct);
 
-        var result = await orchestrator.SaveSiteAsync(Site("shop.example.com"), null, Ct);
+        var result = await orchestrator.SaveSiteAsync(Site("shop.example.com"), Ct);
 
         Assert.True(result.Ok, result.Error);
         Assert.True(File.Exists(SiteJson("shop.example.com")));
@@ -104,13 +104,13 @@ public sealed class SiteOperationsTests : IDisposable
     public async Task Failing_config_test_leaves_sites_dir_unchanged()
     {
         var orchestrator = await StartedAsync();
-        await orchestrator.SaveSiteAsync(Site("shop.example.com"), null, Ct);
+        await orchestrator.SaveSiteAsync(Site("shop.example.com"), Ct);
         var before = SitesDir();
         var vhostBefore = File.ReadAllText(SiteVhost("shop.example.com"));
         _tester.Next = new ConfigTestResult(false, "AH00526: Syntax error");
 
-        var added = await orchestrator.SaveSiteAsync(Site("blog.test"), null, Ct);
-        var edited = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Aliases = ["www.shop.example.com"] }, null, Ct);
+        var added = await orchestrator.SaveSiteAsync(Site("blog.test"), Ct);
+        var edited = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Aliases = ["www.shop.example.com"] }, Ct);
 
         Assert.False(added.Ok);
         Assert.False(edited.Ok);
@@ -125,10 +125,10 @@ public sealed class SiteOperationsTests : IDisposable
     {
         var orchestrator = await StartedAsync();
 
-        var result = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Access = AccessLevel.SpecificIps }, null, Ct);
+        var result = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { Name = "shop" }, Ct);
 
         Assert.False(result.Ok);
-        Assert.Contains("allowed IP", result.Error);
+        Assert.Contains("Enter a domain", result.Error);
         Assert.False(Directory.Exists(_paths.Sites) && Directory.GetFiles(_paths.Sites).Length > 0);
     }
 
@@ -138,13 +138,9 @@ public sealed class SiteOperationsTests : IDisposable
         var orchestrator = await StartedAsync();
         TestPhp.Install(_paths, "8.5.12");
 
-        var errors = orchestrator.ValidateSite(Site("shop.example.com") with
-        {
-            PhpVersion = "7.4.33",
-            Mounts = [new SiteMount("/demo", _paths.Htdocs, SiteType.Php, "8.1.34")],
-        });
+        var errors = orchestrator.ValidateSite(Site("shop.example.com") with { PhpVersion = "7.4.33" });
 
-        Assert.Equal(["PhpVersion", "Mounts"], errors.Select(e => e.Field));
+        Assert.Equal(["PhpVersion"], errors.Select(e => e.Field));
         Assert.Empty(orchestrator.ValidateSite(Site("shop.example.com") with { PhpVersion = "8.5.12" }));
     }
 
@@ -163,8 +159,8 @@ public sealed class SiteOperationsTests : IDisposable
     {
         var orchestrator = await StartedAsync();
 
-        var result = await orchestrator.SaveSiteAsync(Site("blog.test") with { Aliases = ["www.blog.test"] }, null, Ct);
-        var second = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { AddToHosts = true }, null, Ct);
+        var result = await orchestrator.SaveSiteAsync(Site("blog.test") with { Aliases = ["www.blog.test"] }, Ct);
+        var second = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { AddToHosts = true }, Ct);
 
         Assert.Equal(["blog.test", "www.blog.test"], result.HostsDomains);
         Assert.Equal(["blog.test", "www.blog.test", "shop.example.com"], second.HostsDomains);
@@ -176,8 +172,8 @@ public sealed class SiteOperationsTests : IDisposable
         _hosts = HostsFile.ApplyBlock(_hosts, ["blog.test"]);
         var orchestrator = await StartedAsync();
 
-        var test = await orchestrator.SaveSiteAsync(Site("blog.test"), null, Ct);
-        var publicSite = await orchestrator.SaveSiteAsync(Site("shop.example.com"), null, Ct);
+        var test = await orchestrator.SaveSiteAsync(Site("blog.test"), Ct);
+        var publicSite = await orchestrator.SaveSiteAsync(Site("shop.example.com"), Ct);
 
         Assert.True(test.Ok, test.Error);
         Assert.Null(test.HostsDomains);
@@ -189,7 +185,7 @@ public sealed class SiteOperationsTests : IDisposable
     {
         var orchestrator = await StartedAsync();
 
-        var result = await orchestrator.SaveSiteAsync(Site("dev.test") with { Cert = CertSource.LocalDev, Aliases = ["www.dev.test"] }, null, Ct);
+        var result = await orchestrator.SaveSiteAsync(Site("dev.test") with { Cert = CertSource.LocalDev, Aliases = ["www.dev.test"] }, Ct);
 
         Assert.True(result.Ok, result.Error);
         var cert = new CertificateStore(_paths).Get("dev.test");
@@ -200,27 +196,10 @@ public sealed class SiteOperationsTests : IDisposable
     }
 
     [Fact]
-    public async Task Password_needs_secrets_once_and_writes_htpasswd()
-    {
-        var orchestrator = await StartedAsync();
-        var site = Site("shop.example.com") with { PasswordProtected = true };
-
-        var missing = await orchestrator.SaveSiteAsync(site, null, Ct);
-        var saved = await orchestrator.SaveSiteAsync(site, new SiteSecrets("client", "s3cret"), Ct);
-        var resaved = await orchestrator.SaveSiteAsync(site with { Aliases = ["www.shop.example.com"] }, null, Ct);
-
-        Assert.False(missing.Ok);
-        Assert.True(saved.Ok, saved.Error);
-        Assert.True(resaved.Ok, resaved.Error);
-        Assert.True(HtpasswdFile.Verify(Path.Combine(_paths.Auth, "shop.example.com.htpasswd"), "client", "s3cret"));
-        Assert.Contains("Require valid-user", File.ReadAllText(SiteVhost("shop.example.com")));
-    }
-
-    [Fact]
     public async Task Remove_deletes_json_cert_and_vhost()
     {
         var orchestrator = await StartedAsync();
-        await orchestrator.SaveSiteAsync(Site("dev.test") with { Cert = CertSource.LocalDev, PasswordProtected = true }, new SiteSecrets("me", "pw"), Ct);
+        await orchestrator.SaveSiteAsync(Site("dev.test") with { Cert = CertSource.LocalDev }, Ct);
 
         var result = await orchestrator.RemoveSiteAsync("dev.test", Ct);
 
@@ -228,7 +207,6 @@ public sealed class SiteOperationsTests : IDisposable
         Assert.False(File.Exists(SiteJson("dev.test")));
         Assert.False(File.Exists(SiteVhost("dev.test")));
         Assert.Null(new CertificateStore(_paths).Get("dev.test"));
-        Assert.False(File.Exists(Path.Combine(_paths.Auth, "dev.test.htpasswd")));
         Assert.False((await orchestrator.RemoveSiteAsync("dev.test", Ct)).Ok);
     }
 
@@ -236,7 +214,7 @@ public sealed class SiteOperationsTests : IDisposable
     public async Task Rejected_remove_keeps_the_site()
     {
         var orchestrator = await StartedAsync();
-        await orchestrator.SaveSiteAsync(Site("shop.example.com"), null, Ct);
+        await orchestrator.SaveSiteAsync(Site("shop.example.com"), Ct);
         _tester.Next = new ConfigTestResult(false, "AH00526");
 
         var result = await orchestrator.RemoveSiteAsync("shop.example.com", Ct);
@@ -250,7 +228,7 @@ public sealed class SiteOperationsTests : IDisposable
     public async Task Disabled_site_keeps_json_and_loses_vhost()
     {
         var orchestrator = await StartedAsync();
-        await orchestrator.SaveSiteAsync(Site("shop.example.com"), null, Ct);
+        await orchestrator.SaveSiteAsync(Site("shop.example.com"), Ct);
 
         var result = await orchestrator.SetSiteEnabledAsync("shop.example.com", false, Ct);
 
@@ -264,9 +242,9 @@ public sealed class SiteOperationsTests : IDisposable
     {
         var orchestrator = await StartedAsync();
         var old = Site("old.test");
-        await orchestrator.SaveSiteAsync(old, null, Ct);
+        await orchestrator.SaveSiteAsync(old, Ct);
 
-        var result = await orchestrator.SaveSiteAsync(old with { Name = "new.test" }, null, Ct);
+        var result = await orchestrator.SaveSiteAsync(old with { Name = "new.test" }, Ct);
 
         Assert.True(result.Ok, result.Error);
         Assert.Equal(["new.test"], orchestrator.GetSites().Select(s => s.Id));
@@ -284,7 +262,7 @@ public sealed class SiteOperationsTests : IDisposable
         var orchestrator = await StartedAsync();
         await orchestrator.StartAsync(null, Ct);
 
-        var result = await orchestrator.SaveSiteAsync(Site("legacy.test") with { PhpVersion = "8.4.27" }, null, Ct);
+        var result = await orchestrator.SaveSiteAsync(Site("legacy.test") with { PhpVersion = "8.4.27" }, Ct);
 
         Assert.True(result.Ok, result.Error);
         Assert.Equal(["php85", "php84"], _pools.Running.Select(p => p.Key).Order().Reverse());
@@ -299,16 +277,13 @@ public sealed class SiteOperationsTests : IDisposable
         var store = new SettingsStore(_paths);
         store.Save(store.Load() with { DefaultPhp = "8.5.12" });
         var orchestrator = await StartedAsync();
-        await orchestrator.SaveSiteAsync(Site("shop.test"), null, Ct);
-        await orchestrator.SaveSiteAsync(Site("192.168.10.2", SiteKind.Ip) with
-        {
-            PhpVersion = "8.4.27", Mounts = [new SiteMount("/demo", _paths.Htdocs, SiteType.Php, "8.5.12")],
-        }, null, Ct);
+        await orchestrator.SaveSiteAsync(Site("shop.test"), Ct);
+        await orchestrator.SaveSiteAsync(Site("blog.test") with { PhpVersion = "8.4.27" }, Ct);
 
         var php = orchestrator.GetPhp();
 
-        Assert.Equal(["htdocs", "192.168.10.2", "shop.test"], php.Single(p => p.Version == "8.5.12").UsedBy);
-        Assert.Equal(["192.168.10.2"], php.Single(p => p.Version == "8.4.27").UsedBy);
+        Assert.Equal(["htdocs", "shop.test"], php.Single(p => p.Version == "8.5.12").UsedBy);
+        Assert.Equal(["blog.test"], php.Single(p => p.Version == "8.4.27").UsedBy);
     }
 
     [Fact]
@@ -372,11 +347,11 @@ public sealed class SiteOperationsTests : IDisposable
     {
         _hosts = HostsFile.ApplyBlock(_hosts, ["shop.test"]);
         var orchestrator = await StartedAsync();
-        Assert.Null((await orchestrator.SaveSiteAsync(Site("shop.test"), null, Ct)).HostsDomains);
+        Assert.Null((await orchestrator.SaveSiteAsync(Site("shop.test"), Ct)).HostsDomains);
 
         _hosts += "# >>> ApacheManager >>>\r\n127.0.0.1\tshop.test\r\n# <<< ApacheManager <<<\r\n";
 
-        Assert.Equal(["shop.test"], (await orchestrator.SaveSiteAsync(Site("shop.test"), null, Ct)).HostsDomains);
+        Assert.Equal(["shop.test"], (await orchestrator.SaveSiteAsync(Site("shop.test"), Ct)).HostsDomains);
     }
 
     [Fact]
@@ -384,8 +359,8 @@ public sealed class SiteOperationsTests : IDisposable
     {
         var orchestrator = await StartedAsync();
         await orchestrator.StartAsync(null, Ct);
-        await orchestrator.SaveSiteAsync(Site("shop.test") with { Cert = CertSource.LocalDev }, null, Ct);
-        await orchestrator.SaveSiteAsync(Site("plain.test"), null, Ct);
+        await orchestrator.SaveSiteAsync(Site("shop.test") with { Cert = CertSource.LocalDev }, Ct);
+        await orchestrator.SaveSiteAsync(Site("plain.test"), Ct);
         var before = File.ReadAllText(new CertificateStore(_paths).Get("shop.test")!.CertFile);
         var restarts = _apache.Restarts;
 
@@ -437,20 +412,4 @@ public sealed class SiteOperationsTests : IDisposable
         return (cert.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem());
     }
 
-    [Fact]
-    public async Task Production_warnings_follow_the_sites()
-    {
-        var store = new SettingsStore(_paths);
-        store.Save(store.Load() with { Mode = ServerMode.Production });
-        var orchestrator = await StartedAsync();
-
-        var pma = Site("pma.example.com");
-        Directory.CreateDirectory(Path.Combine(pma.Root, "libraries", "classes"));
-        File.WriteAllText(Path.Combine(pma.Root, "config.sample.inc.php"), "<?php");
-        Assert.True((await orchestrator.SaveSiteAsync(pma, null, Ct)).Ok);
-        Assert.Contains(orchestrator.Status().Findings, f => f.Id == "prod-pma-public");
-
-        Assert.True((await orchestrator.SaveSiteAsync(pma with { Access = AccessLevel.Network }, null, Ct)).Ok);
-        Assert.DoesNotContain(orchestrator.Status().Findings, f => f.Id == "prod-pma-public");
-    }
 }

@@ -25,7 +25,7 @@ public sealed class SitesViewModelTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private SitesViewModel Make() => new(_api, _elevator, _ca, _picker, Paths, () => ["192.168.10.2"], () => "192.168.10.2", ui: a => a());
+    private SitesViewModel Make() => new(_api, _elevator, _ca, _picker, Paths, () => "192.168.10.2", ui: a => a());
 
     private static SiteDefinition Site(string name, SiteKind kind = SiteKind.Domain) =>
         new() { Id = SiteSet.IdFor(kind, name), Kind = kind, Type = SiteType.Php, Name = name, Root = $@"D:\Sites\{name}" };
@@ -47,10 +47,7 @@ public sealed class SitesViewModelTests
     public async Task Rows_describe_each_site()
     {
         _api.Sites.Add(Site("shop.test") with { Aliases = ["www.shop.test"], Cert = CertSource.LocalDev, Access = AccessLevel.ThisPc });
-        _api.Sites.Add(Site("192.168.10.2", SiteKind.Ip) with
-        {
-            Mounts = [new SiteMount("/demo", @"D:\Sites\demo", SiteType.Php, null)], Cert = CertSource.LoadBalancer, Enabled = false,
-        });
+        _api.Sites.Add(Site("blog.test") with { Enabled = false });
         _api.Htdocs.Add(new HtdocsEntry("blog", @"D:\Anvil\htdocs\blog", false, null, AccessLevel.Network));
         var vm = Make();
 
@@ -65,10 +62,12 @@ public sealed class SitesViewModelTests
         Assert.Equal("This PC only", shop.AccessText);
         Assert.Equal("Enabled", shop.StatusText);
         Assert.Equal("https://shop.test", shop.Url);
-        var ip = vm.Sites.Single(r => r.Name == "192.168.10.2");
-        Assert.Equal("IP site · single site mode · /demo", ip.Detail);
-        Assert.Equal("HTTP only · client load balancer", ip.Certificate);
-        Assert.Equal("Disabled", ip.StatusText);
+        var plain = vm.Sites.Single(r => r.Name == "blog.test");
+        Assert.Equal("", plain.Detail);
+        Assert.Equal("HTTP only", plain.Certificate);
+        Assert.Equal("My network", plain.AccessText);
+        Assert.Equal("Disabled", plain.StatusText);
+        Assert.Equal("http://blog.test", plain.Url);
         var blog = Assert.Single(vm.Htdocs);
         Assert.Equal("localhost/blog", blog.Local);
         Assert.Equal("192.168.10.2/blog", blog.Network);

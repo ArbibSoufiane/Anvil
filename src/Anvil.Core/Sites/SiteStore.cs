@@ -1,11 +1,15 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Anvil.Core.IO;
 using Anvil.Core.Paths;
 
 namespace Anvil.Core.Sites;
 
-/// <summary>One JSON file per site in data\sites. A file that cannot be read is left in place and reported in Warnings.</summary>
+/// <summary>
+/// One JSON file per site in data\sites. A file that cannot be read, or a site this build no longer serves, is left in
+/// place and reported in Warnings. Files from older builds are upgraded in memory by <see cref="LegacySiteJson"/>.
+/// </summary>
 public sealed partial class SiteStore(AppPaths paths)
 {
     [GeneratedRegex("^[a-z0-9][a-z0-9._-]*$")]
@@ -23,7 +27,14 @@ public sealed partial class SiteStore(AppPaths paths)
             {
                 try
                 {
-                    if (JsonFiles.Read<SiteDefinition>(file) is { } site) sites.Add(site);
+                    if (JsonNode.Parse(File.ReadAllText(file)) is not JsonObject json) continue;
+                    if (LegacySiteJson.Upgrade(json, Path.GetFileName(file)) is { } skipped)
+                    {
+                        warnings.Add(skipped);
+                        continue;
+                    }
+
+                    if (json.Deserialize<SiteDefinition>(JsonFiles.Options) is { } site) sites.Add(site);
                 }
                 catch (JsonException ex)
                 {

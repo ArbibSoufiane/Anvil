@@ -90,46 +90,28 @@ public sealed class ApacheConfigTests : IDisposable
             var request = new CertificateRequest("CN=shop.example.com", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
             using var cert = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(90));
             var certs = new CertificateStore(paths);
-            certs.Save("shop.example.com", cert.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem(), cert.ExportCertificatePem(), CertSource.Imported);
+            certs.Save("shop.example.com", cert.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem(), cert.ExportCertificatePem(), CertSource.LocalDev);
             new LocalCa(paths, certs, TimeProvider.System).Issue("dev.test", ["dev.test"]);
 
             SiteDefinition[] sites =
             [
                 Site(SiteKind.Domain, "shop.example.com", Folder("café shop")) with
                 {
-                    Cert = CertSource.Imported, Aliases = ["www.shop.example.com"], PasswordProtected = true,
+                    Cert = CertSource.LocalDev, Aliases = ["www.shop.example.com"],
                 },
-                Site(SiteKind.Ip, "192.168.10.2", Folder("kiosk")) with
-                {
-                    Access = AccessLevel.Network,
-                    Mounts =
-                    [
-                        new SiteMount("/demo", Folder("démo"), SiteType.Php, "8.4.27"),
-                        new SiteMount("/docs", Folder("docs"), SiteType.Static, null),
-                        new SiteMount("/api", "http://127.0.0.1:3000", SiteType.Proxy, null),
-                    ],
-                },
-                Site(SiteKind.Ip, "2001:db8::10", Folder("v6")),
-                Site(SiteKind.Ip, "*", Folder("all")) with { Access = AccessLevel.SpecificIps, AllowedIps = ["203.0.113.0/24"] },
-                Site(SiteKind.Domain, "app.test", "http://127.0.0.1:5173") with
-                {
-                    Type = SiteType.Proxy, Access = AccessLevel.ThisPc, Mounts = [new SiteMount("/files", Folder("files"), SiteType.Static, null)],
-                },
-                Site(SiteKind.Domain, "lb.example.com", Folder("lb")) with
-                {
-                    Cert = CertSource.LoadBalancer, TrustedProxies = ["10.0.0.5", "10.0.1.0/24"], AcceptOnlyFromProxies = true,
-                },
+                Site(SiteKind.Domain, "kiosk.test", Folder("démo")) with { PhpVersion = "8.4.27" },
+                Site(SiteKind.Domain, "app.test", "http://127.0.0.1:5173") with { Type = SiteType.Proxy, Access = AccessLevel.ThisPc },
                 Site(SiteKind.Domain, "static.test", Folder("static")) with { Type = SiteType.Static, Index = ["index.html"] },
                 Site(SiteKind.Domain, "dev.test", Folder("dev")) with { Cert = CertSource.LocalDev },
                 Site(SiteKind.Htdocs, "legacy", Path.Combine(paths.Htdocs, "legacy")) with
                 {
-                    PhpVersion = "8.4.27", Access = AccessLevel.SpecificIps, AllowedIps = ["192.168.1.50"],
+                    PhpVersion = "8.4.27", Access = AccessLevel.ThisPc,
                 },
             ];
             Directory.CreateDirectory(Path.Combine(paths.Htdocs, "legacy"));
             HtdocsEntry[] htdocs =
             [
-                new("legacy", Path.Combine(paths.Htdocs, "legacy"), false, "8.4.27", AccessLevel.SpecificIps),
+                new("legacy", Path.Combine(paths.Htdocs, "legacy"), false, "8.4.27", AccessLevel.ThisPc),
                 new("pma", Folder("phpMyAdmin"), true, null, AccessLevel.ThisPc),
             ];
             PhpPool Pool(string version, int port) => new(version, PhpVersionKey.Of(version), port, 2, 100, "php-cgi.exe", paths.Data, paths.Data);

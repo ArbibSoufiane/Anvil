@@ -15,20 +15,16 @@ using Serilog;
 
 namespace Anvil.App.ViewModels;
 
-/// <summary>One domain or IP site in the sites table.</summary>
+/// <summary>One domain site in the sites table.</summary>
 public sealed partial class SiteRow : ObservableObject
 {
     public required SiteDefinition Site { get; init; }
     public required string Php { get; init; }
     public required string Url { get; init; }
 
-    /// <summary>The certificate on disk for this site, when there is one.</summary>
-
     public string Name => Site.Name;
 
-    public string Detail => Site.Kind == SiteKind.Ip
-        ? string.Join(" · ", new[] { "IP site", "single site mode" }.Concat(Site.Mounts.Select(m => m.UrlPath)))
-        : string.Join(", ", Site.Aliases);
+    public string Detail => string.Join(", ", Site.Aliases);
 
     public string TypeText => Site.Type switch
     {
@@ -41,14 +37,13 @@ public sealed partial class SiteRow : ObservableObject
 
     public string Certificate => Site.Cert switch
     {
-        CertSource.LoadBalancer => "HTTP only · client load balancer",
         CertSource.LocalDev => "Local development",
         _ => "HTTP only",
     };
 
     public string AccessText => SitesViewModel.AccessLabel(Site.Access);
     public bool IsNetwork => Site.Access == AccessLevel.Network;
-    public bool IsRestricted => Site.Access is AccessLevel.ThisPc or AccessLevel.SpecificIps;
+    public bool IsRestricted => Site.Access == AccessLevel.ThisPc;
     public bool HasDetail => Detail.Length > 0;
     public bool IsEnabled => Site.Enabled;
     public string StatusText => Site.Enabled ? "Enabled" : "Disabled";
@@ -66,7 +61,7 @@ public sealed record HtdocsRow(HtdocsEntry Entry, string Local, string Network, 
 }
 
 /// <summary>
-/// The Sites page: domain and IP sites, the htdocs folders, and the add/edit form. After the Agent keeps a change, the
+/// The Sites page: domain sites, the htdocs folders, and the add/edit form. After the Agent keeps a change, the
 /// hosts file and firewall follow through UAC; a refused prompt leaves the site saved and says what is missing.
 /// </summary>
 public sealed partial class SitesViewModel : ObservableObject
@@ -75,7 +70,6 @@ public sealed partial class SitesViewModel : ObservableObject
     private readonly ILocalCaTrust _ca;
     private readonly IFolderPicker _picker;
     private readonly AppPaths _paths;
-    private readonly Func<IReadOnlyList<string>> _addresses;
     private readonly Func<string?> _lanIp;
     private readonly ElevationFollowUp _followUp;
     private readonly Action<Action> _ui;
@@ -83,13 +77,12 @@ public sealed partial class SitesViewModel : ObservableObject
     private IReadOnlyList<PhpVersionInfo> _php = [];
 
     public SitesViewModel(IAgentApi api, IElevator elevator, ILocalCaTrust ca, IFolderPicker picker, AppPaths paths,
-        Func<IReadOnlyList<string>> addresses, Func<string?> lanIp, Action<Action>? ui = null)
+        Func<string?> lanIp, Action<Action>? ui = null)
     {
         _api = api;
         _ca = ca;
         _picker = picker;
         _paths = paths;
-        _addresses = addresses;
         _lanIp = lanIp;
         _followUp = new ElevationFollowUp(elevator);
         _ui = ui ?? (a => Dispatcher.UIThread.Post(a));
@@ -144,10 +137,8 @@ public sealed partial class SitesViewModel : ObservableObject
 
     internal static string AccessLabel(AccessLevel access) => access switch
     {
-        AccessLevel.Everyone => "Everyone",
-        AccessLevel.Network => "My network only",
         AccessLevel.ThisPc => "This PC only",
-        _ => "Specific IPs",
+        _ => "My network",
     };
 
     partial void OnSearchTextChanged(string value) => Filter();
@@ -257,7 +248,7 @@ public sealed partial class SitesViewModel : ObservableObject
     private void DismissTrust() => OfferTrust = false;
 
     private AddSiteViewModel NewEditor(SiteDefinition? editing) =>
-        new(_api, _picker, new SiteFormContext(_php, _addresses(), _settings, HtdocsPath, _lanIp()), OnEditorDoneAsync,
+        new(_api, _picker, new SiteFormContext(_php, _settings, HtdocsPath, _lanIp()), OnEditorDoneAsync,
             () => Editor = null, editing);
 
     private async Task OnEditorDoneAsync(SiteDefinition? site, ApplyResult result)
@@ -303,7 +294,7 @@ public sealed partial class SitesViewModel : ObservableObject
     {
         var defaultPhp = _settings.DefaultPhp is { } v ? $"{v} (default)" : "default";
         Sites.Clear();
-        foreach (var site in sites.Where(s => s.Kind != SiteKind.Htdocs).OrderBy(s => s.Kind == SiteKind.Ip ? 0 : 1).ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var site in sites.Where(s => s.Kind != SiteKind.Htdocs).OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
             Sites.Add(new SiteRow
             {
                 Site = site, Php = site.Type == SiteType.Php ? site.PhpVersion ?? defaultPhp : "none", Url = UrlOf(site),
@@ -339,14 +330,10 @@ public sealed partial class SitesViewModel : ObservableObject
 
     private string UrlOf(SiteDefinition site)
     {
-        var https = site.Cert is CertSource.LetsEncrypt or CertSource.Imported or CertSource.LocalDev or CertSource.LoadBalancer;
-        var host = site.Kind == SiteKind.Ip
-            ? site.Name == "*" ? _lanIp() ?? "localhost" : site.Name.Contains(':') ? $"[{site.Name}]" : site.Name
-            : site.Name;
-        // Behind a load balancer the public address is https on 443 whatever this server listens on.
-        var port = site.Cert == CertSource.LoadBalancer ? 443 : https ? _settings.HttpsPort : _settings.HttpPort;
-        var hostPort = port == (https ? 443 : 80) ? host : $"{host}:{port}";
-        return $"{(https ? "https" : "http")}://{hostPort}{(site.Kind == SiteKind.Ip ? "/" : "")}";
+        var https = site.Cert == CertSource.LocalDev;
+        var port = https ? _settings.HttpsPort : _settings.HttpPort;
+        var hostPort = port == (https ? 443 : 80) ? site.Name : $"{site.Name}:{port}";
+        return $"{(https ? "https" : "http")}://{hostPort}";
     }
 
     private string Host(string host) => _settings.HttpPort == 80 ? host : $"{host}:{_settings.HttpPort}";

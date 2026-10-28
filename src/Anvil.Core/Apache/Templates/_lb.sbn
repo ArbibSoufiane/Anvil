@@ -1,7 +1,0 @@
-RemoteIPHeader X-Forwarded-For
-{{~ for p in proxies ~}}
-RemoteIPTrustedProxy {{ p }}
-{{~ end ~}}
-<If "({{ match }}) && %{HTTP:X-Forwarded-Proto} == 'https'">
-    SetEnv HTTPS on
-</If>

@@ -62,7 +62,7 @@ public sealed class AppPathsTests : IDisposable
         p.EnsureCreated();
 
         foreach (var dir in new[] { p.Runtime, p.Catalog, p.Htdocs, p.Data, p.Conf, p.Vhosts, p.Sites,
-                     p.ApacheConfDir, p.PhpConfRoot, p.Certs, p.Auth, p.Logs, p.Backups, p.Run,
+                     p.ApacheConfDir, p.PhpConfRoot, p.Certs, p.Logs, p.Backups, p.Run,
                      p.Tmp, p.Secrets, p.Profiles })
             Assert.True(Directory.Exists(dir), dir);
     }

@@ -31,7 +31,7 @@ public sealed class LogRenderTests
             Certificates = https
                 ? new Dictionary<string, SiteCertificate>
                 {
-                    [site.Id] = new(CertSource.Imported, [site.Id], DateTimeOffset.UtcNow.AddDays(90), @"D:\Anvil\data\certs\shop.example.com\cert.pem",
+                    [site.Id] = new(CertSource.LocalDev, [site.Id], DateTimeOffset.UtcNow.AddDays(90), @"D:\Anvil\data\certs\shop.example.com\cert.pem",
                         @"D:\Anvil\data\certs\shop.example.com\key.pem", null),
                 }
                 : new Dictionary<string, SiteCertificate>(),
@@ -52,7 +52,7 @@ public sealed class LogRenderTests
     [Fact]
     public void An_https_site_shares_its_error_log_and_keeps_a_second_access_log()
     {
-        var conf = Render(Shop(CertSource.Imported), https: true)[@"vhosts\site-shop.example.com.conf"];
+        var conf = Render(Shop(CertSource.LocalDev), https: true)[@"vhosts\site-shop.example.com.conf"];
 
         // Apache opens one pipe for identical ErrorLog lines, but one per CustomLog line: two writers must not share a file.
         Assert.Equal(2, conf.Split($"    ErrorLog {Piped("sites/shop.example.com/error")}\n").Length - 1);

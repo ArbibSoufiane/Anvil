@@ -8,7 +8,7 @@
       <StackPanel Spacing="18">
         <TextBlock Classes="h1" Text="{Binding Title}" />
 
-        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
           <Button x:Name="KindDomain" Classes="kind" Classes.selected="{Binding IsDomain}" Command="{Binding PickDomainCommand}">
             <StackPanel Spacing="6">
               <TextBlock FontWeight="Medium" Text="Domain site" />
@@ -16,14 +16,7 @@
               <TextBlock Classes="note" TextWrapping="Wrap" Text="Any folder, its own domain, its own PHP version." />
             </StackPanel>
           </Button>
-          <Button x:Name="KindIp" Grid.Column="1" Classes="kind" Classes.selected="{Binding IsIp}" Command="{Binding PickIpCommand}">
-            <StackPanel Spacing="6">
-              <TextBlock FontWeight="Medium" Text="IP site" />
-              <TextBlock Classes="mono" Text="http://192.168.10.2" />
-              <TextBlock Classes="note" TextWrapping="Wrap" Text="Single site mode: the machine's IP serves this one site. No domain." />
-            </StackPanel>
-          </Button>
-          <Button x:Name="KindHtdocs" Grid.Column="2" Classes="kind" Classes.selected="{Binding IsHtdocs}" Command="{Binding PickHtdocsCommand}">
+          <Button x:Name="KindHtdocs" Grid.Column="1" Classes="kind" Classes.selected="{Binding IsHtdocs}" Command="{Binding PickHtdocsCommand}">
             <StackPanel Spacing="6">
               <TextBlock FontWeight="Medium" Text="htdocs folder" />
               <TextBlock Classes="mono" Text="localhost/shop" />
@@ -54,18 +47,6 @@
                      IsVisible="{Binding AliasesError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
 
-        <StackPanel Spacing="4" IsVisible="{Binding IsIp}">
-          <TextBlock Classes="fieldLabel" Text="Serve on" />
-          <ComboBox MinWidth="320" ItemsSource="{Binding Addresses}" SelectedItem="{Binding SelectedAddress}">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:AddressChoice">
-                <TextBlock Text="{Binding Label}" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-          <TextBlock Classes="error" Text="{Binding NameError}" IsVisible="{Binding NameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        </StackPanel>
-
         <StackPanel Spacing="4" IsVisible="{Binding IsHtdocs}">
           <TextBlock Classes="fieldLabel" Text="Folder name in htdocs" />
           <TextBox Classes="field" Text="{Binding FolderName}" PlaceholderText="shop" />
@@ -93,45 +74,8 @@
           <TextBlock Classes="error" Text="{Binding PhpError}" IsVisible="{Binding PhpError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
 
-        <StackPanel Spacing="6" IsVisible="{Binding IsIp}">
-          <TextBlock Classes="fieldLabel" Text="Extra folders on this address" />
-          <ItemsControl ItemsSource="{Binding Mounts}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:MountRow">
-                <Grid ColumnDefinitions="120,*,Auto,200,Auto" ColumnSpacing="8" Margin="0,0,0,6">
-                  <TextBox Classes="field" Text="{Binding UrlPath}" PlaceholderText="/demo" />
-                  <TextBox Grid.Column="1" Classes="field" Text="{Binding Root}" PlaceholderText="D:\Sites\shop-demo\public" />
-                  <Button Grid.Column="2" Classes="ghost" Content="Browse" Command="{Binding BrowseCommand}" />
-                  <ComboBox Grid.Column="3" HorizontalAlignment="Stretch" ItemsSource="{Binding PhpChoices}" SelectedItem="{Binding Php}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate x:DataType="vm:PhpChoice">
-                        <TextBlock Text="{Binding Label}" />
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                  <Button Grid.Column="4" Classes="ghost" Content="Remove" Command="{Binding RemoveCommand}" />
-                </Grid>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-          <Button Classes="ghost" Content="+ Add folder (e.g. /demo, /staging)" Command="{Binding AddMountCommand}" />
-          <TextBlock Classes="error" Text="{Binding MountsError}" IsVisible="{Binding MountsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        </StackPanel>
-
         <StackPanel Spacing="8" IsVisible="{Binding ShowCert}">
           <TextBlock Classes="fieldLabel" Text="HTTPS certificate" />
-          <RadioButton Classes="option" GroupName="cert" IsChecked="{Binding IsLoadBalancer}">
-            <StackPanel Spacing="2">
-              <TextBlock FontWeight="Medium" Text="HTTP only, the client's load balancer handles SSL" />
-              <TextBlock Classes="note" TextWrapping="Wrap" Text="PHP still sees https and the visitor's real IP, from the load balancer's headers." />
-            </StackPanel>
-          </RadioButton>
-          <StackPanel Spacing="4" Margin="28,0,0,0" IsVisible="{Binding IsLoadBalancer}">
-            <TextBlock Classes="fieldLabel" Text="Trust headers only from these load balancer IPs" />
-            <TextBox Classes="field" Text="{Binding TrustedProxies}" PlaceholderText="10.0.0.5 10.0.0.0/24" />
-            <TextBlock Classes="error" Text="{Binding TrustedProxiesError}"
-                       IsVisible="{Binding TrustedProxiesError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-          </StackPanel>
           <RadioButton Classes="option" GroupName="cert" IsChecked="{Binding IsLocalDev}">
             <StackPanel Spacing="2">
               <TextBlock FontWeight="Medium" Text="Local development certificate" />
@@ -163,15 +107,6 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </Border>
-          <TextBox Classes="field" IsVisible="{Binding ShowAllowedIps}" Text="{Binding AllowedIps}" PlaceholderText="203.0.113.7 192.168.1.0/24" />
-          <TextBlock Classes="error" Text="{Binding AccessError}" IsVisible="{Binding AccessError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-          <CheckBox IsChecked="{Binding PasswordProtected}" Content="Also ask for a username and password" />
-          <Grid ColumnDefinitions="*,*" ColumnSpacing="12" IsVisible="{Binding PasswordProtected}">
-            <TextBox Classes="field" Text="{Binding User}" PlaceholderText="User name" />
-            <TextBox Grid.Column="1" Classes="field" Text="{Binding Password}" PasswordChar="•" PlaceholderText="Password" />
-          </Grid>
-          <TextBlock Classes="note" Text="{Binding PasswordHint}"
-                     IsVisible="{Binding PasswordHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
 
         <StackPanel Spacing="4">

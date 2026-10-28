@@ -107,9 +107,8 @@ public sealed partial class Orchestrator
             return ApplyResult.Failure(e.Message);
         }
 
-        var changed = sites.Where(s => moving.Contains(s.PhpVersion ?? "") || s.Mounts.Any(m => moving.Contains(m.PhpVersion ?? ""))).ToList();
-        foreach (var site in changed)
-            store.Save(site with { PhpVersion = Moved(site.PhpVersion), Mounts = site.Mounts.Select(m => m with { PhpVersion = Moved(m.PhpVersion) }).ToList() });
+        var changed = sites.Where(s => moving.Contains(s.PhpVersion ?? "")).ToList();
+        foreach (var site in changed) store.Save(site with { PhpVersion = Moved(site.PhpVersion) });
         void PutSitesBack()
         {
             foreach (var site in changed) store.Save(site);
@@ -194,7 +193,7 @@ public sealed partial class Orchestrator
 
     // Every PHP version a setting or site names, switched on or not: an update moves them all.
     private static IReadOnlyCollection<string> PhpInUse(AppSettings s, IReadOnlyList<SiteDefinition> sites) =>
-        sites.SelectMany(site => site.Mounts.Select(m => m.PhpVersion).Prepend(site.PhpVersion))
+        sites.Select(site => site.PhpVersion)
             .Prepend(s.DefaultPhp)
             .OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
