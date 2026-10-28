@@ -13,6 +13,7 @@ public sealed class DatabaseTests : IAsyncDisposable
     private const string Password = "Init \"pw\" \\ 1";
     private readonly JobObject _job = new();
     private readonly ProcessSupervisor _supervisor;
+    private readonly List<AppPaths> _roots = [];
 
     public DatabaseTests() => _supervisor = new ProcessSupervisor(_job, TimeProvider.System);
 
@@ -20,6 +21,11 @@ public sealed class DatabaseTests : IAsyncDisposable
     {
         await _supervisor.DisposeAsync();
         _job.Dispose();
+        // Each root holds a whole MariaDB or MySQL install: about 0.5 GB per test.
+        foreach (var root in _roots)
+        {
+            try { Directory.Delete(root.Root, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -29,6 +35,7 @@ public sealed class DatabaseTests : IAsyncDisposable
     private async Task<Server> InstallAsync(DbEngine engine, int port)
     {
         var paths = Runtimes.NewRoot($"db-{engine}");
+        _roots.Add(paths);
         var release = engine == DbEngine.MariaDb ? await Runtimes.LatestMariaDbAsync("11.8", Ct) : Runtimes.Pinned(ComponentKind.MySql);
         var installed = await Runtimes.InstallAsync(paths, release, Ct);
         var ini = new MyIni(paths);
