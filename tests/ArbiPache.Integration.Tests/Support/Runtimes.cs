@@ -58,4 +58,16 @@ internal static class Runtimes
         paths.EnsureCreated();
         return paths;
     }
+
+    /// <summary>
+    /// Puts httpd on 127.0.0.1:<paramref name="port"/> in place of the stock Listen line ArbiPache commented out, so a test
+    /// never listens on every interface (which would also raise a Windows Firewall prompt).
+    /// </summary>
+    public static void ListenOnLoopback(AppPaths paths, int port)
+    {
+        const string stock = "\n#Listen 80  # ArbiPache listens on the ports set in Settings\r";
+        var conf = File.ReadAllText(paths.HttpdConf);
+        if (!conf.Contains(stock, StringComparison.Ordinal)) throw new InvalidOperationException("httpd.conf has no commented stock Listen line.");
+        File.WriteAllText(paths.HttpdConf, conf.Replace(stock, $"\nListen 127.0.0.1:{port}\r"));
+    }
 }

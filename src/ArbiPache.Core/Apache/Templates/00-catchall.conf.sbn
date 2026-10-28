@@ -19,5 +19,9 @@
 {{~ if entries ~}}
 {{ entries }}
 {{~ end ~}}
+    <LocationMatch "{{ root_guard }}">
+        AuthMerging And
+        Require {{ require }}
+    </LocationMatch>
 {{~ end ~}}
 </VirtualHost>

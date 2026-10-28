@@ -20,4 +20,10 @@ Alias "{{ path }}" "{{ root }}"
     FallbackResource {{ path }}/index.php
 {{~ end ~}}
 </Directory>
+{{~ if guard ~}}
+<LocationMatch "{{ guard }}">
+    AuthMerging And
+{{ rules }}
+</LocationMatch>
+{{~ end ~}}
 {{~ end ~}}

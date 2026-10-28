@@ -98,5 +98,9 @@ LogLevel warn
         AllowOverride All
         Require local
     </Directory>
+    <LocationMatch "(?i)^/">
+        AuthMerging And
+        Require local
+    </LocationMatch>
 </VirtualHost>
 

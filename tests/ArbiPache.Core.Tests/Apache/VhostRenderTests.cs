@@ -283,6 +283,45 @@ public sealed class VhostRenderTests
         Assert.Contains(@"D:\ArbiPache\data\logs\sites\shop.example.com", config.Folders);
     }
 
+    // An app's .htaccess "Require all granted" replaces a <Directory>'s Require; a later <Location> with AuthMerging And
+    // keeps the site's restriction on top of whatever the .htaccess says, including the app's own denies.
+    [Fact]
+    public void Htaccess_cannot_widen_a_restricted_site()
+    {
+        var site = Domain() with { Access = AccessLevel.ThisPc, Mounts = [new SiteMount("/demo", @"D:\Sites\demo", SiteType.Static, null)] };
+
+        var conf = Render([site])[SiteFile(site.Id)];
+
+        Assert.Contains("    <Location \"/\">\n        AuthMerging And\n        Require local\n    </Location>\n"
+            + "    <Location \"/.well-known/acme-challenge/\">\n        Require all granted\n    </Location>\n", conf);
+    }
+
+    [Fact]
+    public void A_site_open_to_everyone_needs_no_location_guard()
+    {
+        Assert.DoesNotContain("AuthMerging", Render([Domain()])[SiteFile(Domain().Id)]);
+    }
+
+    [Fact]
+    public void Htaccess_cannot_widen_htdocs_folders()
+    {
+        HtdocsEntry[] htdocs =
+        [
+            new("blog", @"D:\ArbiPache\htdocs\blog", false, null, AccessLevel.Network),
+            new("pma", @"D:\Tools\phpMyAdmin", true, null, AccessLevel.ThisPc),
+        ];
+
+        var files = Render([], htdocs: htdocs);
+
+        // The root guard skips folders with rules of their own, case-insensitively as Windows maps URLs to folders.
+        Assert.Contains("    <LocationMatch \"(?i)^/(?!(?:pma)(?:/|$))\">\n        AuthMerging And\n        Require local\n    </LocationMatch>\n",
+            files[@"vhosts\01-localhost.conf"]);
+        var catchall = files[@"vhosts\00-catchall.conf"];
+        Assert.Contains("    <LocationMatch \"(?i)^/(?!(?:pma)(?:/|$))\">\n        AuthMerging And\n"
+            + "        Require ip 127.0.0.0/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7 fe80::/10\n    </LocationMatch>\n", catchall);
+        Assert.Contains("    <LocationMatch \"(?i)^/pma(?:/|$)\">\n        AuthMerging And\n        Require local\n    </LocationMatch>\n", catchall);
+    }
+
     [Fact]
     public void Htdocs_alias_entries_render_in_localhost_and_catchall()
     {

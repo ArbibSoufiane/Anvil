@@ -58,7 +58,7 @@ public sealed class PhpPoolTests : IAsyncDisposable
         await Runtimes.InstallAsync(_paths, ComponentKind.CaBundle, ct);
         var php = await Runtimes.InstallAsync(_paths, await Runtimes.LatestPhpAsync("8.5", ct), ct);
         new HttpdConfBootstrap(_paths).EnsureUserConf(apache);
-        File.WriteAllText(_paths.HttpdConf, File.ReadAllText(_paths.HttpdConf).Replace("\nListen 80\r", $"\nListen 127.0.0.1:{Port}\r"));
+        Runtimes.ListenOnLoopback(_paths, Port);
         new PhpIniBootstrap(_paths).EnsureIni(php.Version);
         if (profile is not null) File.WriteAllText(PhpModeIniRenderer.FilePath(_paths, php.Version), PhpModeIniRenderer.Render(profile, php.Version, null));
 

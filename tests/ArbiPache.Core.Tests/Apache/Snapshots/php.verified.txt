@@ -99,6 +99,10 @@ ProxyFCGISetEnvIf "reqenv('SCRIPT_FILENAME') =~ m#^/([A-Za-z]:/.*)$#" SCRIPT_FIL
             SetHandler "proxy:fcgi://127.0.0.1:9100/"
         </If>
     </FilesMatch>
+    <LocationMatch "(?i)^/">
+        AuthMerging And
+        Require ip 127.0.0.0/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7 fe80::/10
+    </LocationMatch>
 </VirtualHost>
 
 === vhosts\01-localhost.conf ===
@@ -118,5 +122,9 @@ ProxyFCGISetEnvIf "reqenv('SCRIPT_FILENAME') =~ m#^/([A-Za-z]:/.*)$#" SCRIPT_FIL
             SetHandler "proxy:fcgi://127.0.0.1:9100/"
         </If>
     </FilesMatch>
+    <LocationMatch "(?i)^/">
+        AuthMerging And
+        Require local
+    </LocationMatch>
 </VirtualHost>
 

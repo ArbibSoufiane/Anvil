@@ -40,6 +40,15 @@
 {{~ for m in mounts ~}}
 {{ m }}
 {{~ end ~}}
+{{~ if guard ~}}
+    <Location "/">
+        AuthMerging And
+{{ rules }}
+    </Location>
+    <Location "/.well-known/acme-challenge/">
+        Require all granted
+    </Location>
+{{~ end ~}}
 {{~ end ~}}
 {{~ end ~}}
 </VirtualHost>

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.RegularExpressions;
 using ArbiPache.Core.Certificates;
 using ArbiPache.Core.Paths;
 using ArbiPache.Core.Php;
@@ -11,7 +12,7 @@ using Scriban;
 namespace ArbiPache.Core.Apache;
 
 /// <summary>Renders data\conf: the global include, the mode profile, the PHP pools, the htdocs virtual hosts and one file per site.</summary>
-public sealed class ConfigRenderer(AppPaths paths)
+public sealed partial class ConfigRenderer(AppPaths paths)
 {
     /// <summary>Loopback, RFC 1918, IPv6 unique-local and link-local.</summary>
     public const string PrivateRanges = "127.0.0.0/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7 fe80::/10";
@@ -37,6 +38,8 @@ public sealed class ConfigRenderer(AppPaths paths)
         var htdocsPool = input.Pools.FirstOrDefault(p => string.Equals(p.Version, s.DefaultPhp, StringComparison.OrdinalIgnoreCase))
             ?? input.Pools.FirstOrDefault();
         var htdocsPhp = htdocsPool is null ? null : PhpHandler(htdocsPool, "    ");
+        var networkEntries = HtdocsEntries(input, options, htdocsPool, local: false);
+        var localEntries = HtdocsEntries(input, options, htdocsPool, local: true);
 
         var files = new Dictionary<string, string>
         {
@@ -85,7 +88,8 @@ public sealed class ConfigRenderer(AppPaths paths)
                     options,
                     require = s.Network.HtdocsOnNetwork ? $"ip {PrivateRanges}" : "local",
                     php_handler = profile.Mode == ServerMode.Production ? null : htdocsPhp,
-                    entries = profile.Mode == ServerMode.Production ? null : HtdocsEntries(input, options, htdocsPool, local: false),
+                    entries = profile.Mode == ServerMode.Production ? null : networkEntries.Blocks,
+                    root_guard = RootGuard(networkEntries.Folders),
                 }),
             [Path.Combine("vhosts", "01-localhost.conf")] = Templates.Render("01-localhost.conf.sbn", new
             {
@@ -93,7 +97,8 @@ public sealed class ConfigRenderer(AppPaths paths)
                 htdocs,
                 options,
                 php_handler = htdocsPhp,
-                entries = HtdocsEntries(input, options, htdocsPool, local: true),
+                entries = localEntries.Blocks,
+                root_guard = RootGuard(localEntries.Folders),
             }),
         };
         // The first HTTPS virtual host answers every name no site claims, so it refuses them, as the HTTP catch-all does in
@@ -139,6 +144,9 @@ public sealed class ConfigRenderer(AppPaths paths)
 
         var rules = AccessRules.Render(site, site.PasswordProtected ? HtpasswdPath(site.Id) : null);
         var index = site.Index.Count > 0 ? string.Join(' ', site.Index) : "index.php index.html";
+        // An app's .htaccess may say "Require all granted", which replaces a <Directory>'s Require. A <Location> merges
+        // after .htaccess files, and AuthMerging And keeps the site's restriction on top of them.
+        var guard = rules != "Require all granted";
         return Templates.Render("vhost-site.conf.sbn", new
         {
             title = catchAll ? "all addresses (first virtual host, answers every name no other site claims)" : site.Name,
@@ -160,6 +168,7 @@ public sealed class ConfigRenderer(AppPaths paths)
             options,
             index,
             rules = Indent(rules, "        "),
+            guard,
             php = site.Type == SiteType.Php ? PhpHandler(PoolFor(site.PhpVersion, input.Pools, defaultPool), "        ", withIndex: false) : null,
             mounts = site.Mounts.Select(m => Indent(Templates.Render("_mount.sbn", new
             {
@@ -172,6 +181,7 @@ public sealed class ConfigRenderer(AppPaths paths)
                 rules = Indent(rules, "    "),
                 php = m.Type == SiteType.Php ? PhpHandler(PoolFor(m.PhpVersion ?? site.PhpVersion, input.Pools, defaultPool), "    ", withIndex: false) : null,
                 fallback = m.Type == SiteType.Php,
+                guard = (string?)null, // the site's <Location "/"> covers its mounts: they share its rules
             }), "    ")).ToList(),
         });
     }
@@ -204,8 +214,9 @@ public sealed class ConfigRenderer(AppPaths paths)
     /// htdocs folders that need more than the htdocs defaults: aliases to folders elsewhere, their own PHP version, a password,
     /// or (outside localhost) an access level other than the htdocs one. On localhost every folder stays local only.
     /// </summary>
-    private string? HtdocsEntries(RenderInput input, string options, PhpPool? htdocsPool, bool local)
+    private (string? Blocks, IReadOnlyList<string> Folders) HtdocsEntries(RenderInput input, string options, PhpPool? htdocsPool, bool local)
     {
+        var folders = new List<string>();
         var rootAccess = local ? AccessLevel.ThisPc : input.Settings.Network.HtdocsOnNetwork ? AccessLevel.Network : AccessLevel.ThisPc;
         var blocks = new List<string>();
         foreach (var entry in input.Htdocs)
@@ -223,6 +234,7 @@ public sealed class ConfigRenderer(AppPaths paths)
             if (!entry.IsAlias && !ownPhp && !site.PasswordProtected && access == rootAccess) continue;
 
             var rules = AccessRules.Render(site with { Access = access, AcceptOnlyFromProxies = false }, site.PasswordProtected ? HtpasswdPath(site.Id) : null);
+            folders.Add(entry.Folder);
             blocks.Add(Indent(Templates.Render("_mount.sbn", new
             {
                 proxy = (string?)null,
@@ -234,11 +246,24 @@ public sealed class ConfigRenderer(AppPaths paths)
                 rules = Indent(rules, "    "),
                 php = ownPhp ? PhpHandler(pool, "    ", withIndex: false) : null,
                 fallback = false,
+                guard = $"(?i)^/{PcreEscape(entry.Folder)}(?:/|$)",
             }), "    "));
         }
 
-        return blocks.Count == 0 ? null : string.Join(Environment.NewLine, blocks);
+        return (blocks.Count == 0 ? null : string.Join(Environment.NewLine, blocks), folders);
     }
+
+    /// <summary>
+    /// The URLs the htdocs root's own rule guards: all but the folders with rules of their own, which guard themselves.
+    /// Case-insensitive, as Windows maps /PMA/ to the pma folder.
+    /// </summary>
+    private static string RootGuard(IReadOnlyList<string> folders) =>
+        folders.Count == 0 ? "(?i)^/" : $"(?i)^/(?!(?:{string.Join('|', folders.Select(PcreEscape))})(?:/|$))";
+
+    private static string PcreEscape(string text) => PcreSpecial().Replace(text, @"\$0");
+
+    [GeneratedRegex(@"[\\.^$|?*+()\[\]{}]")]
+    private static partial Regex PcreSpecial();
 
     private const string CatchAllName = "arbipache-catchall.invalid";
 

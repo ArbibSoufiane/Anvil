@@ -52,19 +52,20 @@ public sealed class LoadBalancerTests : IAsyncDisposable
         }
     }
 
-    private async Task StartAsync(IReadOnlyList<string> trustedProxies, bool onlyFromProxies = false)
+    private async Task StartAsync(IReadOnlyList<string> trustedProxies, bool onlyFromProxies = false, string? htaccess = null)
     {
         var ct = TestContext.Current.CancellationToken;
         var apache = await Runtimes.InstallAsync(_paths, ComponentKind.Apache, ct);
         await Runtimes.InstallAsync(_paths, ComponentKind.CaBundle, ct);
         var php = await Runtimes.InstallAsync(_paths, await Runtimes.LatestPhpAsync("8.5", ct), ct);
         new HttpdConfBootstrap(_paths).EnsureUserConf(apache);
-        File.WriteAllText(_paths.HttpdConf, File.ReadAllText(_paths.HttpdConf).Replace("\nListen 80\r", $"\nListen 127.0.0.1:{Port}\r"));
+        Runtimes.ListenOnLoopback(_paths, Port);
         new PhpIniBootstrap(_paths).EnsureIni(php.Version);
 
         var root = Path.Combine(_paths.Root, "projects", "lb");
         Directory.CreateDirectory(root);
         File.WriteAllText(Path.Combine(root, "index.php"), "<?php echo $_SERVER['REMOTE_ADDR'].'|'.($_SERVER['HTTPS'] ?? '');");
+        if (htaccess is not null) File.WriteAllText(Path.Combine(root, ".htaccess"), htaccess);
 
         var settings = new AppSettings
         {
@@ -133,6 +134,17 @@ public sealed class LoadBalancerTests : IAsyncDisposable
 
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal("127.0.0.1|", body);
+    }
+
+    // Many apps ship a .htaccess with "Require all granted"; it must not lift the site's own restriction.
+    [Fact]
+    public async Task Htaccess_cannot_open_a_site_that_accepts_only_its_proxies()
+    {
+        await StartAsync(["10.9.9.9"], onlyFromProxies: true, htaccess: "Require all granted\r\n");
+
+        var (status, _) = await GetAsync();
+
+        Assert.Equal(HttpStatusCode.Forbidden, status);
     }
 
     [Fact]

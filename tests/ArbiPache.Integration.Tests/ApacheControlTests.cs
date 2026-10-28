@@ -37,7 +37,7 @@ public sealed class ApacheControlTests : IAsyncDisposable
         var ct = TestContext.Current.CancellationToken;
         var version = await Runtimes.InstallAsync(_paths, ComponentKind.Apache, ct);
         new HttpdConfBootstrap(_paths).EnsureUserConf(version);
-        File.WriteAllText(_paths.HttpdConf, File.ReadAllText(_paths.HttpdConf).Replace("\nListen 80\r", $"\nListen 127.0.0.1:{Port}\r"));
+        Runtimes.ListenOnLoopback(_paths, Port);
         File.WriteAllText(Path.Combine(_paths.Htdocs, "index.html"), "hello from htdocs");
 
         var input = new RenderInput
