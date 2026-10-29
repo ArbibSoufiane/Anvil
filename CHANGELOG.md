@@ -41,6 +41,14 @@ Settings → Import from ArbiPache 3 brings your sites over.
 - A port another program uses is refused while your sites run. When Apache cannot serve new
   settings, Anvil goes back to the previous ones and starts Apache again.
 - Moving the Anvil folder re-points the database and the sites kept inside it.
+- Use a PHP you already have: the PHP page lists the versions pvm installed, each with an Add
+  button, and adds any other PHP folder. Anvil keeps its own `php.ini` for it and never changes the
+  folder; Remove from Anvil forgets it again.
+- Your servers on the Database page: link a MariaDB or MySQL you installed yourself by its `bin`
+  folder, then start, stop, back it up and change its port from Anvil. Windows asks once per
+  service; after that Start and Stop do not ask again. Changing the port asks Windows each time.
+- A database port in Settings for Anvil's own MariaDB or MySQL, so it can run next to a server you
+  already have on 3306. Changing it restarts the database on the new port.
 
 ### Changed
 - Rewritten in C# / .NET 10 with an Avalonia desktop app. No command-line interface.
@@ -52,7 +60,14 @@ Settings → Import from ArbiPache 3 brings your sites over.
 - Development settings (errors shown, 300 s requests, 1 GB memory, 512 MB uploads) are written into
   `php.ini` and `my.ini` once, when Anvil creates them. After that the files are yours.
 - Xdebug is a normal extension: switch it on and off on the PHP page.
+- pvm is no longer needed: Anvil installs PHP versions itself, and can use the ones pvm installed.
+
+### Fixed
+- A database root password can be any length, such as `root`.
+- Apache's log helpers no longer open console windows.
+- Quitting Anvil ends `Anvil.exe` instead of leaving it running.
+- Every domain site is added to the hosts file, not only `.test` names.
+- The Public network warning goes away once the network is Private.
 
 ### Removed
 - The `apachectl` command line and the terminal menu.
-- pvm: Anvil installs PHP versions itself.
