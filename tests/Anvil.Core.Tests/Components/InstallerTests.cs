@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Anvil.Core.Components;
 using Anvil.Core.Paths;
+using Anvil.Core.Php;
 
 namespace Anvil.Core.Tests.Components;
 
@@ -101,6 +102,62 @@ public sealed class InstallerTests : IDisposable
 
         Assert.False(Directory.Exists(_paths.ApacheRuntime("2.4.69")));
         Assert.Empty(installer.Installed(ComponentKind.Apache));
+    }
+
+    private string LinkedFolder()
+    {
+        var folder = Path.Combine(_paths.Root, "pvm", "php-8.4.23");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "php-cgi.exe"), "MZ");
+        return folder;
+    }
+
+    [Fact]
+    public void A_linked_php_is_listed_with_its_own_folder()
+    {
+        var folder = LinkedFolder();
+
+        Installer([]).LinkPhp(new PhpFolderInfo(folder, "8.4.23", "vs17", ThreadSafe: true));
+
+        var entry = Assert.Single(Installer([]).Installed(ComponentKind.Php));
+        Assert.Equal(("8.4.23", folder, "vs17", true, true), (entry.Version, entry.Path, entry.Toolset, entry.Linked, entry.ThreadSafe));
+    }
+
+    [Fact]
+    public void Removing_a_linked_php_keeps_its_folder()
+    {
+        var folder = LinkedFolder();
+        var installer = Installer([]);
+        installer.LinkPhp(new PhpFolderInfo(folder, "8.4.23", "vs17", ThreadSafe: false));
+
+        installer.Remove(ComponentKind.Php, "8.4.23");
+
+        Assert.Empty(installer.Installed(ComponentKind.Php));
+        Assert.True(File.Exists(Path.Combine(folder, "php-cgi.exe")));
+    }
+
+    [Fact]
+    public async Task A_php_version_is_in_Anvil_once()
+    {
+        var body = Zip("php-cgi.exe");
+        var installer = Installer(body);
+        await installer.InstallAsync(Release(ComponentKind.Php, "8.4.23", "php.zip", body), null, TestContext.Current.CancellationToken);
+
+        var e = Assert.Throws<InvalidOperationException>(() => installer.LinkPhp(new PhpFolderInfo(LinkedFolder(), "8.4.23", "vs17", ThreadSafe: false)));
+        Assert.Equal("PHP 8.4.23 is already in Anvil.", e.Message);
+    }
+
+    [Fact]
+    public async Task Downloading_a_php_version_that_is_linked_is_refused()
+    {
+        var body = Zip("php-cgi.exe");
+        var installer = Installer(body);
+        installer.LinkPhp(new PhpFolderInfo(LinkedFolder(), "8.4.23", "vs17", ThreadSafe: false));
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            installer.InstallAsync(Release(ComponentKind.Php, "8.4.23", "php.zip", body), null, TestContext.Current.CancellationToken));
+        Assert.Equal($"PHP 8.4.23 is already in Anvil, from {LinkedFolder()}.", e.Message);
+        Assert.False(Directory.Exists(_paths.PhpRuntime("8.4.23")));
     }
 
     [Fact]

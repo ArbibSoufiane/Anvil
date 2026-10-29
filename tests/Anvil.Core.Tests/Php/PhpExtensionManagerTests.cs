@@ -42,6 +42,20 @@ public sealed class PhpExtensionManagerTests : IDisposable
     }
 
     [Fact]
+    public void A_linked_php_offers_the_extensions_in_its_own_folder()
+    {
+        var linked = Path.Combine(_root, "pvm", "php");
+        Directory.CreateDirectory(Path.Combine(linked, "ext"));
+        File.WriteAllText(Path.Combine(linked, "ext", "php_redis.dll"), "");
+        var manager = new PhpExtensionManager(_paths, phpFolder: _ => linked);
+
+        Assert.Equal(["redis"], manager.List(Version).Select(e => e.Name));
+        manager.Set(Version, "redis", enabled: true);
+        Assert.Contains("extension=redis", File.ReadAllText(IniFile));
+        Assert.Throws<ArgumentException>(() => manager.Set(Version, "gd", enabled: true));
+    }
+
+    [Fact]
     public void Enable_then_disable_round_trip()
     {
         var manager = new PhpExtensionManager(_paths);

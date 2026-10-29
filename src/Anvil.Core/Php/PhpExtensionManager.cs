@@ -11,7 +11,8 @@ public sealed record PhpExtension(string Name, bool Enabled, bool Available, boo
 /// Turns extensions on and off in data\php\&lt;v&gt;\php.ini, keeping the rest of the file as the user left it. Xdebug installed
 /// from the catalog lives in runtime\xdebug and loads from an [xdebug] section; <paramref name="xdebugBuilds"/> are those builds.
 /// </summary>
-public sealed class PhpExtensionManager(AppPaths paths, IReadOnlyList<InstalledComponent>? xdebugBuilds = null)
+/// <param name="phpFolder">Where a version's files are: runtime\php\&lt;v&gt; unless it is a linked folder such as pvm's.</param>
+public sealed class PhpExtensionManager(AppPaths paths, IReadOnlyList<InstalledComponent>? xdebugBuilds = null, Func<string, string>? phpFolder = null)
 {
     private const string Xdebug = "xdebug";
     private static readonly HashSet<string> ZendExtensions = new(StringComparer.OrdinalIgnoreCase) { "opcache", Xdebug };
@@ -27,7 +28,7 @@ public sealed class PhpExtensionManager(AppPaths paths, IReadOnlyList<InstalledC
 
     public IReadOnlyList<PhpExtension> List(string version)
     {
-        var ext = Path.Combine(paths.PhpRuntime(version), "ext");
+        var ext = Path.Combine(Folder(version), "ext");
         if (!Directory.Exists(ext)) return [];
         var ini = Load(version);
         var names = Directory.GetFiles(ext, "php_*.dll").Select(f => Path.GetFileNameWithoutExtension(f)["php_".Length..].ToLowerInvariant());
@@ -55,7 +56,7 @@ public sealed class PhpExtensionManager(AppPaths paths, IReadOnlyList<InstalledC
         }
 
         var dllName = $"php_{name}.dll";
-        if (enabled && !File.Exists(Path.Combine(paths.PhpRuntime(version), "ext", dllName)))
+        if (enabled && !File.Exists(Path.Combine(Folder(version), "ext", dllName)))
             throw new ArgumentException(isXdebug
                 ? $"No Xdebug build is installed for PHP {PhpSupport.Minor(version)}. Install it from the PHP page first."
                 : $"PHP {version} has no {dllName} in its ext folder.");
@@ -68,6 +69,8 @@ public sealed class PhpExtensionManager(AppPaths paths, IReadOnlyList<InstalledC
             foreach (var setting in new[] { "zend_extension", "xdebug.mode", "xdebug.start_with_request" }) ini.Remove(Xdebug, setting);
         AtomicFile.WriteAllText(file, ini.ToString());
     }
+
+    private string Folder(string version) => phpFolder?.Invoke(version) ?? paths.PhpRuntime(version);
 
     private string IniFile(string version) => Path.Combine(paths.PhpConfigDir(version), "php.ini");
 

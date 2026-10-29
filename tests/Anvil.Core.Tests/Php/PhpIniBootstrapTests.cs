@@ -52,6 +52,21 @@ public sealed class PhpIniBootstrapTests : IDisposable
     }
 
     [Fact]
+    public void A_linked_php_uses_its_own_folder_and_template()
+    {
+        InstallPhp("8.4.23");
+        var linked = Path.Combine(_root, "pvm", "php-8.4.23");
+        Directory.CreateDirectory(Path.GetDirectoryName(linked)!);
+        Directory.Move(_paths.PhpRuntime("8.4.23"), linked);
+
+        new PhpIniBootstrap(_paths, _ => linked).EnsureIni("8.4.23");
+
+        Assert.Equal(AppPaths.ForApache(Path.Combine(linked, "ext")), Ini("8.4.23").Get("PHP", "extension_dir"));
+        Assert.Contains(";extension=pdo_sqlite", File.ReadAllText(Path.Combine(_paths.PhpConfigDir("8.4.23"), "php.ini")));
+        Assert.False(File.Exists(Path.Combine(linked, "php.ini")));
+    }
+
+    [Fact]
     public void EnsureIni_enables_default_extensions()
     {
         InstallPhp("8.5.12");

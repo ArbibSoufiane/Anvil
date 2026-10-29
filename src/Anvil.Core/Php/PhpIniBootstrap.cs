@@ -8,7 +8,8 @@ namespace Anvil.Core.Php;
 /// Creates data\php\&lt;v&gt;\php.ini from the version's php.ini-development once, with the development values. Later
 /// calls keep the user's edits and only re-point the paths Anvil manages, so the folder stays portable.
 /// </summary>
-public sealed class PhpIniBootstrap(AppPaths paths)
+/// <param name="phpFolder">Where a version's files are: runtime\php\&lt;v&gt; unless it is a linked folder such as pvm's.</param>
+public sealed class PhpIniBootstrap(AppPaths paths, Func<string, string>? phpFolder = null)
 {
     public static readonly IReadOnlyList<string> DefaultExtensions =
         ["curl", "exif", "fileinfo", "gd", "intl", "mbstring", "mysqli", "openssl", "pdo_mysql", "sodium", "zip"];
@@ -34,7 +35,7 @@ public sealed class PhpIniBootstrap(AppPaths paths)
         var overlayRemoved = DeleteOldOverlays(dir);
 
         // PHP reads \\ and \$ inside double quotes as escapes; forward slashes avoid both.
-        var runtime = paths.PhpRuntime(version);
+        var runtime = Folder(version);
         var logs = Path.Combine(paths.Logs, "php");
         var sessions = Path.Combine(paths.Tmp, "php-sessions", version);
         var uploads = Path.Combine(paths.Tmp, "php-uploads", version);
@@ -77,9 +78,11 @@ public sealed class PhpIniBootstrap(AppPaths paths)
 
     private string Template(string version)
     {
-        var template = Path.Combine(paths.PhpRuntime(version), "php.ini-development");
+        var template = Path.Combine(Folder(version), "php.ini-development");
         return File.Exists(template) ? File.ReadAllText(template) : "[PHP]\r\n";
     }
+
+    private string Folder(string version) => phpFolder?.Invoke(version) ?? paths.PhpRuntime(version);
 
     private string CaBundle()
     {

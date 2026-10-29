@@ -35,7 +35,9 @@ public static class ComponentUpdater
 
         Offer(ComponentKind.Apache, s.ActiveApache);
         // One offer per branch, from the newest patch in use: the update moves every older one along.
-        foreach (var branch in phpInUse.GroupBy(Branch, StringComparer.OrdinalIgnoreCase).OrderBy(g => g.Key, Comparer<string>.Create(SemVer.Compare)))
+        // A linked PHP, such as one of pvm's, is updated by whatever installed it.
+        var linked = installed.Where(i => i.Kind == ComponentKind.Php && i.Linked).Select(i => i.Version).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var branch in phpInUse.Where(v => !linked.Contains(v)).GroupBy(Branch, StringComparer.OrdinalIgnoreCase).OrderBy(g => g.Key, Comparer<string>.Create(SemVer.Compare)))
             Offer(ComponentKind.Php, branch.Order(Newest).First());
         if (s.DbEngine is { } engine) Offer(engine == DbEngine.MariaDb ? ComponentKind.MariaDb : ComponentKind.MySql, s.DbVersion);
         return offers;

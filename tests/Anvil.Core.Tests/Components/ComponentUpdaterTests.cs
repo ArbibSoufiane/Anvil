@@ -25,6 +25,17 @@ public sealed class ComponentUpdaterTests : IDisposable
     private static readonly AppSettings Active = new() { ActiveApache = "2.4.69", DefaultPhp = "8.5.5", DbEngine = DbEngine.MariaDb, DbVersion = "11.8.3" };
 
     [Fact]
+    public void A_linked_php_gets_no_update()
+    {
+        InstalledComponent[] installed = [Installed(K.Php, "8.4.10") with { Linked = true }, Installed(K.Php, "8.5.5")];
+
+        var offers = ComponentUpdater.Offers(Active with { ActiveApache = null, DbEngine = null, DbVersion = null }, ["8.4.10", "8.5.5"], installed,
+            [Release(K.Php, "8.4.27"), Release(K.Php, "8.5.12")]);
+
+        Assert.Equal([new UpdateOffer(K.Php, "8.5.5", "8.5.12", Release(K.Php, "8.5.12"))], offers);
+    }
+
+    [Fact]
     public void Offers_only_newer_versions()
     {
         InstalledComponent[] installed = [Installed(K.Apache, "2.4.69"), Installed(K.Php, "8.4.10"), Installed(K.Php, "8.5.5"), Installed(K.MariaDb, "11.8.3")];

@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Anvil.Core.Database;
 using Anvil.Core.IO;
 using Anvil.Core.Paths;
+using Anvil.Core.Php;
 
 namespace Anvil.Core.Components;
 
@@ -40,8 +41,11 @@ public sealed partial class ComponentInstaller(AppPaths paths, Downloader dl, Fu
         var target = TargetFor(r.Kind, r.Version, r.AppliesTo);
         lock (RegistryLock)
         {
-            if (Directory.Exists(target) && Load().FirstOrDefault(e => string.Equals(e.Path, target, StringComparison.OrdinalIgnoreCase)) is { } installed)
+            var all = Load();
+            if (Directory.Exists(target) && all.FirstOrDefault(e => string.Equals(e.Path, target, StringComparison.OrdinalIgnoreCase)) is { } installed)
                 return installed;
+            if (all.FirstOrDefault(e => e.Linked && e.Kind == r.Kind && SameVersion(e.Version, r.Version)) is { } linked)
+                throw new InvalidOperationException($"PHP {r.Version} is already in Anvil, from {linked.Path}.");
         }
         var fileName = Path.GetFileName(r.Url.AbsolutePath);
         var download = Path.Combine(paths.Tmp, "downloads", fileName);
@@ -108,6 +112,25 @@ public sealed partial class ComponentInstaller(AppPaths paths, Downloader dl, Fu
         return entry;
     }
 
+    private static bool SameVersion(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Records a PHP folder Anvil did not install. Its files stay where they are and as they are.</summary>
+    public InstalledComponent LinkPhp(PhpFolderInfo php)
+    {
+        if (!IsSafeVersion(php.Version)) throw new ArgumentException($"'{php.Version}' is not a PHP version Anvil can use.");
+        var entry = new InstalledComponent(ComponentKind.Php, php.Version, php.Folder, Sha256: "", DateTimeOffset.UtcNow, php.Toolset,
+            Linked: true, ThreadSafe: php.ThreadSafe);
+        lock (RegistryLock)
+        {
+            var all = Load();
+            if (all.Any(e => e.Kind == ComponentKind.Php && SameVersion(e.Version, php.Version)))
+                throw new InvalidOperationException($"PHP {php.Version} is already in Anvil.");
+            all.Add(entry);
+            JsonFiles.Write(RegistryFile, all);
+        }
+        return entry;
+    }
+
     public IReadOnlyList<InstalledComponent> Installed(ComponentKind kind)
     {
         lock (RegistryLock)
@@ -125,9 +148,9 @@ public sealed partial class ComponentInstaller(AppPaths paths, Downloader dl, Fu
         lock (RegistryLock)
         {
             var all = Load();
-            foreach (var entry in all.Where(e => e.Kind == kind && string.Equals(e.Version, version, StringComparison.OrdinalIgnoreCase)))
+            foreach (var entry in all.Where(e => e.Kind == kind && SameVersion(e.Version, version) && !e.Linked))
                 if (Directory.Exists(entry.Path)) Directory.Delete(entry.Path, recursive: true);
-            all.RemoveAll(e => e.Kind == kind && string.Equals(e.Version, version, StringComparison.OrdinalIgnoreCase));
+            all.RemoveAll(e => e.Kind == kind && SameVersion(e.Version, version));
             JsonFiles.Write(RegistryFile, all);
         }
     }
