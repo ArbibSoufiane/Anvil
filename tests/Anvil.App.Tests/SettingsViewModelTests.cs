@@ -266,6 +266,32 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public async Task Saving_keeps_a_database_port_the_database_page_changed_meanwhile()
+    {
+        var vm = await LoadedAsync();
+        _api.Settings = _api.Settings with { DbPort = 3310 };
+
+        vm.HtdocsOnNetwork = !vm.HtdocsOnNetwork;
+        await vm.ApplyNetworkCommand.ExecuteAsync(null);
+
+        Assert.Equal(3310, _api.Saved?.DbPort);
+        Assert.Equal("3310", vm.DbPortText);
+    }
+
+    [Fact]
+    public async Task Changing_the_http_port_keeps_a_database_port_changed_elsewhere()
+    {
+        var vm = await LoadedAsync();
+        _api.Settings = _api.Settings with { DbPort = 3310 };
+
+        vm.HttpPortText = "8080";
+        await vm.ApplyPortsCommand.ExecuteAsync(null);
+
+        Assert.Equal(8080, _api.Saved?.HttpPort);
+        Assert.Equal(3310, _api.Saved?.DbPort);
+    }
+
+    [Fact]
     public async Task The_database_cannot_share_a_port_with_apache()
     {
         var vm = await LoadedAsync();

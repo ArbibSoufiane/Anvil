@@ -259,8 +259,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task ApplyGeneralAsync()
     {
-        var next = _settings with { StartServicesOnLaunch = StartServicesOnLaunch, StartWithWindows = StartWithWindows, CloseToTray = CloseToTray };
-        if (!await SaveAsync(next)) return;
+        if (!await SaveAsync(s => s with { StartServicesOnLaunch = StartServicesOnLaunch, StartWithWindows = StartWithWindows, CloseToTray = CloseToTray }))
+            return;
         TryRunKey(set: StartWithWindows);
     }
 
@@ -268,7 +268,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task ApplyNetworkAsync()
     {
-        if (!await SaveAsync(_settings with { Network = new NetworkAccess(HtdocsOnNetwork) })) return;
+        if (!await SaveAsync(s => s with { Network = new NetworkAccess(HtdocsOnNetwork) })) return;
         await OpenFirewallAsync();
     }
 
@@ -283,7 +283,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        if (await SaveCoreAsync(_settings with { NetworkDomain = domain }) is { } saved
+        if (await SaveCoreAsync(s => s with { NetworkDomain = domain }) is { } saved
             && await _followUp.RunAsync(saved) is { } problem)
             Say(problem, ok: false);
     }
@@ -323,7 +323,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         PortsError = null;
-        if (!await SaveAsync(_settings with { HttpPort = http, HttpsPort = https, DbPort = db })) return;
+        // A database port box left as it was shown keeps the port the Database page may have set since.
+        if (!await SaveAsync(s => s with { HttpPort = http, HttpsPort = https, DbPort = db == _settings.DbPort ? s.DbPort : db })) return;
         await OpenFirewallAsync();
     }
 
@@ -331,7 +332,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task ChangeHtdocsAsync()
     {
         if (await _picker.PickFolderAsync("Choose the htdocs folder") is not { } folder) return;
-        if (await SaveAsync(_settings with { HtdocsPath = folder })) _sitesChanged?.Invoke();
+        if (await SaveAsync(s => s with { HtdocsPath = folder })) _sitesChanged?.Invoke();
     }
 
     [RelayCommand]
@@ -434,14 +435,17 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (report.Imported.Count > 0) _sitesChanged?.Invoke();
     }
 
-    private async Task<bool> SaveAsync(AppSettings next) => await SaveCoreAsync(next) is not null;
+    private async Task<bool> SaveAsync(Func<AppSettings, AppSettings> change) => await SaveCoreAsync(change) is not null;
 
     /// <returns>The Agent's result when it kept the settings; null when it refused them or did not answer.</returns>
-    private async Task<ApplyResult?> SaveCoreAsync(AppSettings next)
+    /// <param name="change">This page's change, made to the Agent's current settings: other pages change them too.</param>
+    private async Task<ApplyResult?> SaveCoreAsync(Func<AppSettings, AppSettings> change)
     {
         ApplyResult result;
+        var next = _settings;
         try
         {
+            next = change(await _api.GetSettingsAsync());
             result = await _api.SaveSettingsAsync(next);
         }
         catch (Exception e) when (e is not OperationCanceledException)
