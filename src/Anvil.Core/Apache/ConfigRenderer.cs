@@ -288,9 +288,10 @@ public sealed partial class ConfigRenderer(AppPaths paths)
     /// <summary>
     /// A log piped through Apache's rotatelogs: <c>name.YYYY-MM-DD.log</c>, a new file each local midnight. The value goes
     /// inside the directive's quotes. Apache opens one pipe for identical ErrorLog values but one per CustomLog line.
+    /// The windowless copy runs, so no log opens a console window.
     /// </summary>
     private static string Rotated(string dir, string name) =>
-        $$"""|\"${SRVROOT}/bin/rotatelogs.exe\" -l \"{{AppPaths.ForApache(Path.Combine(dir, name))}}.%Y-%m-%d.log\" 86400""";
+        $$"""|\"${SRVROOT}/bin/{{QuietRotatelogs.FileName}}\" -l \"{{AppPaths.ForApache(Path.Combine(dir, name))}}.%Y-%m-%d.log\" 86400""";
 
     /// <summary>A site's own PHP version, or the htdocs pool when it uses the default. Null when that version has no pool.</summary>
     private static PhpPool? PoolFor(string? version, IReadOnlyList<PhpPool> pools, PhpPool? defaultPool) =>

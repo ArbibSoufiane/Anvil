@@ -18,9 +18,9 @@ LoadModule http2_module modules/mod_http2.so
 
 ServerName localhost
 PidFile "D:/Anvil/data/run/httpd.pid"
-ErrorLog "|\"${SRVROOT}/bin/rotatelogs.exe\" -l \"D:/Anvil/data/logs/apache/error.%Y-%m-%d.log\" 86400"
+ErrorLog "|\"${SRVROOT}/bin/anvil-rotatelogs.exe\" -l \"D:/Anvil/data/logs/apache/error.%Y-%m-%d.log\" 86400"
 <IfModule log_config_module>
-    CustomLog "|\"${SRVROOT}/bin/rotatelogs.exe\" -l \"D:/Anvil/data/logs/apache/access.%Y-%m-%d.log\" 86400" combined
+    CustomLog "|\"${SRVROOT}/bin/anvil-rotatelogs.exe\" -l \"D:/Anvil/data/logs/apache/access.%Y-%m-%d.log\" 86400" combined
 </IfModule>
 
 <IfModule mpm_winnt_module>

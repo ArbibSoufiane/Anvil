@@ -41,6 +41,7 @@ public sealed class ApacheControl : IApacheControl
 
     public async Task StartAsync(string version, int httpPort, CancellationToken ct)
     {
+        QuietRotatelogs.Ensure(paths.ApacheRuntime(version));
         await RequireValidConfigAsync(ct);
         _version = version;
         _port = httpPort;

@@ -38,7 +38,7 @@ public sealed class LogRenderTests
         }).Files.ToDictionary(f => f.Key, f => f.Value.ReplaceLineEndings("\n"));
 
     private static string Piped(string file) =>
-        $"\"|\\\"${{SRVROOT}}/bin/rotatelogs.exe\\\" -l \\\"D:/Anvil/data/logs/{file}.%Y-%m-%d.log\\\" 86400\"";
+        $"\"|\\\"${{SRVROOT}}/bin/anvil-rotatelogs.exe\\\" -l \\\"D:/Anvil/data/logs/{file}.%Y-%m-%d.log\\\" 86400\"";
 
     [Fact]
     public void Site_logs_use_rotatelogs_quoted()

@@ -147,6 +147,42 @@ public sealed class ApacheControlTests : IAsyncDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => responder);
     }
 
+    // Apache's worker process has no console, so each console program it starts opens a console window on the desktop.
+    [Fact]
+    public async Task Log_helpers_open_no_console_window()
+    {
+        var (apache, version) = await PrepareAsync([StaticSite(SiteKind.Domain, "quiet.test", "quiet")]);
+
+        await apache.StartAsync(version, Port, TestContext.Current.CancellationToken);
+
+        var below = ProcessTree.Below(apache.Status!.Pid!.Value);
+        var helpers = below.Where(p => p.Name.Contains("rotatelogs", StringComparison.OrdinalIgnoreCase)).Select(p => p.Id).ToHashSet();
+        Assert.NotEmpty(helpers);
+        Assert.DoesNotContain(below, p => p.Name.Equals("conhost.exe", StringComparison.OrdinalIgnoreCase) && helpers.Contains(p.ParentId));
+    }
+
+    [Fact]
+    public async Task The_windowless_log_helper_still_writes_the_site_log()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (apache, version) = await PrepareAsync([StaticSite(SiteKind.Domain, "quiet.test", "quiet")]);
+        await apache.StartAsync(version, Port, ct);
+
+        Assert.Equal("quiet", (await GetAsHostAsync("quiet.test", "/?written")).Body);
+
+        var log = Path.Combine(_paths.Logs, "sites", SiteSet.IdFor(SiteKind.Domain, "quiet.test"), $"access.{DateTime.Now:yyyy-MM-dd}.log");
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!Read(log).Contains("GET /?written ", StringComparison.Ordinal) && DateTime.UtcNow < deadline) await Task.Delay(100, ct);
+        Assert.Contains("GET /?written ", Read(log));
+
+        static string Read(string file)
+        {
+            if (!File.Exists(file)) return "";
+            using var reader = new StreamReader(new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
+            return reader.ReadToEnd();
+        }
+    }
+
     [Fact]
     public async Task Start_serves_htdocs()
     {
