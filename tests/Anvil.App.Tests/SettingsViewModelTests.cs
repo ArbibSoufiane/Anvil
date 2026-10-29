@@ -254,6 +254,30 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public async Task The_database_port_is_saved_with_the_other_ports()
+    {
+        var vm = await LoadedAsync();
+        Assert.Equal("3306", vm.DbPortText);
+
+        vm.DbPortText = "3308";
+        await vm.ApplyPortsCommand.ExecuteAsync(null);
+
+        Assert.Equal(3308, _api.Saved?.DbPort);
+    }
+
+    [Fact]
+    public async Task The_database_cannot_share_a_port_with_apache()
+    {
+        var vm = await LoadedAsync();
+
+        vm.DbPortText = "443";
+        await vm.ApplyPortsCommand.ExecuteAsync(null);
+
+        Assert.Null(_api.Saved);
+        Assert.Equal("The database needs a port Apache does not use.", vm.PortsError);
+    }
+
+    [Fact]
     public async Task Ca_trust_follows_the_buttons()
     {
         var vm = await LoadedAsync();

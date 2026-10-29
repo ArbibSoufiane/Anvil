@@ -85,7 +85,7 @@
           <Border Classes="card">
             <StackPanel Spacing="12">
               <TextBlock Classes="h2" Text="Ports" />
-              <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="12">
+              <Grid ColumnDefinitions="*,*,*,Auto" ColumnSpacing="12">
                 <StackPanel Spacing="4">
                   <TextBlock Classes="fieldLabel" Text="HTTP port" />
                   <TextBox x:Name="HttpPort" Classes="field" Text="{Binding HttpPortText}" />
@@ -94,8 +94,14 @@
                   <TextBlock Classes="fieldLabel" Text="HTTPS port" />
                   <TextBox Classes="field" Text="{Binding HttpsPortText}" />
                 </StackPanel>
-                <Button Grid.Column="2" Classes="secondary" VerticalAlignment="Bottom" Content="Apply" Command="{Binding ApplyPortsCommand}" />
+                <StackPanel Grid.Column="2" Spacing="4">
+                  <TextBlock Classes="fieldLabel" Text="Database port" />
+                  <TextBox Classes="field" Text="{Binding DbPortText}" />
+                </StackPanel>
+                <Button Grid.Column="3" Classes="secondary" VerticalAlignment="Bottom" Content="Apply" Command="{Binding ApplyPortsCommand}" />
               </Grid>
+              <TextBlock Classes="note" TextWrapping="Wrap"
+                         Text="The database port is for Anvil's own MariaDB or MySQL. Servers you linked on the Database page keep their own port." />
               <TextBlock Classes="error" Text="{Binding PortsError}" IsVisible="{Binding PortsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
           </Border>

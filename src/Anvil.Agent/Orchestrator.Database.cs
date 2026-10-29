@@ -101,7 +101,20 @@ public sealed partial class Orchestrator
     }, ct);
 
     /// <summary>Writes the changes into my.ini (null removes the key) and restarts a running server; puts them back if it will not start.</summary>
-    public Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct) => Locked(async () =>
+    public Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct) =>
+        Locked(() => SaveDbSettingsCoreAsync(changes, ct), ct);
+
+    /// <summary>A new port is Anvil's database port from then on, as Settings shows it.</summary>
+    private async Task<ApplyResult> SaveDbSettingsCoreAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct)
+    {
+        var saved = await WriteDbSettingsAsync(changes, ct);
+        if (saved.Ok && changes.TryGetValue("port", out var value)
+            && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var port) && port != _settings.DbPort)
+            Save(_settings with { DbPort = port });
+        return saved;
+    }
+
+    private async Task<ApplyResult> WriteDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct)
     {
         if (ActiveDb is not { } a) return ApplyResult.Failure(NoDatabase);
         var defs = _dbSettings.For(a.Engine).ToDictionary(d => d.Key, OptionNames.Comparer);
@@ -131,7 +144,7 @@ public sealed partial class Orchestrator
             return ApplyResult.Failure($"{DbName(a.Engine)} did not start with these settings, so they were put back. {ex.Message}" +
                 (restarted.Ok ? "" : $" It did not start with the previous settings either: {restarted.Error}"));
         }
-    }, ct);
+    }
 
     public Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct) => Locked(async () =>
     {

@@ -119,6 +119,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial string HttpsPortText { get; set; } = "";
 
     [ObservableProperty]
+    public partial string DbPortText { get; set; } = "";
+
+    [ObservableProperty]
     public partial string? PortsError { get; set; }
 
     [ObservableProperty]
@@ -302,7 +305,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task ApplyPortsAsync()
     {
         if (!int.TryParse(HttpPortText.Trim(), out var http) || !int.TryParse(HttpsPortText.Trim(), out var https)
-            || http is < 1 or > 65535 || https is < 1 or > 65535)
+            || !int.TryParse(DbPortText.Trim(), out var db)
+            || http is < 1 or > 65535 || https is < 1 or > 65535 || db is < 1 or > 65535)
         {
             PortsError = "Ports are whole numbers from 1 to 65535.";
             return;
@@ -312,9 +316,14 @@ public sealed partial class SettingsViewModel : ObservableObject
             PortsError = "HTTP and HTTPS need different ports.";
             return;
         }
+        if (db == http || db == https)
+        {
+            PortsError = "The database needs a port Apache does not use.";
+            return;
+        }
 
         PortsError = null;
-        if (!await SaveAsync(_settings with { HttpPort = http, HttpsPort = https })) return;
+        if (!await SaveAsync(_settings with { HttpPort = http, HttpsPort = https, DbPort = db })) return;
         await OpenFirewallAsync();
     }
 
@@ -481,6 +490,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         HtdocsOnNetwork = s.Network.HtdocsOnNetwork;
         HttpPortText = s.HttpPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         HttpsPortText = s.HttpsPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        DbPortText = s.DbPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         HtdocsFolder = s.HtdocsPath ?? _paths.Htdocs;
         NetworkDomain = s.NetworkDomain ?? "";
         ShowNetwork();

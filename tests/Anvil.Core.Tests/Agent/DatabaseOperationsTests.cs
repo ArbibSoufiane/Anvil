@@ -186,6 +186,44 @@ public sealed class DatabaseOperationsTests : IDisposable
     }
 
     [Fact]
+    public async Task A_port_saved_on_the_database_page_is_the_port_Anvil_shows()
+    {
+        var orchestrator = await InstalledAsync();
+
+        var result = await orchestrator.SaveDbSettingsAsync(new Dictionary<string, string?> { ["port"] = "3308" }, Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(3308, orchestrator.Settings.DbPort);
+        Assert.Equal(3308, new SettingsStore(_paths).Load().DbPort);
+    }
+
+    [Fact]
+    public async Task The_database_port_in_settings_moves_the_running_database()
+    {
+        var orchestrator = await InstalledAsync();
+
+        var result = await orchestrator.SaveSettingsAsync(orchestrator.Settings with { DbPort = 3308 }, Ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("3308", _ini.Read(DbEngine.MariaDb)["port"]);
+        Assert.Equal(["db stop MariaDb 11.8.9", "db start MariaDb 11.8.9"], _events);
+        Assert.Equal(3308, orchestrator.Settings.DbPort);
+    }
+
+    [Fact]
+    public async Task A_database_port_another_program_holds_is_refused_in_settings()
+    {
+        var orchestrator = await MakeAsync(port => port != 3306);
+
+        var free = await orchestrator.SaveSettingsAsync(orchestrator.Settings with { DbPort = 3308 }, Ct);
+        var result = await orchestrator.SaveSettingsAsync(orchestrator.Settings with { DbPort = 3306 }, Ct);
+
+        Assert.True(free.Ok, free.Error);
+        Assert.Equal("Port 3306 is already in use by another program. Choose another database port. The settings were not saved.", result.Error);
+        Assert.Equal(3308, new SettingsStore(_paths).Load().DbPort);
+    }
+
+    [Fact]
     public async Task A_server_that_will_not_start_gets_its_old_settings_back()
     {
         var orchestrator = await InstalledAsync();

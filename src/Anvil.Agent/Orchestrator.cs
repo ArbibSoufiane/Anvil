@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -252,11 +253,20 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             NetworkDomain = NetworkNames.NormalizeDomain(s.NetworkDomain),
         };
         if (Validate(s) is { } invalid) return ApplyResult.Failure(invalid);
+        // Anvil's own running database holds the old port only; a program on the new one would stop it starting.
+        var dbMoves = s.DbPort != previous.DbPort;
+        if (dbMoves && !portFree(s.DbPort))
+            return ApplyResult.Failure($"Port {s.DbPort} is already in use by another program. Choose another database port. The settings were not saved.");
         // A port another program holds would take the sites down: refuse it while they still run.
         int[] fresh = [.. new[] { s.HttpPort, s.HttpsPort }.Except([previous.HttpPort, previous.HttpsPort])];
         if (fresh.Length > 0
             && preflight(s).FirstOrDefault(f => f.Severity == Severity.Blocking && fresh.Any(p => f.Id == $"port-{p}" || f.Id == $"http-sys-{p}")) is { } busy)
             return ApplyResult.Failure($"{(busy.Fix is null ? busy.Message : $"{busy.Message} {busy.Fix}")} The settings were not saved.");
+        if (dbMoves && ActiveDb is not null)
+        {
+            var moved = await SaveDbSettingsCoreAsync(new Dictionary<string, string?> { ["port"] = s.DbPort.ToString(CultureInfo.InvariantCulture) }, ct);
+            if (!moved.Ok) return ApplyResult.Failure($"{moved.Error} The settings were not saved.");
+        }
 
         if (InstalledApache(s.ActiveApache) is not { } version)
         {
