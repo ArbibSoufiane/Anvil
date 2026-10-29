@@ -283,6 +283,26 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
 
         public async Task<string> BackupDatabaseAsync(CancellationToken ct = default) => await (await Remote()).BackupDatabaseAsync(ct);
 
+        public async Task<IReadOnlyList<LinkedDbInfo>> GetLinkedDatabasesAsync(CancellationToken ct = default) =>
+            await (await Remote()).GetLinkedDatabasesAsync(ct);
+
+        public async Task<ApplyResult> LinkDatabaseAsync(string binDir, string user, string password, CancellationToken ct = default) =>
+            await (await Remote()).LinkDatabaseAsync(binDir, user, password, ct);
+
+        public async Task<ApplyResult> UnlinkDatabaseAsync(string id, CancellationToken ct = default) => await (await Remote()).UnlinkDatabaseAsync(id, ct);
+
+        public async Task<ApplyResult> StartLinkedDatabaseAsync(string id, CancellationToken ct = default) =>
+            await (await Remote()).StartLinkedDatabaseAsync(id, ct);
+
+        public async Task<ApplyResult> StopLinkedDatabaseAsync(string id, CancellationToken ct = default) =>
+            await (await Remote()).StopLinkedDatabaseAsync(id, ct);
+
+        public async Task<ApplyResult> SetLinkedDatabasePortAsync(string id, int port, CancellationToken ct = default) =>
+            await (await Remote()).SetLinkedDatabasePortAsync(id, port, ct);
+
+        public async Task<string> BackupLinkedDatabaseAsync(string id, CancellationToken ct = default) =>
+            await (await Remote()).BackupLinkedDatabaseAsync(id, ct);
+
         public async Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => await (await Remote()).ShutdownAsync(stopServices, ct);
     }
 }

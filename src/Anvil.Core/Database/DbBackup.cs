@@ -17,21 +17,34 @@ public sealed partial class DbBackup(AppPaths paths, DbSecrets secrets, TimeProv
 
     private string Dir => Path.Combine(paths.Backups, "db");
 
-    public async Task<string> BackupAllAsync(DbEngine e, string version, CancellationToken ct)
+    public Task<string> BackupAllAsync(DbEngine e, string version, CancellationToken ct)
     {
         var password = secrets.LoadRootPassword()
             ?? throw new InvalidOperationException("The database root password is not stored. Install the database first.");
         var port = new MyIni(paths).Read(e).GetValueOrDefault("port", "3306");
         var exe = Path.Combine(paths.DbRuntime(e, version), "bin", e == DbEngine.MariaDb ? "mariadb-dump.exe" : "mysqldump.exe");
-        if (!Directory.Exists(Dir))
+        return DumpAsync(Dir, exe, "root", password, int.Parse(port, CultureInfo.InvariantCulture), ct);
+    }
+
+    /// <summary>A linked server's backups go to data\backups\db\&lt;id&gt;, dumped with the tool in its own bin folder.</summary>
+    public Task<string> BackupLinkedAsync(LinkedDatabase server, string password, CancellationToken ct)
+    {
+        var dump = new[] { "mariadb-dump.exe", "mysqldump.exe" }.Select(n => Path.Combine(server.BinDir, n)).FirstOrDefault(File.Exists)
+            ?? throw new InvalidOperationException($"{server.BinDir} has no mariadb-dump.exe or mysqldump.exe.");
+        return DumpAsync(Path.Combine(Dir, server.Id), dump, server.User, password, server.Port, ct);
+    }
+
+    private async Task<string> DumpAsync(string dir, string exe, string user, string password, int port, CancellationToken ct)
+    {
+        if (!Directory.Exists(dir))
         {
-            Directory.CreateDirectory(Dir);
-            PrivateAcl.RestrictFolder(Dir);
+            Directory.CreateDirectory(dir);
+            PrivateAcl.RestrictFolder(dir);
         }
 
-        var target = NextFile();
+        var target = NextFile(dir);
         var partial = target + ".partial";
-        var options = DbClientOptions.Write(paths, password, int.Parse(port, CultureInfo.InvariantCulture));
+        var options = DbClientOptions.Write(paths, password, port, user);
         try
         {
             var psi = new ProcessStartInfo(exe)
@@ -73,16 +86,17 @@ public sealed partial class DbBackup(AppPaths paths, DbSecrets secrets, TimeProv
             File.Delete(options);
         }
 
-        Prune(Dir);
+        Prune(dir);
         return target;
     }
 
     /// <summary>The next backup's path, named after the local time; a second backup in the same second gets "-2".</summary>
-    internal string NextFile()
+    internal string NextFile(string? dir = null)
     {
+        dir ??= Dir;
         var stamp = time.GetLocalNow().ToString("yyyy-MM-dd-HHmmss", CultureInfo.InvariantCulture);
-        var file = Path.Combine(Dir, $"{stamp}.sql.gz");
-        for (var n = 2; File.Exists(file) || File.Exists(file + ".partial"); n++) file = Path.Combine(Dir, $"{stamp}-{n}.sql.gz");
+        var file = Path.Combine(dir, $"{stamp}.sql.gz");
+        for (var n = 2; File.Exists(file) || File.Exists(file + ".partial"); n++) file = Path.Combine(dir, $"{stamp}-{n}.sql.gz");
         return file;
     }
 

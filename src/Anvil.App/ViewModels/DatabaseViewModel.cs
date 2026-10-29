@@ -69,17 +69,23 @@ public sealed partial class DatabaseViewModel : ObservableObject
     private AppSettings _settings = new();
     private ServiceStatus? _status;
 
-    public DatabaseViewModel(IAgentApi api, AppPaths paths, EditorLauncher editor, Action<Action>? ui = null)
+    public DatabaseViewModel(IAgentApi api, AppPaths paths, EditorLauncher editor, LinkedDatabasesViewModel? linked = null, Action<Action>? ui = null)
     {
         _api = api;
         _paths = paths;
         _editor = editor;
+        Linked = linked;
         _ui = ui ?? (a => Dispatcher.UIThread.Post(a));
         Updates = new UpdatesPanel(api, k => k is ComponentKind.MariaDb or ComponentKind.MySql, LoadAsync);
         api.StatusChanged += (_, s) => _ui(() => ApplyStatus(s));
     }
 
     public UpdatesPanel Updates { get; }
+
+    /// <summary>"Your servers": MariaDB and MySQL servers the user installed themselves.</summary>
+    public LinkedDatabasesViewModel? Linked { get; }
+
+    public bool HasLinked => Linked is not null;
 
     public ObservableCollection<DbSettingItem> Rows { get; } = [];
     public ObservableCollection<DbSettingItem> VisibleRows { get; } = [];
@@ -162,6 +168,7 @@ public sealed partial class DatabaseViewModel : ObservableObject
             await RefreshRowsAsync(ct);
             await RefreshInstallChoicesAsync(ct);
             await Updates.RefreshAsync(ct);
+            if (Linked is not null) await Linked.LoadAsync(ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

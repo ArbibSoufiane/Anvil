@@ -206,6 +206,34 @@ public sealed class FakeAgentApi : IAgentApi
 
     public Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default) => Record("db password");
 
+    public List<LinkedDbInfo> LinkedDbs { get; } = [];
+
+    /// <summary>Answers for the linked-database calls, in order; each is used once. Without one, NextResult answers.</summary>
+    public Queue<ApplyResult> LinkedResults { get; } = new();
+
+    private Task<ApplyResult> Linked(string call)
+    {
+        Calls.Add(call);
+        return Task.FromResult(LinkedResults.TryDequeue(out var result) ? result : NextResult);
+    }
+
+    public Task<IReadOnlyList<LinkedDbInfo>> GetLinkedDatabasesAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<LinkedDbInfo>>(LinkedDbs.ToList());
+
+    public Task<ApplyResult> LinkDatabaseAsync(string binDir, string user, string password, CancellationToken ct = default) =>
+        Linked($"link db {binDir} {user} {password}");
+
+    public Task<ApplyResult> UnlinkDatabaseAsync(string id, CancellationToken ct = default) => Linked($"unlink db {id}");
+    public Task<ApplyResult> StartLinkedDatabaseAsync(string id, CancellationToken ct = default) => Linked($"start db {id}");
+    public Task<ApplyResult> StopLinkedDatabaseAsync(string id, CancellationToken ct = default) => Linked($"stop db {id}");
+    public Task<ApplyResult> SetLinkedDatabasePortAsync(string id, int port, CancellationToken ct = default) => Linked($"port db {id} {port}");
+
+    public Task<string> BackupLinkedDatabaseAsync(string id, CancellationToken ct = default)
+    {
+        Calls.Add($"backup db {id}");
+        return BackupError is { } error ? Task.FromException<string>(error) : Task.FromResult(BackupFile);
+    }
+
     public Task<string> BackupDatabaseAsync(CancellationToken ct = default)
     {
         Calls.Add("backup db");

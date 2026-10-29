@@ -1,0 +1,6 @@
+OpenSCManager
+OpenService
+QueryServiceStatus
+StartService
+ControlService
+SERVICE_STATUS

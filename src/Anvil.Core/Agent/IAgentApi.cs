@@ -113,6 +113,27 @@ public partial interface IAgentApi
     /// <summary>Dumps every database to data\backups\db; returns the file.</summary>
     Task<string> BackupDatabaseAsync(CancellationToken ct = default);
 
+    /// <summary>The MariaDB and MySQL servers the user linked, with their state.</summary>
+    Task<IReadOnlyList<LinkedDbInfo>> GetLinkedDatabasesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Links the server in a bin folder, with the account Anvil logs in with. A result's Elevation, when set, asks Windows to
+    /// let the user start and stop its service.
+    /// </summary>
+    Task<ApplyResult> LinkDatabaseAsync(string binDir, string user, string password, CancellationToken ct = default);
+
+    /// <summary>Forgets a linked server. A result's Elevation takes back the right to start and stop its service.</summary>
+    Task<ApplyResult> UnlinkDatabaseAsync(string id, CancellationToken ct = default);
+
+    Task<ApplyResult> StartLinkedDatabaseAsync(string id, CancellationToken ct = default);
+    Task<ApplyResult> StopLinkedDatabaseAsync(string id, CancellationToken ct = default);
+
+    /// <summary>A failed result with an Elevation needs that run first, then the same call again.</summary>
+    Task<ApplyResult> SetLinkedDatabasePortAsync(string id, int port, CancellationToken ct = default);
+
+    /// <summary>Dumps every database of a running linked server to data\backups\db\&lt;id&gt;; returns the file.</summary>
+    Task<string> BackupLinkedDatabaseAsync(string id, CancellationToken ct = default);
+
     /// <summary>Ends the Agent. With stopServices false, its processes still end with it (they live in its job).</summary>
     Task ShutdownAsync(bool stopServices, CancellationToken ct = default);
 }

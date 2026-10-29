@@ -54,6 +54,7 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         orchestrator = new Orchestrator(paths, store, tester, new ApacheControl(supervisor, paths, tester, probeHttp, ports), preflight.Run,
             new ComponentCatalog([new PhpCatalogProvider(probeHttp), new MariaDbCatalogProvider(probeHttp)], new ShippedCatalogProvider(paths)), installer,
             pools, port => ports.HolderOf(port) is null, db: new DatabaseServer(paths, supervisor, TimeProvider.System),
+            linkedDbs: new LinkedDbHost(paths, supervisor, TimeProvider.System),
             names: names, lanAddresses: LanAddresses.Find, publicAdapters: NetworkCategory.PublicAdapterIds, firewallRules: WindowsFirewallReader.Read,
             phpProbe: (port, ct) => FastCgiProbe.ProbeAsync(port, Path.Combine(paths.Run, FastCgiProbe.ScriptName), PhpProbeTimeout, ct));
 

@@ -39,7 +39,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     string? legacyHome = null, TimeProvider? time = null, IDatabaseServer? db = null,
     INameService? names = null, Func<IReadOnlyList<LanAddress>>? lanAddresses = null, Func<IReadOnlySet<string>>? publicAdapters = null,
     Func<IReadOnlyList<ExistingFirewallRule>>? firewallRules = null, Func<int, CancellationToken, Task<bool>>? phpProbe = null,
-    string? userProfile = null, Func<string, string?>? phpVersionOf = null)
+    string? userProfile = null, Func<string, string?>? phpVersionOf = null, ILinkedDbHost? linkedDbs = null)
 {
     public const int MaxWorkers = 64;
     public const int MaxRecycleRequests = 1_000_000;

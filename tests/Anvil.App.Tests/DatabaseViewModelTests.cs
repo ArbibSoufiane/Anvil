@@ -48,6 +48,20 @@ public sealed class DatabaseViewModelTests
     private static DbSettingItem Row(DatabaseViewModel vm, string key) => vm.Rows.Single(r => r.Key == key);
 
     [Fact]
+    public async Task The_page_lists_the_servers_the_user_linked()
+    {
+        _api.LinkedDbs.Add(new LinkedDbInfo("mariadb", DbEngine.MariaDb, "13.0.2", @"C:\Program Files\MariaDB 13.0\bin", "MariaDB", 3307, "root",
+            ProcessState.Running, CanControl: true));
+        var linked = new LinkedDatabasesViewModel(_api, new FakeElevator(), new FakeFolderPicker());
+        var vm = new DatabaseViewModel(_api, Paths, new EditorLauncher(() => "auto", new NoRegistry(), _ => false, ""), linked, ui: a => a());
+
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        Assert.Same(linked, vm.Linked);
+        Assert.Equal(["MariaDB 13.0.2"], vm.Linked!.Servers.Select(s => s.Title));
+    }
+
+    [Fact]
     public async Task Changed_rows_counted()
     {
         var vm = await LoadedAsync();

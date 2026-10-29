@@ -107,6 +107,22 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
 
     public Task<string> BackupDatabaseAsync(CancellationToken ct = default) => orchestrator.BackupDatabaseAsync(ct);
 
+    public Task<IReadOnlyList<LinkedDbInfo>> GetLinkedDatabasesAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.GetLinkedDatabases());
+
+    public Task<ApplyResult> LinkDatabaseAsync(string binDir, string user, string password, CancellationToken ct = default) =>
+        orchestrator.LinkDatabaseAsync(binDir, user, password, ct);
+
+    public Task<ApplyResult> UnlinkDatabaseAsync(string id, CancellationToken ct = default) => orchestrator.UnlinkDatabaseAsync(id, ct);
+
+    public Task<ApplyResult> StartLinkedDatabaseAsync(string id, CancellationToken ct = default) => orchestrator.StartLinkedDatabaseAsync(id, ct);
+
+    public Task<ApplyResult> StopLinkedDatabaseAsync(string id, CancellationToken ct = default) => orchestrator.StopLinkedDatabaseAsync(id, ct);
+
+    public Task<ApplyResult> SetLinkedDatabasePortAsync(string id, int port, CancellationToken ct = default) =>
+        orchestrator.SetLinkedDatabasePortAsync(id, port, ct);
+
+    public Task<string> BackupLinkedDatabaseAsync(string id, CancellationToken ct = default) => orchestrator.BackupLinkedDatabaseAsync(id, ct);
+
     /// <summary>Returns at once so the reply reaches the caller before the pipe closes.</summary>
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)
     {

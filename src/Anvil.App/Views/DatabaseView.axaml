@@ -128,6 +128,76 @@
           </StackPanel>
         </Border>
       </StackPanel>
+
+      <!-- MariaDB and MySQL servers the user installed themselves -->
+      <Panel IsVisible="{Binding HasLinked}">
+        <StackPanel Spacing="12" DataContext="{Binding Linked}" x:DataType="vm:LinkedDatabasesViewModel">
+          <DockPanel>
+            <Button Classes="secondary" DockPanel.Dock="Right" Content="Link a server…" Command="{Binding ChooseFolderCommand}" />
+            <StackPanel Spacing="2" VerticalAlignment="Center">
+              <TextBlock Classes="h2" Text="Your servers" />
+              <TextBlock Classes="note" TextWrapping="Wrap"
+                         Text="MariaDB or MySQL you installed yourself. Linking a Windows service asks Windows once; after that Start and Stop do not ask again." />
+            </StackPanel>
+          </DockPanel>
+
+          <Border Classes="card" IsVisible="{Binding IsLinking}">
+            <StackPanel Spacing="12">
+              <TextBlock Classes="h2" Text="Link a server" />
+              <StackPanel Spacing="4">
+                <TextBlock Classes="fieldLabel" Text="Bin folder" />
+                <TextBox Classes="field mono" Text="{Binding LinkFolder}" IsReadOnly="True" />
+              </StackPanel>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="fieldLabel" Text="User" />
+                  <TextBox Classes="field" Text="{Binding LinkUser}" />
+                </StackPanel>
+                <StackPanel Spacing="4" Grid.Column="1">
+                  <TextBlock Classes="fieldLabel" Text="Password" />
+                  <TextBox Classes="field" Text="{Binding LinkPassword}" PasswordChar="•" />
+                </StackPanel>
+              </Grid>
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Classes="primary" Content="Link" Command="{Binding LinkCommand}" />
+                <Button Classes="ghost" Content="Cancel" Command="{Binding CancelLinkCommand}" />
+              </StackPanel>
+              <TextBlock Classes="note" TextWrapping="Wrap"
+                         Text="Anvil logs in with this account to check the server and to back it up. The password is kept encrypted on this PC." />
+            </StackPanel>
+          </Border>
+
+          <TextBlock Classes="result" Classes.ok="{Binding MessageOk}" Text="{Binding Message}" TextWrapping="Wrap"
+                     IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+          <Border Classes="card" Padding="0,8" IsVisible="{Binding HasServers}">
+            <ItemsControl x:Name="LinkedServers" ItemsSource="{Binding Servers}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:LinkedDbRow">
+                  <Border Classes="row" Padding="16,10">
+                    <Grid ColumnDefinitions="*,90,Auto" ColumnSpacing="12">
+                      <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock FontWeight="Medium" Text="{Binding Title}" />
+                        <TextBlock Classes="note" Text="{Binding Detail}" />
+                        <TextBlock Classes="mono dim" FontSize="12" Text="{Binding Info.BinDir}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding StatusText}" />
+                      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button Classes="secondary" Content="Start" Command="{Binding StartCommand}" IsVisible="{Binding !IsRunning}" />
+                        <Button Classes="secondary" Content="Stop" Command="{Binding StopCommand}" IsVisible="{Binding IsRunning}" />
+                        <TextBox Classes="field" Width="80" Text="{Binding PortText}" ToolTip.Tip="Port" />
+                        <Button Classes="secondary" Content="Apply port" Command="{Binding ApplyPortCommand}" />
+                        <Button Classes="secondary" Content="Back up" Command="{Binding BackupCommand}" IsEnabled="{Binding IsRunning}" />
+                        <Button Classes="ghost" Content="Unlink" Command="{Binding UnlinkCommand}" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </StackPanel>
+      </Panel>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

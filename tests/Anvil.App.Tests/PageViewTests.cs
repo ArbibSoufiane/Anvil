@@ -34,7 +34,8 @@ public sealed class PageViewTests
         var dashboard = new DashboardViewModel(_api, Paths, editor, ui: a => a());
         var apache = new ApacheViewModel(_api, Paths, editor, ui: a => a());
         var php = new PhpViewModel(_api, Paths, editor, ui: a => a());
-        var database = new DatabaseViewModel(_api, Paths, editor, ui: a => a());
+        var linked = new LinkedDatabasesViewModel(_api, new FakeElevator(), new FakeFolderPicker());
+        var database = new DatabaseViewModel(_api, Paths, editor, linked, ui: a => a());
         dashboard.LoadAsync().GetAwaiter().GetResult();
         apache.LoadAsync().GetAwaiter().GetResult();
         php.LoadAsync().GetAwaiter().GetResult();
@@ -131,6 +132,26 @@ public sealed class PageViewTests
         var resets = table.GetVisualDescendants().OfType<Button>().Where(b => (string?)b.Content == "Reset").ToList();
         Assert.Single(resets, b => b.IsEffectivelyVisible);
         Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Save and restart MariaDB");
+    }
+
+    [AvaloniaFact]
+    public void Database_view_lists_your_servers_with_their_buttons()
+    {
+        _api.LinkedDbs.Add(new LinkedDbInfo("mariadb", DbEngine.MariaDb, "13.0.2", @"C:\Program Files\MariaDB 13.0\bin", "MariaDB", 3307, "root",
+            ProcessState.Running, CanControl: true));
+        var (window, shell) = Show();
+
+        shell.NavigateCommand.Execute(AppPage.Database);
+        window.UpdateLayout();
+
+        var servers = Named<ItemsControl>(window, "LinkedServers");
+        var texts = servers.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+        Assert.Contains("MariaDB 13.0.2", texts);
+        Assert.Contains("Windows service MariaDB · port 3307", texts);
+        var buttons = servers.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).Select(b => b.Content as string).ToList();
+        Assert.Equal(["Stop", "Apply port", "Back up", "Unlink"], buttons);
+        Assert.Equal("3307", servers.GetVisualDescendants().OfType<TextBox>().Single().Text);
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Link a server…" && b.IsEffectivelyVisible);
     }
 
     [AvaloniaFact]

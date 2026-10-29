@@ -100,6 +100,24 @@ public sealed class RpcTests
     }
 
     [Fact]
+    public async Task Linked_database_results_carry_the_administrator_action_they_need()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var name = UniquePipe();
+        await using var server = new PipeServer(name, new FakeApi());
+        server.Start();
+        await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
+
+        var linked = await client.Api.GetLinkedDatabasesAsync(ct);
+        var link = await client.Api.LinkDatabaseAsync(@"C:\Program Files\MariaDB 13.0\bin", "root", "root", ct);
+        var port = await client.Api.SetLinkedDatabasePortAsync("mariadb", 3310, ct);
+
+        Assert.Equal(FakeApi.MariaDb, Assert.Single(linked));
+        Assert.Equal(new DbServiceAccessRequest("MariaDB", Grant: true), link.Elevation);
+        Assert.Equal(new DbPortRequest("MariaDB", 3310), port.Elevation);
+    }
+
+    [Fact]
     public async Task Linking_php_round_trips_over_pipe()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -409,6 +427,23 @@ public sealed class RpcTests
 
         public Task<string> BackupDatabaseAsync(CancellationToken ct = default) =>
             Task.FromException<string>(new InvalidOperationException("Start the database first."));
+
+        public static readonly LinkedDbInfo MariaDb = new("mariadb", DbEngine.MariaDb, "13.0.2", @"C:\Program Files\MariaDB 13.0\bin", "MariaDB", 3307, "root",
+            ProcessState.Running, CanControl: false);
+
+        public Task<IReadOnlyList<LinkedDbInfo>> GetLinkedDatabasesAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<LinkedDbInfo>>([MariaDb]);
+
+        public Task<ApplyResult> LinkDatabaseAsync(string binDir, string user, string password, CancellationToken ct = default) =>
+            Task.FromResult(ApplyResult.Success() with { Elevation = new DbServiceAccessRequest("MariaDB", Grant: true) });
+
+        public Task<ApplyResult> UnlinkDatabaseAsync(string id, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<ApplyResult> StartLinkedDatabaseAsync(string id, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<ApplyResult> StopLinkedDatabaseAsync(string id, CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<ApplyResult> SetLinkedDatabasePortAsync(string id, int port, CancellationToken ct = default) =>
+            Task.FromResult(ApplyResult.Failure("Windows must allow Anvil to change my.ini.") with { Elevation = new DbPortRequest("MariaDB", port) });
+
+        public Task<string> BackupLinkedDatabaseAsync(string id, CancellationToken ct = default) => throw new NotSupportedException();
 
         public static readonly FirewallSetRequest Firewall = new("2.4.69", [80, 443], NameService: true);
 
