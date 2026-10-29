@@ -154,30 +154,42 @@ public sealed class SiteOperationsTests : IDisposable
         Assert.Equal(["Root"], errors.Select(e => e.Field));
     }
 
+    // Sites are for this PC: whatever a domain ends in, only the hosts file points it here.
     [Fact]
-    public async Task New_test_domain_requests_hosts_update()
+    public async Task Every_domain_site_requests_hosts_entries()
     {
         var orchestrator = await StartedAsync();
 
         var result = await orchestrator.SaveSiteAsync(Site("blog.test") with { Aliases = ["www.blog.test"] }, Ct);
-        var second = await orchestrator.SaveSiteAsync(Site("shop.example.com") with { AddToHosts = true }, Ct);
+        var second = await orchestrator.SaveSiteAsync(Site("pma.dev"), Ct);
 
         Assert.Equal(["blog.test", "www.blog.test"], result.HostsDomains);
-        Assert.Equal(["blog.test", "www.blog.test", "shop.example.com"], second.HostsDomains);
+        Assert.Equal(["blog.test", "www.blog.test", "pma.dev"], second.HostsDomains);
     }
 
     [Fact]
     public async Task Unchanged_hosts_list_returns_null_hosts()
     {
-        _hosts = HostsFile.ApplyBlock(_hosts, ["blog.test"]);
+        _hosts = HostsFile.ApplyBlock(_hosts, ["shop.example.com"]);
         var orchestrator = await StartedAsync();
 
-        var test = await orchestrator.SaveSiteAsync(Site("blog.test"), Ct);
-        var publicSite = await orchestrator.SaveSiteAsync(Site("shop.example.com"), Ct);
+        var result = await orchestrator.SaveSiteAsync(Site("shop.example.com"), Ct);
 
-        Assert.True(test.Ok, test.Error);
-        Assert.Null(test.HostsDomains);
-        Assert.Null(publicSite.HostsDomains);
+        Assert.True(result.Ok, result.Error);
+        Assert.Null(result.HostsDomains);
+    }
+
+    [Fact]
+    public async Task Renaming_a_site_moves_its_hosts_entry()
+    {
+        var orchestrator = await StartedAsync();
+        var first = await orchestrator.SaveSiteAsync(Site("pma.pc"), Ct);
+        _hosts = HostsFile.ApplyBlock(_hosts, first.HostsDomains!);
+
+        var renamed = await orchestrator.SaveSiteAsync(orchestrator.GetSites().Single() with { Name = "pma.dev" }, Ct);
+
+        Assert.True(renamed.Ok, renamed.Error);
+        Assert.Equal(["pma.dev"], renamed.HostsDomains);
     }
 
     [Fact]

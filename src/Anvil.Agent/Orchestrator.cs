@@ -727,15 +727,15 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
 
     /// <summary>
     /// The hosts entries the sites need, when they differ from Anvil's block in the hosts file now or ArbiPache 3's block
-    /// still lists one of them; else null.
+    /// still lists one of them; else null. Every name of every enabled domain site: sites are for this PC, and only the
+    /// hosts file points a name here, whatever it ends in.
     /// </summary>
     private IReadOnlyList<string>? HostsChange()
     {
         var wanted = new SiteStore(paths).All()
             .Where(s => s.Enabled && s.Kind == SiteKind.Domain)
             .SelectMany(s => s.Aliases.Prepend(s.Name)
-                .Select(n => SiteSet.NormalizeHost(n) ?? n)
-                .Where(n => s.AddToHosts || n.EndsWith(".test", StringComparison.Ordinal)))
+                .Select(n => SiteSet.NormalizeHost(n) ?? n))
             .Distinct(StringComparer.Ordinal)
             .ToList();
         string current;

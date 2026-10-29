@@ -171,7 +171,7 @@ public sealed class AddSiteViewModelTests
         var existing = new SiteDefinition
         {
             Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "shop.test", Root = @"D:\shop", PhpVersion = "8.4.23",
-            AddToHosts = true, HttpRedirect = false, Cert = CertSource.LocalDev, Created = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero),
+            HttpRedirect = false, Cert = CertSource.LocalDev, Created = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero),
         };
         var vm = Make(existing);
         Assert.Equal("8.4.23", vm.SelectedPhp?.Version);
@@ -182,7 +182,6 @@ public sealed class AddSiteViewModelTests
         var saved = Assert.Single(_api.SavedSites);
         Assert.Equal("shop.test", saved.Id);
         Assert.Equal("shop2.test", saved.Name);
-        Assert.True(saved.AddToHosts);
         Assert.False(saved.HttpRedirect);
         Assert.Equal(existing.Created, saved.Created);
         Assert.Equal("8.4.23", saved.PhpVersion);

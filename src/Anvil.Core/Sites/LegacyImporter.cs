@@ -80,7 +80,6 @@ public static partial class LegacyImporter
                 Index = legacy.Index is { Count: > 0 } index ? index : ["index.php", "index.html"],
                 Cert = legacy.Https ? CertSource.LocalDev : CertSource.None,
                 HttpRedirect = legacy.HttpRedirect,
-                AddToHosts = true,
                 Enabled = legacy.Enabled && !phpMissing,
                 Created = DateTimeOffset.TryParse(legacy.Created, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var created)
                     ? created

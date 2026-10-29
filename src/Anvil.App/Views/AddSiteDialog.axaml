@@ -79,7 +79,7 @@
           <RadioButton Classes="option" GroupName="cert" IsChecked="{Binding IsLocalDev}">
             <StackPanel Spacing="2">
               <TextBlock FontWeight="Medium" Text="Local development certificate" />
-              <TextBlock Classes="note" TextWrapping="Wrap" Text="Trusted on this PC only. For .test domains." />
+              <TextBlock Classes="note" TextWrapping="Wrap" Text="Trusted on this PC only." />
             </StackPanel>
           </RadioButton>
           <RadioButton Classes="option" GroupName="cert" IsChecked="{Binding IsHttpOnly}">

@@ -210,8 +210,8 @@ public sealed partial class AddSiteViewModel : ObservableObject
     public string Footnote => Kind switch
     {
         SiteKind.Htdocs => "htdocs folders are never served to the internet.",
-        _ when Cert == CertSource.LocalDev => "Trusted on this PC only. Anvil adds .test names to the hosts file for you.",
-        _ => "Anvil adds .test names to the hosts file for you.",
+        _ when Cert == CertSource.LocalDev => "Trusted on this PC only. Anvil adds the site's names to the hosts file for you.",
+        _ => "Anvil adds the site's names to the hosts file for you.",
     };
 
     private bool IsInsideHtdocs

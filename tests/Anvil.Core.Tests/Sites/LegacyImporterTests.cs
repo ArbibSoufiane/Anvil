@@ -56,7 +56,6 @@ public sealed class LegacyImporterTests : IDisposable
         Assert.Equal(["index.php", "index.html"], site.Index);
         Assert.Equal(CertSource.LocalDev, site.Cert);
         Assert.False(site.HttpRedirect);
-        Assert.True(site.AddToHosts);
         Assert.True(site.Enabled);
         Assert.Equal(new DateTimeOffset(new DateTime(2026, 10, 25, 14, 19, 16, DateTimeKind.Local)), site.Created);
         Assert.Equal(["afaq.test"], report.Imported);

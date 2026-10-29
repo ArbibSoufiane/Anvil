@@ -39,8 +39,6 @@ public sealed record SiteDefinition
 
     public bool HttpRedirect { get; init; } = true;
 
-    public bool AddToHosts { get; init; }
-
     public bool Enabled { get; init; } = true;
 
     public DateTimeOffset Created { get; init; }

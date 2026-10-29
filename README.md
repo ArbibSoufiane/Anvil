@@ -56,9 +56,11 @@ Anvil in the tray unless you turn that off in Settings.
 
 **On this PC: `http://localhost/<folder>`.** Every folder in `htdocs\`, with no setup.
 
-**On this PC: a `.test` domain.** Sites → Add gives a folder its own name such as `shop.test`.
+**On this PC: a domain of its own.** Sites → Add gives a folder its own name such as `shop.test`.
 Anvil adds it to the hosts file (Windows asks for permission) and can serve it over HTTPS with a
 certificate from its own certificate authority: click Trust once and your browsers accept it.
+Any name works, but `.test` is reserved for this and never belongs to a real website; a name such
+as `shop.dev` hides the real site of that name on this PC while yours exists.
 
 **From another device on your network.** Set the site, or the `htdocs` folders, to **My network**.
 Then others open:

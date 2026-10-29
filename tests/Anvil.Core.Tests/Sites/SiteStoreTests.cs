@@ -26,7 +26,6 @@ public sealed class SiteStoreTests : IDisposable
         Cert = CertSource.LocalDev,
         Access = AccessLevel.ThisPc,
         HttpRedirect = false,
-        AddToHosts = true,
         Enabled = false,
         Created = new DateTimeOffset(2026, 10, 27, 9, 30, 0, TimeSpan.Zero),
     };
