@@ -26,6 +26,8 @@ internal static class Program
                 null => new ElevatedResult(false, error),
                 HostsSetRequest hosts => HostsHandler.Run(hosts, paths),
                 FirewallSetRequest firewall => FirewallHandler.Run(firewall, paths),
+                DbServiceAccessRequest access => DbServiceHandler.Run(access, requestPath),
+                DbPortRequest port => DbServiceHandler.Run(port),
                 _ => new ElevatedResult(false, "Unknown request."),
             };
         }

@@ -8,11 +8,23 @@ namespace Anvil.Core.Elevation;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "verb")]
 [JsonDerivedType(typeof(HostsSetRequest), "hosts-set")]
 [JsonDerivedType(typeof(FirewallSetRequest), "firewall-set")]
+[JsonDerivedType(typeof(DbServiceAccessRequest), "db-service-access")]
+[JsonDerivedType(typeof(DbPortRequest), "db-port")]
 public abstract record ElevatedRequest
 {
     /// <summary>The verbs above, the only ones the Elevator runs.</summary>
-    public static IReadOnlySet<string> Verbs { get; } = new HashSet<string>(StringComparer.Ordinal) { "hosts-set", "firewall-set" };
+    public static IReadOnlySet<string> Verbs { get; } =
+        new HashSet<string>(StringComparer.Ordinal) { "hosts-set", "firewall-set", "db-service-access", "db-port" };
 }
+
+/// <summary>
+/// Lets the user who wrote the request start and stop one MariaDB or MySQL service without asking again, or takes that
+/// back when <paramref name="Grant"/> is false.
+/// </summary>
+public sealed record DbServiceAccessRequest(string Service, bool Grant) : ElevatedRequest;
+
+/// <summary>Sets the port in the settings file a MariaDB or MySQL service's command line names.</summary>
+public sealed record DbPortRequest(string Service, int Port) : ElevatedRequest;
 
 /// <summary>Makes Anvil's hosts block map exactly these domains to this PC.</summary>
 public sealed record HostsSetRequest(IReadOnlyList<string> Domains) : ElevatedRequest;

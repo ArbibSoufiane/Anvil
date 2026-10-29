@@ -146,6 +146,57 @@ public sealed class RequestValidatorTests : IDisposable
         Assert.Contains("\"verb\": \"firewall-set\"", File.ReadAllText(file));
     }
 
+    private const string MariaDb = "\"C:\\Program Files\\MariaDB 13.0\\bin\\mysqld.exe\" \"--defaults-file={0}\" \"MariaDB\"";
+
+    private string? ValidateWith(ElevatedRequest r, Func<string, string?> imagePathOf) =>
+        RequestValidator.Validate(r, RequestFile("{}"), _paths, imagePathOf);
+
+    private string SettingsOfService()
+    {
+        var ini = Path.Combine(_paths.Root, "my.ini");
+        File.WriteAllText(ini, "[mysqld]\nport=3307\n");
+        return ini;
+    }
+
+    [Fact]
+    public void Database_service_requests_round_trip_with_their_verbs()
+    {
+        var access = RequestFile(ElevatedJson.Serialize(new DbServiceAccessRequest("MariaDB", Grant: true)));
+        var port = RequestFile(ElevatedJson.Serialize(new DbPortRequest("MariaDB", 3310)));
+        var ini = SettingsOfService();
+        Func<string, string?> services = name => name == "MariaDB" ? string.Format(MariaDb, ini) : null;
+
+        Assert.Equal(new DbServiceAccessRequest("MariaDB", true), RequestValidator.Read(access, _paths, services).Request);
+        Assert.Equal(new DbPortRequest("MariaDB", 3310), RequestValidator.Read(port, _paths, services).Request);
+        Assert.Contains("\"verb\": \"db-service-access\"", File.ReadAllText(access));
+        Assert.Contains("\"verb\": \"db-port\"", File.ReadAllText(port));
+    }
+
+    [Fact]
+    public void Only_database_services_can_be_opened_up()
+    {
+        Assert.Equal("There is no service named Spooler2.", ValidateWith(new DbServiceAccessRequest("Spooler2", true), _ => null));
+        Assert.Equal("Spooler is not a MariaDB or MySQL service.",
+            ValidateWith(new DbServiceAccessRequest("Spooler", true), _ => @"C:\Windows\System32\spoolsv.exe"));
+        Assert.Equal("'..\\x' is not a service name.", ValidateWith(new DbServiceAccessRequest("..\\x", true), _ => null));
+        Assert.Null(ValidateWith(new DbServiceAccessRequest("MariaDB", false), _ => string.Format(MariaDb, SettingsOfService())));
+    }
+
+    [Theory]
+    [InlineData(0, "The port must be between 1 and 65535.")]
+    [InlineData(70000, "The port must be between 1 and 65535.")]
+    public void A_database_port_must_be_a_port(int port, string error) =>
+        Assert.Equal(error, ValidateWith(new DbPortRequest("MariaDB", port), _ => string.Format(MariaDb, SettingsOfService())));
+
+    [Fact]
+    public void A_database_port_goes_only_into_the_settings_file_the_service_starts_with()
+    {
+        Assert.Equal("MySQL starts without a settings file, so Anvil cannot change its port.",
+            ValidateWith(new DbPortRequest("MySQL", 3310), _ => @"C:\db\bin\mysqld.exe MySQL"));
+        Assert.Equal(@"The settings file of MariaDB, C:\nowhere\my.ini, does not exist.",
+            ValidateWith(new DbPortRequest("MariaDB", 3310), _ => string.Format(MariaDb, @"C:\nowhere\my.ini")));
+    }
+
     [Fact]
     public void Request_outside_tmp_rejected()
     {

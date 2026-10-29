@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Anvil.Core.Database;
 using Anvil.Core.Paths;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
@@ -21,6 +22,9 @@ public static partial class RequestValidator
     [GeneratedRegex(@"^[0-9]+\.[0-9]+\.[0-9]+$")]
     private static partial Regex ApacheVersion();
 
+    [GeneratedRegex(@"^[A-Za-z0-9_. -]{1,80}$")]
+    private static partial Regex ServiceName();
+
     /// <summary>Null when <paramref name="requestPath"/> is a request file directly inside data\tmp\elevation.</summary>
     public static string? PathError(string requestPath, AppPaths paths)
     {
@@ -38,16 +42,41 @@ public static partial class RequestValidator
     }
 
     /// <summary>Null when the request may run.</summary>
-    public static string? Validate(ElevatedRequest r, string requestPath, AppPaths paths) =>
+    /// <param name="imagePathOf">A service's command line, or null when there is no such service; Windows' list by default.</param>
+    public static string? Validate(ElevatedRequest r, string requestPath, AppPaths paths, Func<string, string?>? imagePathOf = null) =>
         PathError(requestPath, paths) ?? r switch
         {
             HostsSetRequest h => HostsError(h),
             FirewallSetRequest f => FirewallError(f, paths),
+            DbServiceAccessRequest a => DbServiceError(a.Service, imagePathOf ?? WindowsServices.ImagePath).Error,
+            DbPortRequest p => DbPortError(p, imagePathOf ?? WindowsServices.ImagePath),
             _ => "Unknown request.",
         };
 
+    /// <summary>
+    /// Only a service whose program is a MariaDB or MySQL server. Returns its command line so a port request writes only the
+    /// settings file the service itself starts with.
+    /// </summary>
+    public static (ServiceCommand? Command, string? Error) DbServiceError(string service, Func<string, string?> imagePathOf)
+    {
+        if (service is null || !ServiceName().IsMatch(service) || service.Contains("..", StringComparison.Ordinal))
+            return (null, $"'{service}' is not a service name.");
+        if (imagePathOf(service) is not { } imagePath) return (null, $"There is no service named {service}.");
+        var command = ServiceCommand.Parse(imagePath);
+        return command.RunsServer ? (command, null) : (null, $"{service} is not a MariaDB or MySQL service.");
+    }
+
+    private static string? DbPortError(DbPortRequest p, Func<string, string?> imagePathOf)
+    {
+        if (p.Port is < 1 or > 65535) return "The port must be between 1 and 65535.";
+        var (command, error) = DbServiceError(p.Service, imagePathOf);
+        if (error is not null) return error;
+        if (command!.DefaultsFile is not { } file) return $"{p.Service} starts without a settings file, so Anvil cannot change its port.";
+        return File.Exists(file) ? null : $"The settings file of {p.Service}, {file}, does not exist.";
+    }
+
     /// <summary>Reads and validates a request file. The path is checked before the file is opened.</summary>
-    public static (ElevatedRequest? Request, string? Error) Read(string requestPath, AppPaths paths)
+    public static (ElevatedRequest? Request, string? Error) Read(string requestPath, AppPaths paths, Func<string, string?>? imagePathOf = null)
     {
         if (PathError(requestPath, paths) is { } pathError) return (null, pathError);
         ElevatedRequest? request;
@@ -66,7 +95,7 @@ public static partial class RequestValidator
         }
 
         if (request is null) return (null, "The request is empty.");
-        return Validate(request, requestPath, paths) is { } error ? (null, error) : (request, null);
+        return Validate(request, requestPath, paths, imagePathOf) is { } error ? (null, error) : (request, null);
     }
 
     /// <summary>

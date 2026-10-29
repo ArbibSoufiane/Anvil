@@ -83,6 +83,10 @@ public sealed partial class IniDocument
         _lines.Where(l => InSection(l, section)).Select(l => Pair().Match(l.Text)).Where(m => m.Success)
             .Select(m => (m.Groups["key"].Value, Unquote(m.Groups["value"].Value))).ToList();
 
+    /// <summary>Each section name once, in file order.</summary>
+    public IReadOnlyList<string> Sections() =>
+        _lines.Select(l => l.Section).Where(s => s.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
     public override string ToString() => string.Concat(_lines.Select(l => l.Text + l.Ending));
 
     private IEnumerable<Line> Active(string section, string key) =>

@@ -4,6 +4,8 @@ OpenService
 ChangeServiceConfig
 ChangeServiceConfig2W
 SetServiceObjectSecurity
+QueryServiceObjectSecurity
+OBJECT_SECURITY_INFORMATION
 ControlService
 DeleteService
 SERVICE_DELAYED_AUTO_START_INFO
