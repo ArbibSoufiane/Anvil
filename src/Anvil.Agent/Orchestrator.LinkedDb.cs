@@ -128,6 +128,9 @@ public sealed partial class Orchestrator
             {
                 Elevation = new DbServiceAccessRequest(service, Grant: true),
             };
+        // Waiting for the port would find the other program's server and take it for this one.
+        if (start && server.Service is null && linkedDbs.State(server) != ProcessState.Running && !portFree(server.Port))
+            return ApplyResult.Failure($"Port {server.Port} is already in use by another program. Give {Title(server)} another port first.");
         try
         {
             if (start) await linkedDbs.StartAsync(server, ct);

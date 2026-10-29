@@ -198,6 +198,21 @@ public sealed class LinkedDatabaseTests : IDisposable
     }
 
     [Fact]
+    public async Task A_server_Anvil_runs_does_not_start_on_a_port_another_program_holds()
+    {
+        var bin = @"D:\mariadb-11.8\bin";
+        _host.Folders[bin] = new DbFolderInfo(DbEngine.MariaDb, "11.8.3", bin, null, null, 3306);
+        _busy.Add(3306);
+        var orchestrator = await MakeAsync();
+        await orchestrator.LinkDatabaseAsync(bin, "root", "root", TestContext.Current.CancellationToken);
+
+        var result = await orchestrator.StartLinkedDatabaseAsync("mariadb-11.8.3", TestContext.Current.CancellationToken);
+
+        Assert.Equal("Port 3306 is already in use by another program. Give MariaDB 11.8.3 another port first.", result.Error);
+        Assert.DoesNotContain("start mariadb-11.8.3", _host.Calls);
+    }
+
+    [Fact]
     public async Task Unlinking_takes_the_right_back_and_forgets_the_password()
     {
         var orchestrator = await LinkedAsync();
