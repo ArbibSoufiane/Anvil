@@ -31,14 +31,25 @@ public sealed class LinkedDbHost(AppPaths paths, ProcessSupervisor supervisor, T
     {
         if (server.Service is null)
             return supervisor.Snapshot().FirstOrDefault(s => s.Name == ProcessName(server))?.State ?? ProcessState.Stopped;
-        using var service = Open(server.Service, QueryStatus, out _);
-        if (service is null || !PInvoke.QueryServiceStatus(service, out var status)) return ProcessState.Stopped;
-        return status.dwCurrentState switch
-        {
-            SERVICE_STATUS_CURRENT_STATE.SERVICE_RUNNING => ProcessState.Running,
-            SERVICE_STATUS_CURRENT_STATE.SERVICE_START_PENDING or SERVICE_STATUS_CURRENT_STATE.SERVICE_CONTINUE_PENDING => ProcessState.Starting,
-            _ => ProcessState.Stopped,
-        };
+        return ServiceState(server.Service) is { } state ? Shown(state) : ProcessState.Stopped;
+    }
+
+    internal static ProcessState Shown(SERVICE_STATUS_CURRENT_STATE state) => state switch
+    {
+        SERVICE_STATUS_CURRENT_STATE.SERVICE_RUNNING => ProcessState.Running,
+        SERVICE_STATUS_CURRENT_STATE.SERVICE_START_PENDING or SERVICE_STATUS_CURRENT_STATE.SERVICE_CONTINUE_PENDING => ProcessState.Starting,
+        _ => ProcessState.Stopped,
+    };
+
+    /// <summary>A service still stopping has not stopped: starting it then fails, and the port it holds is not free yet.</summary>
+    internal static bool Reached(SERVICE_STATUS_CURRENT_STATE state, ProcessState wanted) => wanted == ProcessState.Running
+        ? state == SERVICE_STATUS_CURRENT_STATE.SERVICE_RUNNING
+        : state == SERVICE_STATUS_CURRENT_STATE.SERVICE_STOPPED;
+
+    private static SERVICE_STATUS_CURRENT_STATE? ServiceState(string name)
+    {
+        using var service = Open(name, QueryStatus, out _);
+        return service is not null && PInvoke.QueryServiceStatus(service, out var status) ? status.dwCurrentState : null;
     }
 
     public bool MayControl(LinkedDatabase server)
@@ -150,7 +161,8 @@ public sealed class LinkedDbHost(AppPaths paths, ProcessSupervisor supervisor, T
     private async Task WaitForAsync(LinkedDatabase server, ProcessState wanted, CancellationToken ct)
     {
         var deadline = Stopwatch.StartNew();
-        while (State(server) != wanted)
+        // A service Windows can no longer find has stopped.
+        while (ServiceState(server.Service!) is var state && (state is { } s ? !Reached(s, wanted) : wanted != ProcessState.Stopped))
         {
             if (deadline.Elapsed > ReadyLimit)
                 throw new TimeoutException($"{server.Service} did not {(wanted == ProcessState.Running ? "start" : "stop")} within {ReadyLimit.TotalSeconds:0} seconds.");

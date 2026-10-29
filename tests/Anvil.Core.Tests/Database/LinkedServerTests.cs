@@ -2,6 +2,8 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using Anvil.Core.Database;
 using Anvil.Core.Paths;
+using Anvil.Core.Processes;
+using Windows.Win32.System.Services;
 
 namespace Anvil.Core.Tests.Database;
 
@@ -151,4 +153,13 @@ public sealed class LinkedServerTests : IDisposable
     [Fact]
     public void A_second_server_of_one_version_gets_its_own_name() =>
         Assert.Equal("mysql-8.4.6-2", LinkedDatabaseStore.IdFor(new DbFolderInfo(DbEngine.MySql, "8.4.6", @"C:\db2\bin", null, null, 3306), ["mysql-8.4.6"]));
+
+    [Fact]
+    public void A_service_still_stopping_has_not_stopped_yet()
+    {
+        Assert.False(LinkedDbHost.Reached(SERVICE_STATUS_CURRENT_STATE.SERVICE_STOP_PENDING, ProcessState.Stopped));
+        Assert.True(LinkedDbHost.Reached(SERVICE_STATUS_CURRENT_STATE.SERVICE_STOPPED, ProcessState.Stopped));
+        Assert.False(LinkedDbHost.Reached(SERVICE_STATUS_CURRENT_STATE.SERVICE_START_PENDING, ProcessState.Running));
+        Assert.True(LinkedDbHost.Reached(SERVICE_STATUS_CURRENT_STATE.SERVICE_RUNNING, ProcessState.Running));
+    }
 }
