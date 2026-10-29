@@ -31,6 +31,9 @@
                           <Border Classes="tag" IsVisible="{Binding Info.IsDefault}">
                             <TextBlock Text="Default" />
                           </Border>
+                          <Border Classes="tag" IsVisible="{Binding Info.Linked}" ToolTip.Tip="{Binding Info.Folder}">
+                            <TextBlock Text="Linked" />
+                          </Border>
                           <Border Classes="tag eol" IsVisible="{Binding Info.EndOfLife}">
                             <TextBlock Text="End of life" />
                           </Border>
@@ -93,6 +96,8 @@
             <StackPanel Orientation="Horizontal" Spacing="12">
               <Button Classes="primary" Content="Apply" Command="{Binding ApplyPoolCommand}" />
               <Button Classes="secondary" Content="Make default" Command="{Binding MakeDefaultCommand}" />
+              <Button Classes="ghost" Content="Remove from Anvil" Command="{Binding UnlinkCommand}" IsVisible="{Binding CanUnlink}"
+                      ToolTip.Tip="Anvil forgets this version. Its folder stays as it is." />
             </StackPanel>
             <TextBlock Classes="result" Classes.ok="{Binding ResultOk}" Text="{Binding ResultText}"
                        IsVisible="{Binding ResultText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -133,6 +138,24 @@
                 </ComboBox>
                 <Button Classes="secondary" Content="Download" Command="{Binding InstallCommand}" />
               </StackPanel>
+            </StackPanel>
+
+            <StackPanel Spacing="6" Margin="0,8,0,0">
+              <TextBlock Classes="fieldLabel" Text="Use a PHP you already have" />
+              <TextBlock Classes="note" IsVisible="{Binding HasPvmChoices}" Text="Found in pvm:" />
+              <ItemsControl x:Name="PvmChoices" ItemsSource="{Binding PvmChoices}" IsVisible="{Binding HasPvmChoices}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PvmChoice">
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                      <TextBlock Classes="dd" VerticalAlignment="Center" Text="{Binding Label}" ToolTip.Tip="{Binding Found.Folder}" />
+                      <Button Classes="ghost" Grid.Column="1" Content="Add" Command="{Binding AddCommand}" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Button Classes="ghost" Content="Add a PHP folder…" Command="{Binding AddFolderCommand}" />
+              <TextBlock Classes="note"
+                         Text="Anvil uses the folder where it is, gives it its own php.ini, and never changes or deletes it." />
             </StackPanel>
             <TextBlock Classes="result" Text="{Binding VersionsMessage}"
                        IsVisible="{Binding VersionsMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

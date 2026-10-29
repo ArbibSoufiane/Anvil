@@ -23,17 +23,31 @@ public sealed partial class PhpVersionRow : ObservableObject
 
     public string Version => Info.Version;
     public string Title => $"PHP {Info.Version}";
-    public string Build => Info.Toolset.Length == 0 ? "NTS x64" : $"NTS x64 · {Info.Toolset.ToUpperInvariant()}";
+    public string Build => BuildText(Info.ThreadSafe, Info.Toolset);
     public string PoolText => $"{Info.Workers} workers";
     public string UsedBy => Info.UsedBy.Count == 0 ? "none" : string.Join(" + ", Info.UsedBy);
     public string StatusText => Info.State.ToString();
     public bool IsRunning => Info.State == ProcessState.Running;
 
     public IReadOnlyList<string> Tags =>
-        new[] { Info.IsDefault ? "Default" : null, Info.EndOfLife ? "End of life" : null }.OfType<string>().ToList();
+        new[] { Info.IsDefault ? "Default" : null, Info.Linked ? "Linked" : null, Info.EndOfLife ? "End of life" : null }.OfType<string>().ToList();
 
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
+
+    public static string BuildText(bool threadSafe, string toolset)
+    {
+        var build = threadSafe ? "TS x64" : "NTS x64";
+        return toolset.Length == 0 ? build : $"{build} · {toolset.ToUpperInvariant()}";
+    }
+}
+
+/// <summary>A PHP version pvm has that Anvil does not, with the button that adds it.</summary>
+public sealed class PvmChoice(PhpFound found, Func<string, Task> add)
+{
+    public PhpFound Found { get; } = found;
+    public string Label { get; } = $"PHP {found.Version} · {PhpVersionRow.BuildText(found.ThreadSafe, found.Toolset)}";
+    public IAsyncRelayCommand AddCommand { get; } = new AsyncRelayCommand(() => add(found.Folder));
 }
 
 /// <summary>An extension chip.</summary>
@@ -67,15 +81,17 @@ public sealed partial class PhpViewModel : ObservableObject
     private readonly IAgentApi _api;
     private readonly AppPaths _paths;
     private readonly EditorLauncher _editor;
+    private readonly IFolderPicker? _picker;
     private readonly Action<Action> _ui;
     private IReadOnlyList<InstalledComponent> _xdebug = [];
     private IReadOnlyList<ComponentRelease> _xdebugAvailable = [];
 
-    public PhpViewModel(IAgentApi api, AppPaths paths, EditorLauncher editor, Action<Action>? ui = null)
+    public PhpViewModel(IAgentApi api, AppPaths paths, EditorLauncher editor, IFolderPicker? picker = null, Action<Action>? ui = null)
     {
         _api = api;
         _paths = paths;
         _editor = editor;
+        _picker = picker;
         _ui = ui ?? (a => Dispatcher.UIThread.Post(a));
         Updates = new UpdatesPanel(api, k => k == ComponentKind.Php, LoadAsync);
         var cores = Environment.ProcessorCount;
@@ -87,14 +103,18 @@ public sealed partial class PhpViewModel : ObservableObject
     public ObservableCollection<PhpVersionRow> Versions { get; } = [];
     public ObservableCollection<ExtensionChip> Extensions { get; } = [];
     public ObservableCollection<InstallChoice> InstallChoices { get; } = [];
+    public ObservableCollection<PvmChoice> PvmChoices { get; } = [];
     public string WorkersHint { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasSelection), nameof(PoolTitle), nameof(ExtensionsTitle))]
-    [NotifyCanExecuteChangedFor(nameof(MakeDefaultCommand), nameof(ApplyPoolCommand))]
+    [NotifyPropertyChangedFor(nameof(HasSelection), nameof(PoolTitle), nameof(ExtensionsTitle), nameof(CanUnlink))]
+    [NotifyCanExecuteChangedFor(nameof(MakeDefaultCommand), nameof(ApplyPoolCommand), nameof(UnlinkCommand))]
     public partial PhpVersionRow? Selected { get; set; }
 
     public bool HasSelection => Selected is not null;
+
+    /// <summary>The selected version was added from a folder, so Anvil can let go of it.</summary>
+    public bool CanUnlink => Selected is { Info.Linked: true };
     public string PoolTitle => Selected is { } s ? $"PHP {s.Version} worker pool" : "Worker pool";
     public string ExtensionsTitle => Selected is { } s ? $"Extensions · PHP {s.Version}" : "Extensions";
 
@@ -126,6 +146,9 @@ public sealed partial class PhpViewModel : ObservableObject
     public partial bool HasVersions { get; set; }
 
     [ObservableProperty]
+    public partial bool HasPvmChoices { get; set; }
+
+    [ObservableProperty]
     public partial string? ExtensionsMessage { get; set; }
 
     [ObservableProperty]
@@ -144,6 +167,7 @@ public sealed partial class PhpViewModel : ObservableObject
         {
             await RefreshVersionsAsync(Selected?.Version, ct);
             await RefreshInstallChoicesAsync(ct);
+            await RefreshPvmChoicesAsync(ct);
             await Updates.RefreshAsync(ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -226,6 +250,58 @@ public sealed partial class PhpViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task AddFolderAsync()
+    {
+        if (_picker is null || await _picker.PickFolderAsync("Choose a PHP folder (the one with php-cgi.exe)") is not { } folder) return;
+        await LinkAsync(folder);
+    }
+
+    private async Task LinkAsync(string folder)
+    {
+        VersionsMessage = null;
+        var before = Versions.Select(v => v.Version).ToHashSet();
+        ApplyResult result;
+        try
+        {
+            result = await _api.LinkPhpAsync(folder);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            VersionsMessage = $"The Anvil Agent did not answer: {e.Message}";
+            return;
+        }
+        if (!result.Ok)
+        {
+            VersionsMessage = result.Error;
+            return;
+        }
+        await RefreshVersionsAsync(null, default);
+        var added = Versions.FirstOrDefault(v => !before.Contains(v.Version));
+        if (added is not null) await SelectAsync(added, default);
+        await RefreshInstallChoicesAsync(default);
+        await RefreshPvmChoicesAsync(default);
+        VersionsMessage = added is null
+            ? "Added. Anvil keeps its own php.ini for it and leaves the folder as it is."
+            : $"PHP {added.Version} added from its folder. Anvil keeps its own php.ini for it and leaves the folder as it is.";
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUnlink))]
+    private async Task UnlinkAsync()
+    {
+        var row = Selected!;
+        var result = await CallAsync(() => _api.UnlinkPhpAsync(row.Version));
+        if (result is null) return;
+        if (result.Ok)
+        {
+            await RefreshVersionsAsync(null, default);
+            await RefreshInstallChoicesAsync(default);
+            await RefreshPvmChoicesAsync(default);
+        }
+        ResultOk = result.Ok;
+        ResultText = result.Ok ? $"PHP {row.Version} is no longer in Anvil. Its folder {row.Info.Folder} is unchanged." : result.Error;
+    }
+
+    [RelayCommand]
     private void OpenIni(PhpVersionRow row) => _editor.Open(row.IniPath);
 
     [RelayCommand]
@@ -254,7 +330,7 @@ public sealed partial class PhpViewModel : ObservableObject
             {
                 Info = info,
                 IniPath = Path.Combine(_paths.PhpConfigDir(info.Version), "php.ini"),
-                ExtPath = Path.Combine(_paths.PhpRuntime(info.Version), "ext"),
+                ExtPath = Path.Combine(info.Folder.Length > 0 ? info.Folder : _paths.PhpRuntime(info.Version), "ext"),
                 SelectCommand = new AsyncRelayCommand(() => SelectAsync(row!, default)),
             };
             Versions.Add(row);
@@ -320,6 +396,14 @@ public sealed partial class PhpViewModel : ObservableObject
             InstallChoices.Add(new InstallChoice($"PHP {branch.Key} · {newest.Version}{eol}", newest));
         }
         SelectedInstall = InstallChoices.FirstOrDefault();
+    }
+
+    private async Task RefreshPvmChoicesAsync(CancellationToken ct)
+    {
+        var found = await _api.FindPvmPhpAsync(ct);
+        PvmChoices.Clear();
+        foreach (var f in found.Where(f => !f.InAnvil)) PvmChoices.Add(new PvmChoice(f, LinkAsync));
+        HasPvmChoices = PvmChoices.Count > 0;
     }
 
     private async Task<ApplyResult?> CallAsync(Func<Task<ApplyResult>> call)

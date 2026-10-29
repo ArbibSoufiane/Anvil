@@ -48,6 +48,12 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
 
     public Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.GetPhp());
 
+    public Task<IReadOnlyList<PhpFound>> FindPvmPhpAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.FindPvmPhp());
+
+    public Task<ApplyResult> LinkPhpAsync(string folder, CancellationToken ct = default) => orchestrator.LinkPhpAsync(folder, ct);
+
+    public Task<ApplyResult> UnlinkPhpAsync(string version, CancellationToken ct = default) => orchestrator.UnlinkPhpAsync(version, ct);
+
     public Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default) =>
         orchestrator.SetPhpPoolAsync(version, settings, ct);
 

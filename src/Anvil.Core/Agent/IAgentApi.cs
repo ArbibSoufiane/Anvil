@@ -46,6 +46,15 @@ public partial interface IAgentApi
     /// <summary>Installed PHP versions, newest first.</summary>
     Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default);
 
+    /// <summary>The PHP versions pvm has on this PC, newest first, each saying whether Anvil has that version.</summary>
+    Task<IReadOnlyList<PhpFound>> FindPvmPhpAsync(CancellationToken ct = default);
+
+    /// <summary>Adds the PHP in a folder Anvil did not download, such as pvm's. It becomes the default when there is none.</summary>
+    Task<ApplyResult> LinkPhpAsync(string folder, CancellationToken ct = default);
+
+    /// <summary>Removes a PHP added from a folder; the folder stays. Refused while it is the default or a site uses it.</summary>
+    Task<ApplyResult> UnlinkPhpAsync(string version, CancellationToken ct = default);
+
     Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default);
     Task<ApplyResult> SetDefaultPhpAsync(string version, CancellationToken ct = default);
     Task<IReadOnlyList<PhpExtension>> GetExtensionsAsync(string version, CancellationToken ct = default);

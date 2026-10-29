@@ -101,7 +101,7 @@ public sealed partial class Orchestrator
         try
         {
             ComponentUpdater.CarryPhpConfig(paths, version, installer.Installed(ComponentKind.Php).Select(i => i.Version));
-            new PhpIniBootstrap(paths).EnsureIni(version);
+            PhpIni().EnsureIni(version);
         }
         catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
         {

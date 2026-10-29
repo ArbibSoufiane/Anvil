@@ -99,7 +99,7 @@ internal sealed class FakeApache(List<string> events) : IApacheControl
 internal static class TestPhp
 {
     // A PHP build as the installer leaves it: php-cgi, the ini template and the extension DLLs, plus its registry entry.
-    public static void Install(AppPaths paths, string version, string toolset = "vs17")
+    public static void Install(AppPaths paths, string version, string toolset = "vs17", bool threadSafe = false)
     {
         var runtime = paths.PhpRuntime(version);
         Directory.CreateDirectory(Path.Combine(runtime, "ext"));
@@ -112,7 +112,7 @@ internal static class TestPhp
 
         var registry = Path.Combine(paths.Runtime, "installed.json");
         var all = File.Exists(registry) ? JsonFiles.Read<List<InstalledComponent>>(registry)! : [];
-        all.Add(new InstalledComponent(ComponentKind.Php, version, runtime, new string('a', 64), DateTimeOffset.UtcNow, toolset));
+        all.Add(new InstalledComponent(ComponentKind.Php, version, runtime, new string('a', 64), DateTimeOffset.UtcNow, toolset, ThreadSafe: threadSafe));
         JsonFiles.Write(registry, all);
     }
 }

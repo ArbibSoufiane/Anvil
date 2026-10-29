@@ -219,6 +219,12 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
 
         public async Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default) => await (await Remote()).GetPhpAsync(ct);
 
+        public async Task<IReadOnlyList<PhpFound>> FindPvmPhpAsync(CancellationToken ct = default) => await (await Remote()).FindPvmPhpAsync(ct);
+
+        public async Task<ApplyResult> LinkPhpAsync(string folder, CancellationToken ct = default) => await (await Remote()).LinkPhpAsync(folder, ct);
+
+        public async Task<ApplyResult> UnlinkPhpAsync(string version, CancellationToken ct = default) => await (await Remote()).UnlinkPhpAsync(version, ct);
+
         public async Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default) =>
             await (await Remote()).SetPhpPoolAsync(version, settings, ct);
 

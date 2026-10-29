@@ -100,6 +100,26 @@ public sealed class RpcTests
     }
 
     [Fact]
+    public async Task Linking_php_round_trips_over_pipe()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fake = new FakeApi();
+        var name = UniquePipe();
+        await using var server = new PipeServer(name, fake);
+        server.Start();
+        await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
+
+        var found = await client.Api.FindPvmPhpAsync(ct);
+        var linked = await client.Api.LinkPhpAsync(FakeApi.Pvm.Folder, ct);
+        var unlinked = await client.Api.UnlinkPhpAsync("8.5.12", ct);
+
+        Assert.Equal(FakeApi.Pvm, Assert.Single(found));
+        Assert.True(linked.Ok);
+        Assert.Equal(FakeApi.Pvm.Folder, fake.Linked);
+        Assert.Equal("8.5.12 is the default.", unlinked.Error);
+    }
+
+    [Fact]
     public async Task Site_calls_round_trip_over_pipe()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -279,7 +299,9 @@ public sealed class RpcTests
             [new PreflightFinding("port-443", Severity.Blocking, "Port 443 is used by Skype (PID 7).", "Close Skype.")],
             "4.0.0-test", ["192.168.100.254"]);
 
-        public static readonly PhpVersionInfo Php = new("8.5.12", "vs17", 4, 1000, 9100, ["htdocs"], ProcessState.Running, true, false);
+        public static readonly PhpVersionInfo Php = new("8.5.12", "vs17", 4, 1000, 9100, ["htdocs"], ProcessState.Running, true, false,
+            @"C:\pvm\versions\php-8.5.12", Linked: true);
+        public static readonly PhpFound Pvm = new("8.4.23", @"C:\pvm\versions\php-8.4.23-Win32-vs17-x64", "vs17", ThreadSafe: true, InAnvil: false);
         public static readonly PhpExtension Intl = new("intl", true, true, false);
 
         public AppSettings? Saved { get; private set; }
@@ -322,6 +344,16 @@ public sealed class RpcTests
             return Task.FromResult(ApplyResult.Success());
         }
 
+        public string? Linked { get; private set; }
+        public Task<IReadOnlyList<PhpFound>> FindPvmPhpAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<PhpFound>>([Pvm]);
+
+        public Task<ApplyResult> LinkPhpAsync(string folder, CancellationToken ct = default)
+        {
+            Linked = folder;
+            return Task.FromResult(ApplyResult.Success());
+        }
+
+        public Task<ApplyResult> UnlinkPhpAsync(string version, CancellationToken ct = default) => Task.FromResult(ApplyResult.Failure($"{version} is the default."));
         public Task<ApplyResult> SetDefaultPhpAsync(string version, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<PhpExtension>> GetExtensionsAsync(string version, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<PhpExtension>>([Intl]);
         public Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();

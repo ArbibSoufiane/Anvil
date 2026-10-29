@@ -22,7 +22,11 @@ public sealed class PhpViewModelTests
         _api.Extensions["7.4.33"] = [new("curl", true, true, false)];
     }
 
-    private PhpViewModel Make() => new(_api, Paths, new EditorLauncher(() => "auto", new NoRegistry(), _ => false, ""), ui: a => a());
+    private readonly FakeFolderPicker _picker = new();
+
+    private PhpViewModel Make() => new(_api, Paths, new EditorLauncher(() => "auto", new NoRegistry(), _ => false, ""), _picker, ui: a => a());
+
+    private const string PvmFolder = @"C:\Users\me\.pvm\versions\php-8.4.23-Win32-vs17-x64";
 
     private static ComponentRelease Php(string version, string toolset = "vs17") =>
         new(ComponentKind.Php, version, new Uri($"https://downloads.php.net/~windows/releases/php-{version}-nts-Win32-{toolset}-x64.zip"), new string('a', 64), toolset);
@@ -42,6 +46,78 @@ public sealed class PhpViewModelTests
         Assert.Equal("NTS x64 · VC15", vm.Versions[1].Build);
         Assert.Equal("none", vm.Versions[1].UsedBy);
         Assert.Equal("Stopped", vm.Versions[1].StatusText);
+    }
+
+    [Fact]
+    public async Task Pvm_versions_Anvil_does_not_have_can_be_added()
+    {
+        _api.Pvm.Add(new PhpFound("8.5.12", @"C:\Users\me\.pvm\versions\php-8.5.12-nts-Win32-vs17-x64", "vs17", ThreadSafe: false, InAnvil: true));
+        _api.Pvm.Add(new PhpFound("8.4.23", PvmFolder, "vs17", ThreadSafe: true, InAnvil: false));
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        var offer = Assert.Single(vm.PvmChoices);
+        Assert.Equal("PHP 8.4.23 · TS x64 · VS17", offer.Label);
+        await offer.AddCommand.ExecuteAsync(null);
+
+        Assert.Equal($"link {PvmFolder}", _api.Calls.Last());
+        Assert.Equal("PHP 8.4.23 added from its folder. Anvil keeps its own php.ini for it and leaves the folder as it is.", vm.VersionsMessage);
+    }
+
+    [Fact]
+    public async Task Without_pvm_the_pvm_list_stays_hidden()
+    {
+        var vm = Make();
+
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(vm.HasPvmChoices);
+    }
+
+    [Fact]
+    public async Task Any_php_folder_can_be_added()
+    {
+        _picker.Folder = @"C:\devtools\php-7-4-9-for-iis";
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        await vm.AddFolderCommand.ExecuteAsync(null);
+
+        Assert.Equal(@"link C:\devtools\php-7-4-9-for-iis", _api.Calls.Last());
+    }
+
+    [Fact]
+    public async Task A_folder_that_is_not_php_says_why()
+    {
+        _picker.Folder = @"C:\Temp";
+        _api.NextResult = ApplyResult.Failure(@"C:\Temp has no php-cgi.exe, so it is not a PHP folder Anvil can run.");
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        await vm.AddFolderCommand.ExecuteAsync(null);
+
+        Assert.Equal(@"C:\Temp has no php-cgi.exe, so it is not a PHP folder Anvil can run.", vm.VersionsMessage);
+    }
+
+    [Fact]
+    public async Task A_linked_php_is_tagged_and_can_be_removed_from_Anvil()
+    {
+        _api.Php.Add(new PhpVersionInfo("8.4.23", "vs17", 4, 1000, 0, [], ProcessState.Stopped, IsDefault: false, EndOfLife: false, PvmFolder,
+            Linked: true, ThreadSafe: true));
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+        var row = vm.Versions.Single(v => v.Version == "8.4.23");
+
+        Assert.Equal(["Linked"], row.Tags);
+        Assert.Equal("TS x64 · VS17", row.Build);
+        Assert.Equal(Path.Combine(PvmFolder, "ext"), row.ExtPath);
+        Assert.False(vm.CanUnlink);
+        await row.SelectCommand.ExecuteAsync(null);
+        Assert.True(vm.CanUnlink);
+        await vm.UnlinkCommand.ExecuteAsync(null);
+
+        Assert.Equal("unlink 8.4.23", _api.Calls.Last());
+        Assert.Equal($"PHP 8.4.23 is no longer in Anvil. Its folder {PvmFolder} is unchanged.", vm.ResultText);
     }
 
     [Fact]

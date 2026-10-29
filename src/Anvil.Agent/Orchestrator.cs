@@ -38,7 +38,8 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     IPhpPools php, Func<int, bool> portFree, Func<string>? hostsText = null,
     string? legacyHome = null, TimeProvider? time = null, IDatabaseServer? db = null,
     INameService? names = null, Func<IReadOnlyList<LanAddress>>? lanAddresses = null, Func<IReadOnlySet<string>>? publicAdapters = null,
-    Func<IReadOnlyList<ExistingFirewallRule>>? firewallRules = null, Func<int, CancellationToken, Task<bool>>? phpProbe = null)
+    Func<IReadOnlyList<ExistingFirewallRule>>? firewallRules = null, Func<int, CancellationToken, Task<bool>>? phpProbe = null,
+    string? userProfile = null, Func<string, string?>? phpVersionOf = null)
 {
     public const int MaxWorkers = 64;
     public const int MaxRecycleRequests = 1_000_000;
@@ -313,18 +314,13 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
                     && string.Equals(c.Toolset, offered.Toolset, StringComparison.OrdinalIgnoreCase)
                     && string.Equals(c.AppliesTo, offered.AppliesTo, StringComparison.OrdinalIgnoreCase))
                 ?? throw new InvalidOperationException($"{offered.Kind} {offered.Version} is not in Anvil's catalog.");
-        if (r.Kind == ComponentKind.Php && installer.Installed(ComponentKind.CaBundle).Count == 0)
-        {
-            var bundle = (await catalog.GetAsync(ComponentKind.CaBundle, ct)).FirstOrDefault()
-                ?? throw new InvalidOperationException("The catalog has no CA bundle, and PHP needs one to verify HTTPS.");
-            await installer.InstallAsync(bundle, null, ct);
-        }
+        if (r.Kind == ComponentKind.Php) await EnsureCaBundleAsync(ct);
         var installed = await installer.InstallAsync(r, null, ct);
         if (r.Kind == ComponentKind.Xdebug) await TurnOnXdebugAsync(installed, ct);
         if (r.Kind != ComponentKind.Php) return installed;
 
         ComponentUpdater.CarryPhpConfig(paths, r.Version, installer.Installed(ComponentKind.Php).Select(i => i.Version));
-        new PhpIniBootstrap(paths).EnsureIni(r.Version);
+        PhpIni().EnsureIni(r.Version);
         if (_settings.DefaultPhp is null)
         {
             var made = await SetDefaultPhpAsync(r.Version, ct);
@@ -333,16 +329,30 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         return installed;
     }
 
-    private PhpExtensionManager Extensions() => new(paths, installer.Installed(ComponentKind.Xdebug));
+    private async Task EnsureCaBundleAsync(CancellationToken ct)
+    {
+        if (installer.Installed(ComponentKind.CaBundle).Count > 0) return;
+        var bundle = (await catalog.GetAsync(ComponentKind.CaBundle, ct)).FirstOrDefault()
+            ?? throw new InvalidOperationException("The catalog has no CA bundle, and PHP needs one to verify HTTPS.");
+        await installer.InstallAsync(bundle, null, ct);
+    }
+
+    /// <summary>Where a PHP version's files are: its runtime folder, or the folder it was linked from.</summary>
+    private string PhpFiles(string version) => InstalledPhp(version)?.Path ?? paths.PhpRuntime(version);
+
+    private PhpIniBootstrap PhpIni() => new(paths, PhpFiles);
+
+    // Anvil's Xdebug builds are non-thread-safe, so a thread-safe PHP (a linked one) can only load an Xdebug from its own ext.
+    private PhpExtensionManager Extensions(string version) =>
+        new(paths, InstalledPhp(version)?.ThreadSafe == true ? [] : installer.Installed(ComponentKind.Xdebug), PhpFiles);
 
     /// <summary>A new Xdebug build loads into every installed PHP of its branch; their running pools restart.</summary>
     private async Task TurnOnXdebugAsync(InstalledComponent xdebug, CancellationToken ct)
     {
-        var extensions = Extensions();
-        foreach (var version in installer.Installed(ComponentKind.Php).Select(i => i.Version).Where(v => PhpSupport.Minor(v) == xdebug.AppliesTo))
+        foreach (var version in installer.Installed(ComponentKind.Php).Where(i => !i.ThreadSafe).Select(i => i.Version).Where(v => PhpSupport.Minor(v) == xdebug.AppliesTo))
         {
-            new PhpIniBootstrap(paths).EnsureIni(version);
-            extensions.Set(version, "xdebug", enabled: true);
+            PhpIni().EnsureIni(version);
+            Extensions(version).Set(version, "xdebug", enabled: true);
             if (php.Running.FirstOrDefault(p => SameVersion(p.Version, version)) is { } pool) await php.RestartAsync(pool.Key, ct);
         }
     }
@@ -361,7 +371,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             var usedBy = sites.Where(x => Uses(x, i.Version, s.DefaultPhp)).Select(x => x.Name);
             return new PhpVersionInfo(i.Version, i.Toolset ?? "", tuning.Workers, tuning.MaxRequests, pool?.Port ?? 0,
                 (isDefault ? usedBy.Prepend("htdocs") : usedBy).ToList(), pool is null ? ProcessState.Stopped : php.StateOf(pool.Key), isDefault,
-                PhpSupport.IsEndOfLife(i.Version, today));
+                PhpSupport.IsEndOfLife(i.Version, today), i.Path, i.Linked, i.ThreadSafe);
         }).ToList();
 
         static bool Uses(SiteDefinition site, string version, string? defaultPhp) =>
@@ -612,7 +622,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         var next = previous with { DefaultPhp = version };
         try
         {
-            new PhpIniBootstrap(paths).EnsureIni(version);
+            PhpIni().EnsureIni(version);
         }
         catch (InvalidOperationException e)
         {
@@ -637,7 +647,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     }, ct);
 
     public IReadOnlyList<PhpExtension> GetExtensions(string version) =>
-        InstalledPhp(version) is null ? [] : Extensions().List(version);
+        InstalledPhp(version) is null ? [] : Extensions(version).List(version);
 
     /// <summary>Edits php.ini, then restarts that version's pool only.</summary>
     public Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct) => Locked(async () =>
@@ -645,8 +655,8 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         if (InstalledPhp(version) is null) return ApplyResult.Failure($"PHP {version} is not installed.");
         try
         {
-            new PhpIniBootstrap(paths).EnsureIni(version);
-            Extensions().Set(version, name, enabled);
+            PhpIni().EnsureIni(version);
+            Extensions(version).Set(version, name, enabled);
         }
         catch (Exception e) when (e is InvalidOperationException or ArgumentException)
         {
@@ -834,7 +844,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     /// <summary>Re-points each php.ini, runs exactly <paramref name="pools"/>, and remembers their ports.</summary>
     private async Task StartPoolsAsync(IReadOnlyList<PhpPool> pools, CancellationToken ct)
     {
-        var ini = new PhpIniBootstrap(paths);
+        var ini = PhpIni();
         foreach (var pool in pools) ini.EnsureIni(pool.Version);
         try
         {
@@ -851,7 +861,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
 
     private async Task RestartPoolsAsync(CancellationToken ct)
     {
-        var ini = new PhpIniBootstrap(paths);
+        var ini = PhpIni();
         foreach (var pool in php.Running)
         {
             ini.EnsureIni(pool.Version);

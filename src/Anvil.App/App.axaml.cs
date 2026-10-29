@@ -49,12 +49,12 @@ public partial class App : Application
             var elevator = new UacElevator(paths);
             var dashboard = new DashboardViewModel(_agent.Api, paths, editor, elevator: elevator);
             var apache = new ApacheViewModel(_agent.Api, paths, editor);
-            var php = new PhpViewModel(_agent.Api, paths, editor);
+            MainWindow? window = null;
+            var picker = new AvaloniaFolderPicker(() => window);
+            var php = new PhpViewModel(_agent.Api, paths, editor, picker);
             var database = new DatabaseViewModel(_agent.Api, paths, editor);
             var logs = new LogsViewModel(paths, editor);
             var ca = new LocalCaTrust(paths);
-            MainWindow? window = null;
-            var picker = new AvaloniaFolderPicker(() => window);
             var clipboard = new AvaloniaTextClipboard(() => window);
             var sites = new SitesViewModel(_agent.Api, elevator, ca, picker, paths, LanAddresses.Find, clipboard);
             ShellViewModel vm = null!;

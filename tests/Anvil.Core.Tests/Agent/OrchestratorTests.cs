@@ -490,6 +490,22 @@ public sealed class OrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Installing_xdebug_leaves_a_thread_safe_php_alone()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        TestPhp.Install(_paths, "8.5.9", threadSafe: true);
+        var dll = "xdebug"u8.ToArray();
+        Catalog($$"""{"kind":"Xdebug","version":"3.5.3","url":"https://example.com/php_xdebug-3.5.3-8.5-nts-vs17-x86_64.dll","sha256":"{{Sha(dll)}}","appliesTo":"8.5"}""");
+        var orchestrator = Make(new MapHandler(new() { ["/php_xdebug-3.5.3-8.5-nts-vs17-x86_64.dll"] = dll }));
+        await orchestrator.InitializeAsync(ct);
+
+        await orchestrator.InstallAsync(new ComponentRelease(ComponentKind.Xdebug, "3.5.3",
+            new Uri("https://example.com/php_xdebug-3.5.3-8.5-nts-vs17-x86_64.dll"), Sha(dll), AppliesTo: "8.5"), ct);
+
+        Assert.DoesNotContain(orchestrator.GetExtensions("8.5.9"), e => e.Name == "xdebug");
+    }
+
+    [Fact]
     public async Task Firewall_request_follows_what_is_open_to_the_network()
     {
         var ct = TestContext.Current.CancellationToken;

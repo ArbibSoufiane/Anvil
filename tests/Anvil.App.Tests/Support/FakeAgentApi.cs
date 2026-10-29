@@ -93,6 +93,24 @@ public sealed class FakeAgentApi : IAgentApi
     public Task<IReadOnlyList<PhpVersionInfo>> GetPhpAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<PhpVersionInfo>>(Php.ToList());
 
+    public List<PhpFound> Pvm { get; } = [];
+
+    public Task<IReadOnlyList<PhpFound>> FindPvmPhpAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<PhpFound>>(Pvm.ToList());
+
+    public Task<ApplyResult> LinkPhpAsync(string folder, CancellationToken ct = default)
+    {
+        if (NextResult.Ok && Pvm.FirstOrDefault(p => p.Folder == folder) is { } found)
+            Php.Add(new PhpVersionInfo(found.Version, found.Toolset, 4, 1000, 0, [], ProcessState.Stopped, false, false, found.Folder, Linked: true,
+                ThreadSafe: found.ThreadSafe));
+        return Record($"link {folder}");
+    }
+
+    public Task<ApplyResult> UnlinkPhpAsync(string version, CancellationToken ct = default)
+    {
+        if (NextResult.Ok) Php.RemoveAll(p => p.Version == version);
+        return Record($"unlink {version}");
+    }
+
     public Task<ApplyResult> SetPhpPoolAsync(string version, PhpPoolSettings settings, CancellationToken ct = default) =>
         Record($"pool {version} {settings.Workers} {settings.MaxRequests}");
 
