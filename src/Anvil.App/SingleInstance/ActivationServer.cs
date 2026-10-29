@@ -65,10 +65,11 @@ public sealed class ActivationServer(string pipeName, Func<string[], Task> onAct
         return args;
     }
 
+    // Program.Main waits for this after the window loop ends, so no continuation may need the UI thread.
     public async ValueTask DisposeAsync()
     {
-        await _stop.CancelAsync();
-        try { await _loop; } catch (OperationCanceledException) { }
+        await _stop.CancelAsync().ConfigureAwait(false);
+        try { await _loop.ConfigureAwait(false); } catch (OperationCanceledException) { }
         _stop.Dispose();
     }
 }

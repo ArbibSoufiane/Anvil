@@ -1,4 +1,5 @@
 using Anvil.App.SingleInstance;
+using Anvil.App.Tests.Support;
 
 namespace Anvil.App.Tests;
 
@@ -25,6 +26,16 @@ public sealed class SingleInstanceTests
 
         using var again = new InstanceGuard(name);
         Assert.True(again.TryAcquire());
+    }
+
+    // Program.Main disposes the server after the window loop ends, blocking, with the UI context possibly still current.
+    [Fact]
+    public async Task Stopping_needs_no_free_ui_thread()
+    {
+        var server = new ActivationServer(Unique("Anvil.Test"), _ => Task.CompletedTask);
+        await server.StartAsync();
+
+        await BusyUiThread.RunBlocking(server.DisposeAsync).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }
 
     [Fact]

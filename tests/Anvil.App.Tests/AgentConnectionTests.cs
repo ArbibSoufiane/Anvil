@@ -85,6 +85,19 @@ public sealed class AgentConnectionTests
         await gone.WaitAsync(TimeSpan.FromSeconds(5), ct);
     }
 
+    // The app disposes the connection on its UI thread and waits there, so nothing in the dispose may need that thread.
+    // After Quit stops the Agent, a reconnect attempt is waiting when the dispose comes.
+    [Fact]
+    public async Task Disposing_during_a_connect_attempt_needs_no_free_ui_thread()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var connection = new AgentConnection(new AppPaths(Path.GetTempPath()), "Anvil.Agent.Test." + Guid.NewGuid().ToString("N"), () => false);
+        var connecting = connection.ConnectAsync(ct);
+
+        await BusyUiThread.RunBlocking(connection.DisposeAsync).WaitAsync(TimeSpan.FromSeconds(10), ct);
+        await Record.ExceptionAsync(() => connecting);
+    }
+
     /// <summary>A one-client Agent stand-in on a real pipe.</summary>
     private sealed class TestServer : IAsyncDisposable
     {

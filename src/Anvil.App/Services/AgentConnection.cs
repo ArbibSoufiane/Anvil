@@ -92,12 +92,13 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
         }
     }
 
+    // The app disposes this on its UI thread and waits there, so no continuation may need that thread.
     public async ValueTask DisposeAsync()
     {
-        await _life.CancelAsync();
+        await _life.CancelAsync().ConfigureAwait(false);
         Task<AgentClient>? current;
         lock (_lock) current = _current;
-        if (current is { IsCompletedSuccessfully: true }) await current.Result.DisposeAsync();
+        if (current is { IsCompletedSuccessfully: true }) await current.Result.DisposeAsync().ConfigureAwait(false);
         _life.Dispose();
     }
 
