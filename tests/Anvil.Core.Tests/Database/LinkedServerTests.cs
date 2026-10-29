@@ -80,6 +80,13 @@ public sealed class LinkedServerTests : IDisposable
     }
 
     [Fact]
+    public void A_comment_after_the_port_is_not_part_of_it()
+    {
+        Assert.Equal(3307, DbPortFile.Read("[mysqld]\r\nport=3307 # moved off MySQL's port\r\n"));
+        Assert.Equal(3307, DbPortFile.Read("[mysqld]\r\nport=3307#\r\n"));
+    }
+
+    [Fact]
     public void Changing_the_port_moves_the_server_and_its_client_section()
     {
         var text = "# tuned\r\n[client]\r\nport=3307\r\nplugin-dir=x\r\n[mysqld]\r\ndatadir=C:/x\r\nport=3307\r\nskip-name-resolve\r\n";

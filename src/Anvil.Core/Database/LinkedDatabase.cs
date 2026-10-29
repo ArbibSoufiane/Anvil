@@ -102,8 +102,9 @@ public static class DbPortFile
     public static int Read(string text)
     {
         var doc = IniDocument.Parse(text);
-        var port = doc.Sections().Where(ServerSection).SelectMany(s => doc.GetAll(s, "port")).LastOrDefault();
-        return int.TryParse(port, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : DefaultPort;
+        // A # starts a comment anywhere on a line of an option file.
+        var port = doc.Sections().Where(ServerSection).SelectMany(s => doc.GetAll(s, "port")).LastOrDefault()?.Split('#')[0].Trim();
+        return int.TryParse(port,System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : DefaultPort;
     }
 
     /// <summary>Every port line of the server's groups and of [client] takes the new port, so the server's own tools follow it.</summary>
