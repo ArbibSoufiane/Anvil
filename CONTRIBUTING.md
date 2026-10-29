@@ -95,6 +95,20 @@ a red suite blocks releases, not just your branch.
 Then open a pull request describing what problem it solves. Screenshots help for anything that
 changes the window.
 
+## Releasing
+
+Releases are built on the maintainer's PC and only hosted on GitHub; there are no GitHub Actions.
+
+1. Put the release date in the version's `CHANGELOG.md` heading (`## 1.2.0 — 2026-11-05`) and
+   commit it on `main`.
+2. Run `build\release.ps1 -DryRun` to check everything and make a trial build without publishing.
+3. Run `build\release.ps1`. It builds with `build\publish.ps1`, tags `v<version>`, pushes `main` and
+   the tag, and creates the GitHub release with the zip, `SHA256SUMS` and the changelog section as
+   notes. Settings → Check for updates finds it from then on.
+
+It needs the [GitHub CLI](https://cli.github.com/) signed in (`gh auth login`) to an account that can
+write to the repository.
+
 ## Reporting a bug
 
 Attach the logs from `data\logs\anvil\` (`agent-*.log`) and `data\logs\app\` (`app-*.log`) and say

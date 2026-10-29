@@ -1,6 +1,5 @@
 # Anvil
 
-[![ci](https://github.com/ArbibSoufiane/Anvil/actions/workflows/ci.yml/badge.svg)](https://github.com/ArbibSoufiane/Anvil/actions/workflows/ci.yml)
 [![license: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 Apache, PHP and MariaDB/MySQL for Windows, in one portable folder, driven by a desktop app. Anvil is
@@ -181,8 +180,9 @@ dotnet run --project src/Anvil.App
 ```
 
 `build\publish.ps1` builds a release into `dist\`: it refuses uncommitted changes and a version
-without a dated `CHANGELOG.md` section, runs the tests, and writes the zip and `SHA256SUMS`. Pushing
-a `v<version>` tag runs it on GitHub Actions and publishes the release. See
+without a dated `CHANGELOG.md` section, runs the tests, and writes the zip and `SHA256SUMS`.
+`build\release.ps1` runs it, then tags the version, pushes, and publishes the release on GitHub with
+the GitHub CLI. Releases are built on the maintainer's PC; nothing runs on GitHub Actions. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License

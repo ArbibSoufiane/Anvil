@@ -3,6 +3,12 @@
 Nothing in this guide is switched on yet. Releases stay unsigned until you have tested a build
 yourself, applied, and been accepted. Follow it in order.
 
+**Releases are built locally now.** `build\release.ps1` builds on your PC and only uploads the
+result; there are no GitHub Actions. SignPath Foundation signs only files it has seen built by
+GitHub Actions on GitHub-hosted runners, so applying means bringing back a release workflow first.
+Where this guide says `release.yml`, that workflow does not exist yet: it ran `build/publish.ps1` on
+`windows-latest` for a `v<version>` tag and created the release with `gh release create`.
+
 Sources, read on 2026-10-28:
 
 - SignPath Foundation, *Conditions for Open Source projects*: <https://signpath.org/terms>

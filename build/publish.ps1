@@ -9,7 +9,8 @@
 
     Refuses uncommitted changes and a version without a dated CHANGELOG.md section, runs the unit tests, publishes the
     three programs self-contained (not single-file, not trimmed) into one folder, checks that folder with
-    PublishLayoutTests, then zips it and writes the checksum. Creating the GitHub release is the release workflow's job.
+    PublishLayoutTests, then zips it and writes the checksum. build\release.ps1 runs this, then tags the version and
+    publishes the GitHub release.
 
 .PARAMETER Trial
     Builds from uncommitted changes and an undated CHANGELOG.md section, to try the script. Never publish the result.

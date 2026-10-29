@@ -22,6 +22,11 @@ release date, concise Added / Changed / Fixed entries, written for users.
 Conventional prefixes (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No `Co-Authored-By`
 or AI attribution lines.
 
+## Releases
+
+Built locally, never on GitHub Actions: `build\release.ps1` (`-DryRun` to try it) builds with
+`build\publish.ps1`, tags `v<version>`, pushes and creates the GitHub release with `gh`.
+
 ## Tests
 
 - Unit: `dotnet test --project tests/Anvil.Core.Tests` and `dotnet test --project tests/Anvil.App.Tests`.
