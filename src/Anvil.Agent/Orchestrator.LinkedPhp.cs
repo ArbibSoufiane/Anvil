@@ -27,6 +27,7 @@ public sealed partial class Orchestrator
     public async Task<ApplyResult> LinkPhpAsync(string folder, CancellationToken ct)
     {
         string version;
+        bool threadSafe;
         try
         {
             var found = PhpFolder.Inspect(folder, phpVersionOf);
@@ -38,13 +39,16 @@ public sealed partial class Orchestrator
                 return true;
             }, ct);
             version = found.Version;
+            threadSafe = found.ThreadSafe;
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException)
         {
             return ApplyResult.Failure(e.Message);
         }
 
-        ComponentUpdater.CarryPhpConfig(paths, version, installer.Installed(ComponentKind.Php).Select(i => i.Version));
+        // A php.ini of the other thread safety can name an extension built for that one, such as Anvil's Xdebug.
+        ComponentUpdater.CarryPhpConfig(paths, version,
+            installer.Installed(ComponentKind.Php).Where(i => i.ThreadSafe == threadSafe).Select(i => i.Version));
         PhpIni().EnsureIni(version);
         if (_settings.DefaultPhp is not null) return ApplyResult.Success();
         var made = await SetDefaultPhpAsync(version, ct);

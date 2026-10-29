@@ -149,6 +149,23 @@ public sealed class LinkedPhpTests : IDisposable
     }
 
     [Fact]
+    public async Task A_thread_safe_php_does_not_take_the_settings_of_a_non_thread_safe_one()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        TestPhp.Install(_paths, "8.4.20");
+        var xdebug = Path.Combine(_paths.Runtime, "xdebug", "3.4.5-8.4-nts-vs17", "php_xdebug.dll");
+        Directory.CreateDirectory(_paths.PhpConfigDir("8.4.20"));
+        File.WriteAllText(Path.Combine(_paths.PhpConfigDir("8.4.20"), "php.ini"), $"[PHP]\r\nmemory_limit=2G\r\nzend_extension=\"{xdebug}\"\r\n");
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+
+        var result = await orchestrator.LinkPhpAsync(PvmPhp("php-8.4.23-Win32-vs17-x64", "8.4.23", threadSafe: true), ct);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.DoesNotContain("xdebug", File.ReadAllText(Path.Combine(_paths.PhpConfigDir("8.4.23"), "php.ini")), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Unlinking_keeps_the_folder()
     {
         var ct = TestContext.Current.CancellationToken;
