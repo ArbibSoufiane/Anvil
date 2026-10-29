@@ -13,9 +13,10 @@ namespace Anvil.Agent;
 /// </summary>
 public sealed partial class Orchestrator
 {
-    private const int MinRootPassword = 8;
     private const string NoDatabase = "Install a database first, on the Database page.";
     private const string NotRunning = "Start the database first.";
+    // Any length: the server listens on 127.0.0.1 only, and many local setups use root as root's password.
+    private const string NoPassword = "Enter a root password.";
     private readonly DbSettingsCatalog _dbSettings = new();
 
     private MyIni MyIni => new(paths);
@@ -45,7 +46,7 @@ public sealed partial class Orchestrator
     public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct) => Locked(async () =>
     {
         if (db is null) return ApplyResult.Failure("The database is not available in this Agent.");
-        if (rootPassword.Length < MinRootPassword) return ApplyResult.Failure($"Use a root password of at least {MinRootPassword} characters.");
+        if (rootPassword.Length == 0) return ApplyResult.Failure(NoPassword);
         if (!installer.Installed(DbKind(e)).Any(i => SameVersion(i.Version, version)))
             return ApplyResult.Failure($"Install {DbName(e)} {version} first.");
 
@@ -134,7 +135,7 @@ public sealed partial class Orchestrator
 
     public Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct) => Locked(async () =>
     {
-        if (password.Length < MinRootPassword) return ApplyResult.Failure($"Use a root password of at least {MinRootPassword} characters.");
+        if (password.Length == 0) return ApplyResult.Failure(NoPassword);
         if (ActiveDb is not { } a) return ApplyResult.Failure(NoDatabase);
         if (!DbRunning) return ApplyResult.Failure(NotRunning);
         try

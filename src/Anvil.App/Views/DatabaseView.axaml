@@ -51,7 +51,7 @@
             </StackPanel>
             <StackPanel Spacing="4" Grid.Column="1">
               <TextBlock Classes="fieldLabel" Text="Root password" />
-              <TextBox Classes="field" Text="{Binding RootPassword}" PasswordChar="•" PlaceholderText="At least 8 characters" />
+              <TextBox Classes="field" Text="{Binding RootPassword}" PasswordChar="•" PlaceholderText="Any password, such as root" />
             </StackPanel>
           </Grid>
           <StackPanel Orientation="Horizontal" Spacing="12">
@@ -120,7 +120,7 @@
           <StackPanel Spacing="10">
             <TextBlock Classes="h2" Text="New root password" />
             <StackPanel Orientation="Horizontal" Spacing="12">
-              <TextBox Classes="field" Width="280" Text="{Binding NewRootPassword}" PasswordChar="•" PlaceholderText="At least 8 characters" />
+              <TextBox Classes="field" Width="280" Text="{Binding NewRootPassword}" PasswordChar="•" PlaceholderText="Any password, such as root" />
               <Button Classes="primary" Content="Set password" Command="{Binding ApplyRootPasswordCommand}" />
               <Button Classes="ghost" Content="Cancel" Command="{Binding ChangeRootPasswordCommand}" />
             </StackPanel>

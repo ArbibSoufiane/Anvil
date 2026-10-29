@@ -1,4 +1,4 @@
-using Anvil.Agent;
+﻿using Anvil.Agent;
 using Anvil.Core.Agent;
 using Anvil.Core.Components;
 using Anvil.Core.Database;
@@ -12,7 +12,7 @@ namespace Anvil.Core.Tests.Agent;
 public sealed class DatabaseOperationsTests : IDisposable
 {
     private const string Version = "11.8.9";
-    private const string Password = "s3cret-pass";
+    private const string Password = "root";
     private readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "ap-db-" + Guid.NewGuid().ToString("N")));
     private readonly List<string> _events = [];
     private readonly FakeDb _db;
@@ -93,15 +93,15 @@ public sealed class DatabaseOperationsTests : IDisposable
     }
 
     [Fact]
-    public async Task Install_needs_a_version_that_is_installed_and_a_real_password()
+    public async Task Install_needs_a_version_that_is_installed_and_a_password()
     {
         var orchestrator = await MakeAsync();
 
         var missing = await orchestrator.InstallDatabaseAsync(DbEngine.MySql, "8.4.13", Password, Ct);
-        var weak = await orchestrator.InstallDatabaseAsync(DbEngine.MariaDb, Version, "root", Ct);
+        var none = await orchestrator.InstallDatabaseAsync(DbEngine.MariaDb, Version, "", Ct);
 
         Assert.Equal("Install MySQL 8.4.13 first.", missing.Error);
-        Assert.Equal("Use a root password of at least 8 characters.", weak.Error);
+        Assert.Equal("Enter a root password.", none.Error);
         Assert.Empty(_events);
         Assert.Null(orchestrator.Settings.DbEngine);
     }
@@ -243,13 +243,13 @@ public sealed class DatabaseOperationsTests : IDisposable
     {
         var orchestrator = await InstalledAsync();
 
-        Assert.True((await orchestrator.SetDbRootPasswordAsync("another-pass", Ct)).Ok);
+        Assert.True((await orchestrator.SetDbRootPasswordAsync("root", Ct)).Ok);
         Assert.EndsWith(".sql.gz", await orchestrator.BackupDatabaseAsync(Ct), StringComparison.Ordinal);
         await orchestrator.StopAsync(ServiceId.Database, Ct);
 
         Assert.Equal("Start the database first.", (await orchestrator.SetDbRootPasswordAsync("third-pass", Ct)).Error);
         Assert.Equal("Start the database first.", (await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.BackupDatabaseAsync(Ct))).Message);
-        Assert.Equal("Use a root password of at least 8 characters.", (await orchestrator.SetDbRootPasswordAsync("short", Ct)).Error);
+        Assert.Equal("Enter a root password.", (await orchestrator.SetDbRootPasswordAsync("", Ct)).Error);
     }
 
     [Fact]

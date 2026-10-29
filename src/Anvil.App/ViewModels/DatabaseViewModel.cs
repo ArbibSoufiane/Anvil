@@ -62,8 +62,6 @@ public sealed record DbInstallChoice(string Label, ComponentRelease Release, boo
 /// </summary>
 public sealed partial class DatabaseViewModel : ObservableObject
 {
-    public const int MinRootPassword = 8;
-
     private readonly IAgentApi _api;
     private readonly AppPaths _paths;
     private readonly EditorLauncher _editor;
@@ -109,7 +107,7 @@ public sealed partial class DatabaseViewModel : ObservableObject
 
     public string SetupNote =>
         (ActiveEngine is { } a ? $"{Name(a)} stops: one database runs at a time. " : "") +
-        $"The root password needs at least {MinRootPassword} characters. If {SelectedName} was set up here before, enter the root password it was created with.";
+        $"If {SelectedName} was set up here before, enter the root password it was created with.";
 
     [ObservableProperty]
     public partial string StatusText { get; set; } = "";
@@ -222,7 +220,7 @@ public sealed partial class DatabaseViewModel : ObservableObject
         if (ok) await CallAsync(() => RefreshRowsAsync(default));
     }
 
-    private bool CanInstall() => SelectedInstall is not null && RootPassword.Length >= MinRootPassword;
+    private bool CanInstall() => SelectedInstall is not null && RootPassword.Length > 0;
 
     [RelayCommand(CanExecute = nameof(CanInstall))]
     private async Task InstallAsync()
@@ -266,7 +264,7 @@ public sealed partial class DatabaseViewModel : ObservableObject
         IsChangingPassword = !IsChangingPassword;
     }
 
-    private bool CanApplyRootPassword() => NewRootPassword.Length >= MinRootPassword;
+    private bool CanApplyRootPassword() => NewRootPassword.Length > 0;
 
     [RelayCommand(CanExecute = nameof(CanApplyRootPassword))]
     private async Task ApplyRootPasswordAsync()

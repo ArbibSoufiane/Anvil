@@ -210,9 +210,8 @@ public sealed class DatabaseViewModelTests
         Assert.Equal("11.8.9", vm.SelectedInstall?.Release.Version);
         Assert.Empty(vm.Rows);
 
-        vm.RootPassword = "short";
         Assert.False(vm.InstallCommand.CanExecute(null));
-        vm.RootPassword = "long enough";
+        vm.RootPassword = "root";
         Assert.True(vm.InstallCommand.CanExecute(null));
 
         await vm.InstallCommand.ExecuteAsync(null);
@@ -291,16 +290,16 @@ public sealed class DatabaseViewModelTests
     }
 
     [Fact]
-    public async Task Change_root_password_needs_eight_characters()
+    public async Task Change_root_password_takes_any_password_but_none()
     {
         var vm = await LoadedAsync();
         Assert.False(vm.IsChangingPassword);
         vm.ChangeRootPasswordCommand.Execute(null);
         Assert.True(vm.IsChangingPassword);
 
-        vm.NewRootPassword = "1234567";
         Assert.False(vm.ApplyRootPasswordCommand.CanExecute(null));
-        vm.NewRootPassword = "12345678";
+        vm.NewRootPassword = "root";
+        Assert.True(vm.ApplyRootPasswordCommand.CanExecute(null));
         await vm.ApplyRootPasswordCommand.ExecuteAsync(null);
 
         Assert.Contains("db password", _api.Calls);
