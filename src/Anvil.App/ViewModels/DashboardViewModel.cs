@@ -202,6 +202,20 @@ public sealed partial class DashboardViewModel : ObservableObject
     [RelayCommand]
     private void OpenUrl(string url) => _openUrl(url);
 
+    /// <summary>Has the Agent look at the networks and the firewall again; its status updates the banners.</summary>
+    public async Task CheckNetworkAgainAsync()
+    {
+        try
+        {
+            await _api.RefreshNetworkAsync();
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // The Dashboard already says when the Agent does not answer.
+            Log.Debug(e, "The network check did not run");
+        }
+    }
+
     /// <summary>
     /// The firewall banner runs the Agent's firewall request through UAC, then has the Agent look again; the Public
     /// network banner opens Windows' network settings.

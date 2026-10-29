@@ -13,6 +13,7 @@ public partial class MainWindow : Window
         _vm = vm;
         DataContext = vm;
         vm.ActivationRequested += (_, _) => ShowAndActivate();
+        Activated += (_, _) => vm.WindowActivated();
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)

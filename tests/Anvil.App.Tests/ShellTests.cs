@@ -1,4 +1,8 @@
+using Anvil.App.Services;
 using Anvil.App.Shell;
+using Anvil.App.Tests.Support;
+using Anvil.App.ViewModels;
+using Anvil.Core.Paths;
 using Anvil.Core.Settings;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
@@ -20,6 +24,20 @@ public sealed class ShellTests
         Assert.Equal("MariaDB or MySQL, with every setting next to its default", vm.Subtitle);
         Assert.True(vm.NavItems.Single(n => n.Page == AppPage.Database).IsSelected);
         Assert.False(vm.NavItems.Single(n => n.Page == AppPage.Dashboard).IsSelected);
+    }
+
+    // Windows announces nothing when a network turns Private, so the Dashboard asks again whenever the window comes back,
+    // say from the network settings its banner opened.
+    [AvaloniaFact]
+    public void Coming_back_to_the_window_checks_the_network_again()
+    {
+        var api = new FakeAgentApi();
+        var dashboard = new DashboardViewModel(api, new AppPaths(@"D:\Anvil"), new EditorLauncher(() => "auto", new NoRegistry(), _ => false, ""), ui: a => a());
+        var vm = new ShellViewModel(new AppSettings(), dashboard);
+
+        vm.WindowActivated();
+
+        Assert.Equal(1, api.RefreshNetworkCalls);
     }
 
     [AvaloniaFact]

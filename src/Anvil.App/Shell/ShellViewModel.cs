@@ -89,6 +89,12 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>Called on the UI thread by the activation server and the tray.</summary>
     public void ShowAndActivate() => ActivationRequested?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>
+    /// Called when the window becomes the active one. Windows announces nothing when a network turns Private, so the
+    /// Dashboard asks again, say once the network settings its banner opened are closed.
+    /// </summary>
+    public void WindowActivated() => _ = _dashboard?.CheckNetworkAgainAsync();
+
     [RelayCommand]
     private void Navigate(AppPage page) => Select(page);
 
