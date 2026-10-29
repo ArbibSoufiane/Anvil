@@ -42,10 +42,8 @@ internal static class DbServiceHandler
     {
         var (command, error) = RequestValidator.DbServiceError(request.Service, WindowsServices.ImagePath);
         if (error is not null) return new ElevatedResult(false, error);
-        var file = command!.DefaultsFile!;
-        var current = File.ReadAllText(file, Bytes);
-        var next = DbPortFile.Write(current, request.Port);
-        if (next != current) AtomicFile.ReplaceText(file, next, Bytes);
+        // The file often sits in a folder the user can write to, so a temporary file beside it could be a planted link.
+        PinnedFile.Rewrite(command!.DefaultsFile!, Bytes, text => DbPortFile.Write(text, request.Port));
         return new ElevatedResult(true, null);
     }
 
