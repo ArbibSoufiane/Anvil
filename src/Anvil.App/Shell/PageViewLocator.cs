@@ -10,7 +10,7 @@ public sealed class PageViewLocator : IDataTemplate
 {
     private readonly Dictionary<AppPage, Control> _views = [];
 
-    public bool Match(object? data) => data is AppPage or DashboardViewModel or ApacheViewModel or PhpViewModel or DatabaseViewModel or LogsViewModel or SitesViewModel or SettingsViewModel;
+    public bool Match(object? data) => data is AppPage or DashboardViewModel or ApacheViewModel or PhpViewModel or DatabaseViewModel or RedisViewModel or LogsViewModel or SitesViewModel or SettingsViewModel;
 
     public Control Build(object? param)
     {
@@ -20,6 +20,7 @@ public sealed class PageViewLocator : IDataTemplate
             ApacheViewModel => AppPage.Apache,
             PhpViewModel => AppPage.Php,
             DatabaseViewModel => AppPage.Database,
+            RedisViewModel => AppPage.Redis,
             LogsViewModel => AppPage.Logs,
             SitesViewModel => AppPage.Sites,
             SettingsViewModel => AppPage.Settings,
@@ -34,6 +35,7 @@ public sealed class PageViewLocator : IDataTemplate
                 AppPage.Apache => new ApacheView(),
                 AppPage.Php => new PhpView(),
                 AppPage.Database => new DatabaseView(),
+                AppPage.Redis => new RedisView(),
                 AppPage.Logs => new LogsView(),
                 AppPage.Settings => new SettingsView(),
                 _ => throw new ArgumentOutOfRangeException(nameof(param), page, null),

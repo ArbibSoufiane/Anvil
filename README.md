@@ -17,6 +17,8 @@ production server.
 - **Your MariaDB or MySQL**, linked by its `bin` folder: start, stop, back it up and change its port
   from Anvil. Anvil does not download a database; the Database page says where to get one. Bring
   phpMyAdmin yourself and add it as a site.
+- **Redis in one click**, installed in WSL's Ubuntu from the Redis page, with its connection details
+  ready to copy.
 - **Install, update and roll back** Apache and PHP from the app.
 - **Buttons that open** `httpd.conf`, `php.ini` and every generated file in your editor.
   Those files stay yours: Anvil writes only its own marked blocks and generated files.
@@ -45,8 +47,10 @@ and everything comes with it.
    switch on there.
 3. **Database page** (optional): install MariaDB or MySQL yourself, then Link a server… and choose
    its `bin` folder. Anvil keeps the password it logs in with encrypted with Windows DPAPI.
-4. **Start.** Folders in `htdocs\` answer at `http://localhost/<folder>`.
-5. **Sites → Add** for a domain site or a proxy to a dev server such as Vite. Anvil recognises
+4. **Redis page** (optional): Install Redis puts it in WSL's Ubuntu; the page says how to get WSL
+   when it is missing.
+5. **Start.** Folders in `htdocs\` answer at `http://localhost/<folder>`.
+6. **Sites → Add** for a domain site or a proxy to a dev server such as Vite. Anvil recognises
    Laravel, Symfony, WordPress, Composer and Vite projects and suggests the right folder.
 
 Coming from ArbiPache 3? Settings → Import from ArbiPache 3 brings your sites over.

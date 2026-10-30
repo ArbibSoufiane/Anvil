@@ -13,6 +13,7 @@ using Anvil.Core.Paths;
 using Anvil.Core.Php;
 using Anvil.Core.Preflight;
 using Anvil.Core.Processes;
+using Anvil.Core.Redis;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
 using Anvil.Core.Update;
@@ -104,6 +105,39 @@ public sealed class PageViewTests
         window.UpdateLayout();
 
         Assert.False(Named<ItemsControl>(window, "Findings").IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void Redis_view_shows_its_details_with_copy_buttons_and_redis_insight()
+    {
+        var wsl = new RedisPageWsl();
+        var redis = new RedisViewModel(new WslRedis(wsl), new FakeTextClipboard(), ui: a => a(),
+            ping: (_, _, _, _) => Task.FromResult(new RedisPing(true, "Redis answers on 127.0.0.1:6379.")), delay: (_, _) => Task.CompletedTask);
+        var shell = new ShellViewModel(_api.Settings, redis: redis);
+        var window = new MainWindow(shell);
+        window.Show();
+
+        shell.NavigateCommand.Execute(AppPage.Redis);
+        redis.LoadAsync().GetAwaiter().GetResult();
+        window.UpdateLayout();
+
+        Assert.IsType<RedisView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
+        Assert.True(Named<Border>(window, "RedisServer").IsVisible);
+        Assert.False(Named<Border>(window, "RedisDebug").IsVisible);
+        var rows = Named<ItemsControl>(window, "CredentialRows");
+        Assert.Contains(rows.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "redis://default:Pw123@127.0.0.1:6379");
+        Assert.Equal(5, rows.GetVisualDescendants().OfType<Button>().Count(b => b.Content as string == "Copy"));
+        Assert.True(Named<Border>(window, "RedisInsight").IsVisible);
+    }
+
+    private sealed class RedisPageWsl : IWsl
+    {
+        public bool Exists => true;
+
+        public Task<WslResult> RunAsync(IReadOnlyList<string> args, string? stdin, Action<string>? onLine, TimeSpan timeout, CancellationToken ct) =>
+            Task.FromResult(args[0] == "--list" ? new WslResult(0, "Ubuntu\n") : new WslResult(0, "id=ubuntu\ninstalled=yes\nrequirepass Pw123\n"));
+
+        public void StartDetached(IReadOnlyList<string> args, string stdin) { }
     }
 
     [AvaloniaFact]

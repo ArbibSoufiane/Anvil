@@ -7,6 +7,7 @@ using Anvil.Core.Elevation;
 using Anvil.Core.Network;
 using Anvil.Core.Paths;
 using Anvil.Core.Platform;
+using Anvil.Core.Redis;
 using Anvil.Core.Settings;
 using Anvil.Core.Update;
 using Avalonia;
@@ -56,6 +57,7 @@ public partial class App : Application
             var logs = new LogsViewModel(paths, editor);
             var ca = new LocalCaTrust(paths);
             var clipboard = new AvaloniaTextClipboard(() => window);
+            var redis = new RedisViewModel(new WslRedis(new WslCli()), clipboard);
             var sites = new SitesViewModel(_agent.Api, elevator, ca, picker, paths, LanAddresses.Find, clipboard);
             ShellViewModel vm = null!;
             var settingsPage = new SettingsViewModel(_agent.Api, elevator, new RegistryRunKey(), ca, picker, paths, LanAddresses.Find, clipboard, s =>
@@ -63,7 +65,7 @@ public partial class App : Application
                 settings = s;
                 vm.CloseToTray = s.CloseToTray;
             }, () => _ = sites.LoadAsync(), appUpdate, editorChoice);
-            vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage, database);
+            vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage, database, redis);
 
             var icon = AppIcon.Create();
             window = new MainWindow(vm) { Icon = icon };

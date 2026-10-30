@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.1.0 — 2026-10-30
+
+### Added
+- A Redis page. Install Redis puts `redis-server` in WSL's Ubuntu with one click, gives it a
+  password, starts it and tests that Windows reaches it on `127.0.0.1:6379`.
+- Without WSL, or with WSL but no Ubuntu, the page shows the command to run and links to
+  Microsoft's WSL guide.
+- When the install fails, the page shows what it printed and the steps to install Redis by hand.
+  When Redis does not answer, it lists the checks that find out why.
+- Host, port, password, URL and a Laravel `.env` block for Redis, each with a Copy button.
+- A link to download Redis Insight, Redis' free app to browse keys.
+
 ## 2.0.0 — 2026-10-30
 
 Anvil no longer downloads a database: install MariaDB or MySQL yourself and link it on the Database

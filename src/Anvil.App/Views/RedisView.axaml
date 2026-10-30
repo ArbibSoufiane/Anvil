@@ -1,0 +1,223 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Anvil.App.ViewModels"
+             x:Class="Anvil.App.Views.RedisView"
+             x:DataType="vm:RedisViewModel">
+  <UserControl.DataTemplates>
+    <!-- A guide step: its text, and the command to run with a Copy button -->
+    <DataTemplate DataType="vm:RedisStep">
+      <StackPanel Spacing="6">
+        <DockPanel>
+          <Ellipse Width="4" Height="4" Fill="{StaticResource TextDimBrush}" Margin="2,7,10,0" VerticalAlignment="Top" DockPanel.Dock="Left" />
+          <TextBlock Classes="para" Text="{Binding Text}" TextWrapping="Wrap" />
+        </DockPanel>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="16,0,0,0" IsVisible="{Binding HasCommand}">
+          <TextBlock Classes="mono" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding Command}" />
+          <Button Grid.Column="1" Classes="secondary" Content="Copy" CommandParameter="{Binding Command}"
+                  Command="{Binding $parent[UserControl].((vm:RedisViewModel)DataContext).CopyCommand}" />
+        </Grid>
+      </StackPanel>
+    </DataTemplate>
+    <DataTemplate DataType="vm:RedisCredential">
+      <Border Classes="row" Padding="16,8">
+        <Grid ColumnDefinitions="110,*,Auto" ColumnSpacing="12">
+          <TextBlock Classes="dt" VerticalAlignment="Center" Text="{Binding Label}" />
+          <TextBlock Grid.Column="1" Classes="mono" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding Value}" />
+          <Button Grid.Column="2" Classes="secondary" Content="Copy" CommandParameter="{Binding Value}" VerticalAlignment="Center"
+                  Command="{Binding $parent[UserControl].((vm:RedisViewModel)DataContext).CopyCommand}" />
+        </Grid>
+      </Border>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16">
+
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Classes="ghost" Content="Check again" Command="{Binding CheckCommand}" IsEnabled="{Binding !IsBusy}"
+                  ToolTip.Tip="Checks WSL, Ubuntu and Redis again" />
+        </StackPanel>
+        <StackPanel Spacing="2" VerticalAlignment="Center">
+          <TextBlock Classes="h2" Text="Redis in WSL" />
+          <TextBlock Classes="note" TextWrapping="Wrap"
+                     Text="Redis runs in WSL's Ubuntu; your PHP sites reach it on 127.0.0.1." />
+        </StackPanel>
+      </DockPanel>
+
+      <TextBlock Classes="result" Classes.ok="{Binding MessageOk}" Text="{Binding Message}" TextWrapping="Wrap"
+                 IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+      <!-- Checking -->
+      <Border Classes="card" x:Name="RedisChecking" IsVisible="{Binding IsChecking}">
+        <TextBlock Classes="para" Text="Checking WSL, Ubuntu and Redis…" />
+      </Border>
+
+      <!-- No WSL -->
+      <Border Classes="card" x:Name="RedisWslMissing" IsVisible="{Binding IsWslMissing}">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h2" Text="WSL is not installed" />
+          <TextBlock Classes="para" TextWrapping="Wrap"
+                     Text="Anvil installs Redis in the Windows Subsystem for Linux (WSL) with Ubuntu. Install WSL first:" />
+          <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" />
+          <ItemsControl ItemsSource="{x:Static vm:RedisViewModel.WslSteps}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="8" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Classes="secondary" Content="How to install WSL" Command="{Binding OpenUrlCommand}"
+                    CommandParameter="{x:Static vm:RedisViewModel.WslInstallUrl}" />
+            <TextBlock Classes="url" VerticalAlignment="Center" Text="{x:Static vm:RedisViewModel.WslInstallUrl}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- WSL without Ubuntu -->
+      <Border Classes="card" x:Name="RedisNoUbuntu" IsVisible="{Binding IsNoUbuntu}">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h2" Text="WSL has no Ubuntu" />
+          <TextBlock Classes="para" TextWrapping="Wrap" Text="Anvil installs Redis in Ubuntu. Add Ubuntu to WSL:" />
+          <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" />
+          <ItemsControl ItemsSource="{x:Static vm:RedisViewModel.UbuntuSteps}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="8" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Classes="secondary" Content="How to install WSL" Command="{Binding OpenUrlCommand}"
+                    CommandParameter="{x:Static vm:RedisViewModel.WslInstallUrl}" />
+            <TextBlock Classes="url" VerticalAlignment="Center" Text="{x:Static vm:RedisViewModel.WslInstallUrl}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Ubuntu ready, Redis not installed -->
+      <Border Classes="card" x:Name="RedisNotInstalled" IsVisible="{Binding IsNotInstalled}">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h2" Text="Install Redis" />
+          <TextBlock Classes="para" TextWrapping="Wrap">
+            <Run Text="Anvil installs redis-server in" />
+            <Run Text="{Binding Distro}" FontWeight="Medium" />
+            <Run Text="with apt, gives it a password and starts it. It takes a minute or two." />
+          </TextBlock>
+          <Button Classes="primary" x:Name="InstallRedis" Content="Install Redis" Command="{Binding InstallCommand}" HorizontalAlignment="Left" />
+        </StackPanel>
+      </Border>
+
+      <!-- Installing -->
+      <Border Classes="card" IsVisible="{Binding IsInstalling}">
+        <TextBlock Classes="para" TextWrapping="Wrap">
+          <Run Text="Installing Redis in" />
+          <Run Text="{Binding Distro}" FontWeight="Medium" />
+          <Run Text="…" />
+        </TextBlock>
+      </Border>
+
+      <!-- Install failed: how to do it by hand -->
+      <Border Classes="card" x:Name="RedisInstallFailed" IsVisible="{Binding IsInstallFailed}">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h2" Text="Redis could not be installed" />
+          <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" />
+          <TextBlock Classes="para" TextWrapping="Wrap" Text="Install it by hand in Ubuntu instead:" />
+          <ItemsControl ItemsSource="{x:Static vm:RedisViewModel.ManualSteps}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="8" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Classes="secondary" Content="Try again" Command="{Binding InstallCommand}" />
+            <Button Classes="ghost" Content="Redis' install guide" Command="{Binding OpenUrlCommand}"
+                    CommandParameter="{x:Static vm:RedisViewModel.ManualInstallUrl}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- What the install printed -->
+      <Border Classes="logPanel" IsVisible="{Binding ShowLog}" MaxHeight="260">
+        <ScrollViewer x:Name="InstallLogScroll">
+          <ItemsControl ItemsSource="{Binding InstallLog}" Margin="12,8">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Classes="logText" Text="{Binding}" TextWrapping="Wrap" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Border>
+
+      <!-- Installed: state, start/stop and test -->
+      <Border Classes="card" x:Name="RedisServer" IsVisible="{Binding IsInstalled}">
+        <StackPanel Spacing="12">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Button Classes="secondary" Content="Test connection" Command="{Binding TestConnectionCommand}" IsEnabled="{Binding !IsBusy}" />
+              <Button Classes="secondary" Content="Start" Command="{Binding StartCommand}" IsVisible="{Binding !IsRunning}" IsEnabled="{Binding !IsBusy}" />
+              <Button Classes="secondary" Content="Stop" Command="{Binding StopCommand}" IsVisible="{Binding IsRunning}" />
+            </StackPanel>
+            <StackPanel Spacing="2" VerticalAlignment="Center">
+              <TextBlock FontWeight="Medium">
+                <Run Text="Redis in" />
+                <Run Text="{Binding Distro}" />
+              </TextBlock>
+              <TextBlock Classes="note" Text="Running" IsVisible="{Binding IsRunning}" />
+              <TextBlock Classes="note" Text="Starting…" IsVisible="{Binding IsStarting}" />
+              <TextBlock Classes="note" Text="Installed, not running. Start runs it until Windows restarts or you stop it." IsVisible="{Binding IsStopped}" TextWrapping="Wrap" />
+              <TextBlock Classes="note" Text="Not answering" IsVisible="{Binding IsNotAnswering}" />
+            </StackPanel>
+          </DockPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Not answering: how to find out why -->
+      <Border Classes="card" x:Name="RedisDebug" IsVisible="{Binding IsNotAnswering}">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h2" Text="Anvil cannot connect to Redis" />
+          <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" />
+          <TextBlock Classes="para" TextWrapping="Wrap" Text="Find out why, one step at a time, then press Test connection:" />
+          <ItemsControl ItemsSource="{x:Static vm:RedisViewModel.DebugSteps}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="8" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <!-- Connection details -->
+      <Border Classes="card" x:Name="RedisCredentials" IsVisible="{Binding IsInstalled}">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h2" Text="Connection details" />
+          <ItemsControl x:Name="CredentialRows" ItemsSource="{Binding Credentials}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="4" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <!-- A visual client -->
+      <Border Classes="card" x:Name="RedisInsight">
+        <DockPanel>
+          <Button Classes="secondary" Content="Download Redis Insight" DockPanel.Dock="Right" VerticalAlignment="Center"
+                  Command="{Binding OpenUrlCommand}" CommandParameter="{x:Static vm:RedisViewModel.RedisInsightUrl}" />
+          <StackPanel Spacing="2">
+            <TextBlock FontWeight="Medium" Text="Redis Insight" />
+            <TextBlock Classes="url" Text="{x:Static vm:RedisViewModel.RedisInsightUrl}" />
+            <TextBlock Classes="note" TextWrapping="Wrap"
+                       Text="Redis' free app to browse keys and run commands. Add a database with the host, port and password above." />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
