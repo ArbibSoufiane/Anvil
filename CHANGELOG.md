@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.2.0 — 2026-10-30
+
+### Added
+- Light mode: Settings → Appearance switches between Dark, Light and Windows (follows Windows' app
+  mode). The window recolours at once and keeps your choice.
+- Run Apache when Windows starts, in Settings → General: one switch that opens Anvil in the tray
+  when you log in and starts Apache and PHP. Anvil is not a Windows service, so nothing runs before
+  you log in.
+- An info button at the bottom of the sidebar that opens the author's GitHub page.
+- Notes in the window's bottom-right corner: green when all is well, red when something failed.
+
+### Changed
+- Check for updates moved from Settings to the bottom of the sidebar. With no newer version, a green
+  note says all is good. When one exists, the button reads Download update; hover it for the
+  release notes, click it to install.
+- The Sites table is less crowded: the Folder column and the network address under each name are
+  gone. A link icon opens the site (hover it for its network address) and a folder icon opens the
+  project folder.
+
+### Fixed
+- The Enabled and Disabled marks on the Sites page fit their text.
+
 ## 2.1.0 — 2026-10-30
 
 ### Added

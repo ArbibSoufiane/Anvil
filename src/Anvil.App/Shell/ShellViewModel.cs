@@ -1,3 +1,4 @@
+using Anvil.App.Services;
 using Anvil.App.ViewModels;
 using Anvil.Core;
 using Anvil.Core.Settings;
@@ -8,6 +9,9 @@ namespace Anvil.App.Shell;
 
 public sealed partial class ShellViewModel : ObservableObject
 {
+    /// <summary>Where the sidebar's info button leads.</summary>
+    public const string GitHubUrl = "https://github.com/ArbibSoufiane";
+
     // Copy from the mockup's `titles` map.
     private static readonly Dictionary<AppPage, (string Title, string Subtitle)> Titles = new()
     {
@@ -27,12 +31,13 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly PhpViewModel? _php;
     private readonly DatabaseViewModel? _database;
     private readonly RedisViewModel? _redis;
+    private readonly Action<string> _openUrl;
     private readonly SitesViewModel? _sites;
     private readonly SettingsViewModel? _settings;
 
     public ShellViewModel(AppSettings settings, DashboardViewModel? dashboard = null, ApacheViewModel? apache = null, LogsViewModel? logs = null,
         PhpViewModel? php = null, SitesViewModel? sites = null, SettingsViewModel? settingsPage = null, DatabaseViewModel? database = null,
-        RedisViewModel? redis = null)
+        RedisViewModel? redis = null, AppUpdateViewModel? update = null, ToastViewModel? toast = null, Action<string>? openUrl = null)
     {
         _dashboard = dashboard;
         _apache = apache;
@@ -40,6 +45,9 @@ public sealed partial class ShellViewModel : ObservableObject
         _php = php;
         _database = database;
         _redis = redis;
+        Update = update;
+        Toast = toast ?? new ToastViewModel();
+        _openUrl = openUrl ?? EditorLauncher.OpenUrl;
         _sites = sites;
         _settings = settingsPage;
         CloseToTray = settings.CloseToTray;
@@ -58,6 +66,14 @@ public sealed partial class ShellViewModel : ObservableObject
     }
 
     public IReadOnlyList<NavItem> NavItems { get; }
+
+    /// <summary>The update button at the bottom of the sidebar; null hides it.</summary>
+    public AppUpdateViewModel? Update { get; }
+
+    public bool HasUpdate => Update is not null;
+
+    /// <summary>The note in the window's bottom-right corner.</summary>
+    public ToastViewModel Toast { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Title), nameof(Subtitle), nameof(CurrentPage))]
@@ -108,6 +124,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [RelayCommand]
     private void Navigate(AppPage page) => Select(page);
+
+    [RelayCommand]
+    private void OpenGitHub() => _openUrl(GitHubUrl);
 
     private void Select(AppPage page)
     {

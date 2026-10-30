@@ -45,6 +45,13 @@ public sealed partial class SiteRow : ObservableObject
 
     public string Folder => Site.Root;
 
+    /// <summary>Proxy sites serve another program, so they have no folder to open.</summary>
+    public bool HasFolder => Site.Type != SiteType.Proxy;
+
+    /// <summary>The address the link icon opens, and where other devices open the site.</summary>
+    public string OpenTip => NetworkUrls.Count == 0 ? $"Open {Url}" : $"Open {Url}\nOn your network: {string.Join(", ", NetworkUrls)}";
+    public string FolderTip => $"Open the project folder: {Site.Root}";
+
     public string Certificate => Site.Cert switch
     {
         CertSource.LocalDev => "Local development",

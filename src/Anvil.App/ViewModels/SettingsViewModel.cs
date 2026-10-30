@@ -3,7 +3,6 @@ using System.Security;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Anvil.App.Services;
-using Anvil.Core;
 using Anvil.Core.Agent;
 using Anvil.Core.Elevation;
 using Anvil.Core.Network;
@@ -11,7 +10,6 @@ using Anvil.Core.Paths;
 using Anvil.Core.Processes;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
-using Anvil.Core.Update;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -21,7 +19,7 @@ namespace Anvil.App.ViewModels;
 
 /// <summary>
 /// The Settings page: startup, network sharing, ports, folders, the local certificate authority and the import from
-/// ArbiPache 3, and Anvil's own update. Every change goes through the Agent; a refused change puts the controls back as they were.
+/// ArbiPache 3. Every change goes through the Agent; a refused change puts the controls back as they were.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
@@ -38,8 +36,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly Action<AppSettings>? _settingsChanged;
     private readonly Action? _sitesChanged;
     private readonly ElevationFollowUp _followUp;
-    private readonly IAppUpdate? _update;
     private readonly EditorChoice _editor;
+    private readonly ThemeChoice _theme;
+    private readonly Action<string> _applyTheme;
     private AppSettings _settings = new();
     private bool _apacheRunning;
     private IReadOnlyList<string> _listening = [];
@@ -48,13 +47,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <param name="lanAddresses">This PC's addresses on local networks, read again whenever the Agent's status changes.</param>
     /// <param name="settingsChanged">Told about every saved change, so the rest of the window follows.</param>
     /// <param name="sitesChanged">Told when imported sites or a new htdocs folder change the Sites page.</param>
-    /// <param name="update">Checks for and installs a newer Anvil; null hides the update buttons.</param>
     public SettingsViewModel(IAgentApi api, IElevator elevator, IRunKey runKey, ILocalCaTrust ca, IFolderPicker picker, AppPaths paths,
         Func<IReadOnlyList<LanAddress>> lanAddresses, ITextClipboard clipboard, Action<AppSettings>? settingsChanged = null,
-        Action? sitesChanged = null, IAppUpdate? update = null, EditorChoice? editor = null, Action<Action>? ui = null)
+        Action? sitesChanged = null, EditorChoice? editor = null, Action<Action>? ui = null,
+        ThemeChoice? theme = null, Action<string>? applyTheme = null)
     {
-        _update = update;
         _editor = editor ?? new EditorChoice(null);
+        _theme = theme ?? new ThemeChoice(null);
+        _applyTheme = applyTheme ?? ThemeChoice.Apply;
+        Theme = _theme.Theme;
         _api = api;
         _runKey = runKey;
         _ca = ca;
@@ -71,7 +72,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string AppFolder => _paths.Root;
     public string DataFolder => _paths.Data;
-    public string VersionText => $"Anvil {BuildInfo.Version}";
     public string NetworkLabel => $"Let devices on my network open htdocs at {_lanAddresses().FirstOrDefault()?.Address.ToString() ?? "this PC's address"}";
 
     /// <summary>The domain box: a colleague's PC asks this one about every name under it.</summary>
@@ -103,11 +103,30 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool StartWithWindows { get; set; }
 
+    /// <summary>
+    /// Apache and PHP run once you log in to Windows: Anvil starts with Windows and starts its services. Anvil is no
+    /// Windows service, so nothing runs before someone logs in.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool RunApacheAtLogin { get; set; }
+
+    partial void OnStartServicesOnLaunchChanged(bool value) => RunApacheAtLogin = StartWithWindows && value;
+    partial void OnStartWithWindowsChanged(bool value) => RunApacheAtLogin = value && StartServicesOnLaunch;
+
     [ObservableProperty]
     public partial bool CloseToTray { get; set; }
 
     [ObservableProperty]
     public partial string EditorText { get; set; } = AutomaticEditor;
+
+    /// <summary>dark, light or system; see <see cref="ThemeChoice"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDarkTheme), nameof(IsLightTheme), nameof(IsSystemTheme))]
+    public partial string Theme { get; set; }
+
+    public bool IsDarkTheme => Theme == ThemeChoice.Dark;
+    public bool IsLightTheme => Theme == ThemeChoice.Light;
+    public bool IsSystemTheme => Theme == ThemeChoice.System;
 
     [ObservableProperty]
     public partial bool HtdocsOnNetwork { get; set; }
@@ -139,89 +158,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string? ImportMessage { get; set; }
-
-    public bool CanUpdate => _update is not null;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(UpdateAvailable), nameof(InstallUpdateText))]
-    public partial Release? AvailableUpdate { get; set; }
-
-    public bool UpdateAvailable => AvailableUpdate is not null;
-    public string InstallUpdateText => $"Install {AvailableUpdate?.Version}";
-
-    [ObservableProperty]
-    public partial string? UpdateMessage { get; set; }
-
-    [ObservableProperty]
-    public partial bool UpdateOk { get; set; }
-
-    [ObservableProperty]
-    public partial string? UpdateNotes { get; set; }
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(CheckForUpdatesCommand), nameof(InstallUpdateCommand))]
-    public partial bool UpdateBusy { get; set; }
-
-    private bool CanStartUpdate => !UpdateBusy;
-
-    /// <summary>Asks GitHub for a newer Anvil; only when the user clicks.</summary>
-    [RelayCommand(CanExecute = nameof(CanStartUpdate))]
-    private async Task CheckForUpdatesAsync()
-    {
-        if (_update is null) return;
-        if (_update.CannotUpdate is { } reason)
-        {
-            SayUpdate(reason, ok: false);
-            return;
-        }
-
-        UpdateBusy = true;
-        SayUpdate("Checking for updates…", ok: true);
-        try
-        {
-            AvailableUpdate = await _update.CheckAsync(CancellationToken.None);
-            UpdateNotes = string.IsNullOrWhiteSpace(AvailableUpdate?.Notes) ? null : AvailableUpdate.Notes.Trim();
-            if (AvailableUpdate is not { } next) SayUpdate($"Anvil {BuildInfo.Version} is the latest version.", ok: true);
-            else
-                SayUpdate($"Anvil {next.Version} is available. Installing it restarts Anvil: " + (_settings.StartServicesOnLaunch
-                    ? "sites stop for a moment and start again."
-                    : "sites stop and stay stopped until you start them, because \"Start services when Anvil opens\" is off."), ok: true);
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            Log.Warning(e, "Checking for an Anvil update failed");
-            AvailableUpdate = null;
-            UpdateNotes = null;
-            SayUpdate($"Anvil could not check for updates: {e.Message}", ok: false);
-        }
-        finally
-        {
-            UpdateBusy = false;
-        }
-    }
-
-    /// <summary>Downloads the offered release and hands over to it; the window closes and the new version opens.</summary>
-    [RelayCommand(CanExecute = nameof(CanStartUpdate))]
-    private async Task InstallUpdateAsync()
-    {
-        if (_update is null || AvailableUpdate is not { } next) return;
-        UpdateBusy = true;
-        SayUpdate($"Downloading Anvil {next.Version}…", ok: true);
-        var progress = new Progress<long>(bytes =>
-        {
-            if (UpdateBusy) UpdateMessage = $"Downloading Anvil {next.Version}… {bytes / 1048576.0:0.0} MB";
-        });
-        var problem = await _update.InstallAsync(next, progress, CancellationToken.None);
-        UpdateBusy = false;
-        if (problem is null) SayUpdate($"Installing Anvil {next.Version}. It opens again in a moment.", ok: true);
-        else SayUpdate(problem, ok: false);
-    }
-
-    private void SayUpdate(string text, bool ok)
-    {
-        UpdateMessage = text;
-        UpdateOk = ok;
-    }
 
     private string RunCommand => $"\"{Path.Combine(_paths.Root, "Anvil.exe")}\" --minimized";
 
@@ -255,7 +191,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ApplyGeneralAsync()
+    private Task ApplyGeneralAsync() => SaveGeneralAsync();
+
+    /// <summary>On turns on both Start Anvil with Windows and Start services; off stops Anvil starting with Windows.</summary>
+    [RelayCommand]
+    private async Task ApplyRunApacheAtLoginAsync()
+    {
+        // Setting either switch recomputes RunApacheAtLogin, so read the wanted state first.
+        var on = RunApacheAtLogin;
+        if (on) StartServicesOnLaunch = true;
+        StartWithWindows = on;
+        await SaveGeneralAsync();
+    }
+
+    private async Task SaveGeneralAsync()
     {
         if (!await SaveAsync(s => s with { StartServicesOnLaunch = StartServicesOnLaunch, StartWithWindows = StartWithWindows, CloseToTray = CloseToTray }))
             return;
@@ -335,6 +284,15 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [RelayCommand]
     private void UseAutomaticEditor() => UseEditor("auto");
+
+    /// <summary>Recolours the window at once and keeps the choice for the next start.</summary>
+    [RelayCommand]
+    private void UseTheme(string theme)
+    {
+        _theme.Theme = theme;
+        Theme = _theme.Theme;
+        _applyTheme(Theme);
+    }
 
     private void UseEditor(string program)
     {

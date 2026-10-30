@@ -29,56 +29,58 @@
               <TextBox Grid.Column="1" Classes="field" Width="220" PlaceholderText="Search sites" Text="{Binding SearchText}" />
               <Button Grid.Column="2" x:Name="AddSite" Classes="primary" Content="+ Add site" Command="{Binding AddCommand}" />
             </Grid>
-            <Grid ColumnDefinitions="1.9*,0.6*,1.1*,1.3*,1.3*,1.1*,0.8*,310" Margin="8,4,8,0">
+            <Grid ColumnDefinitions="2*,0.6*,1.1*,1.3*,1.2*,104,264" ColumnSpacing="8" Margin="8,4,8,0">
               <TextBlock Classes="dt" Text="Site" />
               <TextBlock Classes="dt" Grid.Column="1" Text="Type" />
               <TextBlock Classes="dt" Grid.Column="2" Text="PHP" />
-              <TextBlock Classes="dt" Grid.Column="3" Text="Folder" />
-              <TextBlock Classes="dt" Grid.Column="4" Text="Certificate" />
-              <TextBlock Classes="dt" Grid.Column="5" Text="Who can open it" />
-              <TextBlock Classes="dt" Grid.Column="6" Text="Status" />
-              <TextBlock Classes="dt" Grid.Column="7" Text="Actions" HorizontalAlignment="Right" />
+              <TextBlock Classes="dt" Grid.Column="3" Text="Certificate" />
+              <TextBlock Classes="dt" Grid.Column="4" Text="Who can open it" />
+              <TextBlock Classes="dt" Grid.Column="5" Text="Status" />
+              <TextBlock Classes="dt" Grid.Column="6" Text="Actions" HorizontalAlignment="Right" />
             </Grid>
             <ItemsControl x:Name="SiteRows" ItemsSource="{Binding VisibleSites}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:SiteRow">
                   <Border Classes="row" Padding="8,8">
-                    <Grid ColumnDefinitions="1.9*,0.6*,1.1*,1.3*,1.3*,1.1*,0.8*,310" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="2*,0.6*,1.1*,1.3*,1.2*,104,264" ColumnSpacing="8">
                       <StackPanel VerticalAlignment="Center" Spacing="2">
                         <TextBlock Classes="dd" FontWeight="Medium" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                         <TextBlock Classes="sub" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" TextTrimming="CharacterEllipsis" />
-                        <ItemsControl ItemsSource="{Binding NetworkUrls}" IsVisible="{Binding HasNetworkUrls}">
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="x:String">
-                              <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Classes="sub url" VerticalAlignment="Center" Text="{Binding}" TextTrimming="CharacterEllipsis" />
-                                <Button Classes="ghost" Padding="4,0" Content="Copy" ToolTip.Tip="Copy this address"
-                                        Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).CopyUrlCommand}" CommandParameter="{Binding}" />
-                              </StackPanel>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
                         <TextBlock Classes="sub" TextWrapping="Wrap" Text="{Binding NetworkNote}" IsVisible="{Binding HasNetworkNote}" />
                       </StackPanel>
                       <TextBlock Classes="dd" Grid.Column="1" VerticalAlignment="Center" Text="{Binding TypeText}" />
                       <TextBlock Classes="dd" Grid.Column="2" VerticalAlignment="Center" Text="{Binding Php}" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Classes="dd mono" Grid.Column="3" VerticalAlignment="Center" Text="{Binding Folder}"
-                                 TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Folder}" />
-                      <TextBlock Classes="dd" Grid.Column="4" VerticalAlignment="Center" Text="{Binding Certificate}" TextWrapping="Wrap" />
-                      <Border Classes="tag" Classes.network="{Binding IsNetwork}" Classes.local="{Binding IsRestricted}" Grid.Column="5"
+                      <TextBlock Classes="dd" Grid.Column="3" VerticalAlignment="Center" Text="{Binding Certificate}" TextWrapping="Wrap" />
+                      <Border Classes="tag" Classes.network="{Binding IsNetwork}" Classes.local="{Binding IsRestricted}" Grid.Column="4"
                               HorizontalAlignment="Left">
-                        <TextBlock Text="{Binding AccessText}" />
+                        <TextBlock Text="{Binding AccessText}" TextWrapping="Wrap" />
                       </Border>
-                      <Border Classes="pill" Classes.ok="{Binding IsEnabled}" Grid.Column="6" HorizontalAlignment="Left" VerticalAlignment="Center">
+                      <Border x:Name="SiteStatus" Classes="pill" Classes.ok="{Binding IsEnabled}" Grid.Column="5" HorizontalAlignment="Left" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                           <Ellipse />
                           <TextBlock Text="{Binding StatusText}" />
                         </StackPanel>
                       </Border>
-                      <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right" VerticalAlignment="Center">
+                      <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding !ConfirmingRemove}">
-                          <Button Classes="ghost" Content="Open"
-                                  Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).OpenCommand}" CommandParameter="{Binding}" />
+                          <Button x:Name="OpenSite" Classes="ghost iconButton" ToolTip.Tip="{Binding OpenTip}"
+                                  Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).OpenCommand}" CommandParameter="{Binding}">
+                            <Viewbox Width="16" Height="16">
+                              <Canvas Width="24" Height="24">
+                                <Path Classes="icon" Stroke="{Binding $parent[Button].Foreground}"
+                                      Data="M10 13 A5 5 0 0 0 17.54 13.54 L20.54 10.54 A5 5 0 0 0 13.47 3.47 L11.75 5.18 M14 11 A5 5 0 0 0 6.46 10.46 L3.46 13.46 A5 5 0 0 0 10.53 20.53 L12.24 18.82" />
+                              </Canvas>
+                            </Viewbox>
+                          </Button>
+                          <Button x:Name="OpenSiteFolder" Classes="ghost iconButton" ToolTip.Tip="{Binding FolderTip}" IsVisible="{Binding HasFolder}"
+                                  Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).OpenFolderCommand}" CommandParameter="{Binding}">
+                            <Viewbox Width="16" Height="16">
+                              <Canvas Width="24" Height="24">
+                                <Path Classes="icon" Stroke="{Binding $parent[Button].Foreground}"
+                                      Data="M3 6.5 A1.5 1.5 0 0 1 4.5 5 H9 L11 7.5 H19.5 A1.5 1.5 0 0 1 21 9 V17.5 A1.5 1.5 0 0 1 19.5 19 H4.5 A1.5 1.5 0 0 1 3 17.5 Z" />
+                              </Canvas>
+                            </Viewbox>
+                          </Button>
                           <Button Classes="ghost" Content="Edit"
                                   Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).EditCommand}" CommandParameter="{Binding}" />
                           <Button Classes="ghost" Content="{Binding ToggleText}"

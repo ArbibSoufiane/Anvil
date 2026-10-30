@@ -13,6 +13,7 @@
     <FluentTheme>
       <FluentTheme.Palettes>
         <ColorPaletteResources x:Key="Dark" Accent="#F08A3C" RegionColor="#0E1116" />
+        <ColorPaletteResources x:Key="Light" Accent="#C2601A" RegionColor="#F5F6F8" />
       </FluentTheme.Palettes>
     </FluentTheme>
     <StyleInclude Source="avares://Anvil/Theme/Controls.axaml" />

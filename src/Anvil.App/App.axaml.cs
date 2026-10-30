@@ -46,6 +46,8 @@ public partial class App : Application
             CleanUpUpdate(new Updater(paths, http));
             var appUpdate = AppUpdate.FromGitHub(paths, _agent.Api, _agent, http, () => Dispatcher.UIThread.Post(() => desktop.Shutdown()));
             var editorChoice = EditorChoice.ForUser();
+            var themeChoice = ThemeChoice.ForUser();
+            ThemeChoice.Apply(themeChoice.Theme);
             var editor = new EditorLauncher(() => editorChoice.Editor, new WindowsRegistryReader(), File.Exists);
             var elevator = new UacElevator(paths);
             var dashboard = new DashboardViewModel(_agent.Api, paths, editor, elevator: elevator);
@@ -64,8 +66,10 @@ public partial class App : Application
             {
                 settings = s;
                 vm.CloseToTray = s.CloseToTray;
-            }, () => _ = sites.LoadAsync(), appUpdate, editorChoice);
-            vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage, database, redis);
+            }, () => _ = sites.LoadAsync(), editorChoice, theme: themeChoice);
+            var toast = new ToastViewModel();
+            var update = new AppUpdateViewModel(appUpdate, toast, () => settings.StartServicesOnLaunch);
+            vm = new ShellViewModel(settings, dashboard, apache, logs, php, sites, settingsPage, database, redis, update, toast);
 
             var icon = AppIcon.Create();
             window = new MainWindow(vm) { Icon = icon };

@@ -294,7 +294,16 @@ public sealed class PageViewTests
         window.UpdateLayout();
 
         Assert.IsType<SitesView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
-        Assert.Contains(Named<ItemsControl>(window, "SiteRows").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "shop.test");
+        var rows = Named<ItemsControl>(window, "SiteRows");
+        var texts = rows.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+        Assert.Contains("shop.test", texts);
+        Assert.DoesNotContain(@"D:\Sites\shop", texts);
+        var buttons = rows.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).ToList();
+        Assert.Equal(["OpenSite", "OpenSiteFolder"], buttons.Where(b => b.Content is Viewbox).Select(b => b.Name));
+        Assert.Equal(@"Open the project folder: D:\Sites\shop", ToolTip.GetTip(buttons.Single(b => b.Name == "OpenSiteFolder")));
+        Assert.Equal(["Edit", "Disable", "Remove"], buttons.Where(b => b.Content is string).Select(b => (string)b.Content!));
+        var status = rows.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "SiteStatus");
+        Assert.True(status.DesiredSize.Width <= 104, $"The status pill needs {status.DesiredSize.Width}px");
         Assert.Contains(Named<ItemsControl>(window, "HtdocsRows").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "localhost/blog");
         Assert.False(Named<AddSiteDialog>(window, "Editor").IsEffectivelyVisible);
     }
@@ -327,35 +336,47 @@ public sealed class PageViewTests
         Assert.IsType<SettingsView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
         Assert.Contains(Named<Border>(window, "CaStatus").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Not trusted");
         Assert.Equal("80", Named<TextBox>(window, "HttpPort").Text);
-        Assert.False(Named<Button>(window, "CheckForUpdates").IsEffectivelyVisible);
     }
 
     [AvaloniaFact]
-    public void Settings_view_offers_a_checked_update()
+    public void The_sidebar_update_button_turns_into_download_update()
     {
         var update = new FakeAppUpdate
         {
             Available = new Release("4.1.0", new Uri("https://github.com/ArbibSoufiane/Anvil/releases/download/v4.1.0/Anvil-4.1.0-win64.zip"),
                 new Uri("https://github.com/ArbibSoufiane/Anvil/releases/download/v4.1.0/SHA256SUMS"), "Faster starts."),
         };
-        var settings = new SettingsViewModel(_api, new FakeElevator(), new FakeRunKey(), new FakeCa(), new FakeFolderPicker(), Paths, () => Lan,
-            new FakeTextClipboard(), update: update, ui: a => a());
-        settings.LoadAsync().GetAwaiter().GetResult();
-        var shell = new ShellViewModel(_api.Settings, settingsPage: settings);
+        var toast = new ToastViewModel();
+        var opened = new List<string>();
+        var shell = new ShellViewModel(_api.Settings, update: new AppUpdateViewModel(update, toast, () => true), toast: toast, openUrl: opened.Add);
         var window = new MainWindow(shell);
         window.Show();
-        shell.NavigateCommand.Execute(AppPage.Settings);
         window.UpdateLayout();
-        Assert.True(Named<Button>(window, "CheckForUpdates").IsEffectivelyVisible);
-        Assert.False(Named<Button>(window, "InstallUpdate").IsEffectivelyVisible);
+        var button = Named<Button>(window, "UpdateButton");
+        Assert.True(button.IsEffectivelyVisible);
+        Assert.Equal("Check for updates", button.Content);
+        Assert.False(Named<Border>(window, "Toast").IsVisible);
 
-        settings.CheckForUpdatesCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        shell.Update!.ClickCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         window.UpdateLayout();
 
-        Assert.True(Named<Button>(window, "InstallUpdate").IsEffectivelyVisible);
-        Assert.Equal("Install 4.1.0", Named<Button>(window, "InstallUpdate").Content);
-        Assert.Equal("Faster starts.", Named<TextBlock>(window, "UpdateNotes").Text);
-        Assert.StartsWith("Anvil 4.1.0 is available.", Named<TextBlock>(window, "UpdateMessage").Text);
+        Assert.Equal("Download update", button.Content);
+        Assert.True(Named<Border>(window, "Toast").IsVisible);
+        Assert.StartsWith("Anvil 4.1.0 is available.", Named<TextBlock>(window, "ToastText").Text);
+
+        Named<Button>(window, "InfoButton").Command!.Execute(null);
+        Assert.Equal(["https://github.com/ArbibSoufiane"], opened);
+    }
+
+    [AvaloniaFact]
+    public void Without_an_updater_the_sidebar_keeps_only_the_info_button()
+    {
+        var window = new MainWindow(new ShellViewModel(_api.Settings));
+        window.Show();
+        window.UpdateLayout();
+
+        Assert.False(Named<Button>(window, "UpdateButton").IsEffectivelyVisible);
+        Assert.True(Named<Button>(window, "InfoButton").IsEffectivelyVisible);
     }
 
     [AvaloniaFact]
@@ -387,7 +408,10 @@ public sealed class PageViewTests
         shell.NavigateCommand.Execute(AppPage.Sites);
         window.UpdateLayout();
 
-        Assert.Contains(Named<ItemsControl>(window, "SiteRows").GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "http://shop.arbib.pc");
+        var rows = Named<ItemsControl>(window, "SiteRows");
+        Assert.DoesNotContain(rows.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "http://shop.arbib.pc");
+        var open = rows.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "OpenSite");
+        Assert.EndsWith("On your network: http://shop.arbib.pc", (string)ToolTip.GetTip(open)!);
         var htdocs = Named<ItemsControl>(window, "HtdocsRows").GetVisualDescendants().OfType<TextBlock>().ToList();
         Assert.Contains(htdocs, t => t.Text == "http://192.168.10.2/blog");
         Assert.Contains(htdocs, t => t.Text == "http://blog.arbib.pc");

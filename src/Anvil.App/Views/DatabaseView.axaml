@@ -99,7 +99,7 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="x:String">
                 <DockPanel>
-                  <Ellipse Width="4" Height="4" Fill="{StaticResource TextDimBrush}" Margin="2,7,10,0" VerticalAlignment="Top" DockPanel.Dock="Left" />
+                  <Ellipse Width="4" Height="4" Fill="{DynamicResource TextDimBrush}" Margin="2,7,10,0" VerticalAlignment="Top" DockPanel.Dock="Left" />
                   <TextBlock Classes="para" Text="{Binding}" TextWrapping="Wrap" />
                 </DockPanel>
               </DataTemplate>

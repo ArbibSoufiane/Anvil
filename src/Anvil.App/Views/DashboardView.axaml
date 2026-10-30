@@ -23,7 +23,7 @@
                         CommandParameter="{Binding}">
                   <Viewbox Width="12" Height="12">
                     <Canvas Width="24" Height="24">
-                      <Path Classes="icon" Stroke="{StaticResource TextDimBrush}" Data="M6 6 L18 18 M18 6 L6 18" />
+                      <Path Classes="icon" Stroke="{DynamicResource TextDimBrush}" Data="M6 6 L18 18 M18 6 L6 18" />
                     </Canvas>
                   </Viewbox>
                 </Button>
@@ -50,7 +50,7 @@
             <DockPanel>
               <Viewbox Width="20" Height="20" DockPanel.Dock="Left">
                 <Canvas Width="24" Height="24">
-                  <Path Classes="icon" Stroke="{StaticResource AccentBrush}"
+                  <Path Classes="icon" Stroke="{DynamicResource AccentBrush}"
                         Data="M4.5 4 H19.5 Q21 4 21 5.5 V9.5 Q21 11 19.5 11 H4.5 Q3 11 3 9.5 V5.5 Q3 4 4.5 4 Z M4.5 13 H19.5 Q21 13 21 14.5 V18.5 Q21 20 19.5 20 H4.5 Q3 20 3 18.5 V14.5 Q3 13 4.5 13 Z" />
                 </Canvas>
               </Viewbox>
@@ -85,7 +85,7 @@
             <DockPanel>
               <Viewbox Width="20" Height="20" DockPanel.Dock="Left">
                 <Canvas Width="24" Height="24">
-                  <Path Classes="icon" Stroke="{StaticResource AccentBrush}" Data="M8 7 L3 12 L8 17 M16 7 L21 12 L16 17 M14 4 L10 20" />
+                  <Path Classes="icon" Stroke="{DynamicResource AccentBrush}" Data="M8 7 L3 12 L8 17 M16 7 L21 12 L16 17 M14 4 L10 20" />
                 </Canvas>
               </Viewbox>
               <Border Classes="pill" Classes.ok="{Binding PhpRunning}" Classes.bad="{Binding PhpFailed}" DockPanel.Dock="Right">
@@ -148,7 +148,7 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="x:String">
                   <DockPanel>
-                    <Ellipse Width="4" Height="4" Fill="{StaticResource TextDimBrush}" Margin="2,7,10,0" VerticalAlignment="Top" DockPanel.Dock="Left" />
+                    <Ellipse Width="4" Height="4" Fill="{DynamicResource TextDimBrush}" Margin="2,7,10,0" VerticalAlignment="Top" DockPanel.Dock="Left" />
                     <TextBlock Classes="para" Text="{Binding}" />
                   </DockPanel>
                 </DataTemplate>

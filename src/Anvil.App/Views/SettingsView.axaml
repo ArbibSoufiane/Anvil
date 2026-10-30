@@ -13,6 +13,13 @@
           <Border Classes="card">
             <StackPanel Spacing="12">
               <TextBlock Classes="h2" Text="General" />
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12">
+                <TextBlock Classes="dd" VerticalAlignment="Center" Text="Run Apache when Windows starts" FontWeight="Medium" />
+                <ToggleSwitch x:Name="RunApacheAtLogin" Grid.Column="1" Grid.RowSpan="2" OnContent="" OffContent="" VerticalAlignment="Center"
+                              IsChecked="{Binding RunApacheAtLogin}" Command="{Binding ApplyRunApacheAtLoginCommand}" />
+                <TextBlock Grid.Row="1" Classes="note" TextWrapping="Wrap"
+                           Text="When you log in, Anvil opens in the tray and starts Apache and PHP. It is not a Windows service, so nothing runs before you log in." />
+              </Grid>
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Classes="dd" VerticalAlignment="Center" Text="Start services when Anvil opens" />
                 <ToggleSwitch Grid.Column="1" OnContent="" OffContent="" IsChecked="{Binding StartServicesOnLaunch}" Command="{Binding ApplyGeneralCommand}" />
@@ -25,6 +32,17 @@
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Classes="dd" VerticalAlignment="Center" Text="Closing the window keeps it in the tray" />
                 <ToggleSwitch Grid.Column="1" OnContent="" OffContent="" IsChecked="{Binding CloseToTray}" Command="{Binding ApplyGeneralCommand}" />
+              </Grid>
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="dd" VerticalAlignment="Center" Text="Appearance" />
+                <Border Grid.Column="1" Classes="segs" x:Name="ThemeChoice">
+                  <StackPanel Orientation="Horizontal" Spacing="2">
+                    <Button Classes="seg" Classes.selected="{Binding IsDarkTheme}" Content="Dark" Command="{Binding UseThemeCommand}" CommandParameter="dark" />
+                    <Button Classes="seg" Classes.selected="{Binding IsLightTheme}" Content="Light" Command="{Binding UseThemeCommand}" CommandParameter="light" />
+                    <Button Classes="seg" Classes.selected="{Binding IsSystemTheme}" Content="Windows" Command="{Binding UseThemeCommand}" CommandParameter="system"
+                            ToolTip.Tip="Follows the app mode chosen in Windows' colour settings" />
+                  </StackPanel>
+                </Border>
               </Grid>
               <StackPanel Spacing="4">
                 <TextBlock Classes="fieldLabel" Text="Open config files with" />
@@ -127,7 +145,7 @@
 
           <Border Classes="card">
             <StackPanel Spacing="12">
-              <TextBlock Classes="h2" Text="Certificates and updates" />
+              <TextBlock Classes="h2" Text="Certificates" />
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Classes="dd" VerticalAlignment="Center" Text="Local certificate authority" />
                 <Border x:Name="CaStatus" Grid.Column="1" Classes="pill" Classes.ok="{Binding CaTrusted}">
@@ -142,18 +160,6 @@
                 <Button Classes="secondary" Content="Re-issue all" Command="{Binding ReissueCommand}" />
                 <Button Classes="ghost" Content="Remove from Windows" Command="{Binding UntrustCaCommand}" IsVisible="{Binding CaTrusted}" />
               </StackPanel>
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBlock Classes="dim" VerticalAlignment="Center" Text="{Binding VersionText}" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" IsVisible="{Binding CanUpdate}">
-                  <Button x:Name="CheckForUpdates" Classes="secondary" Content="Check for updates" Command="{Binding CheckForUpdatesCommand}" />
-                  <Button x:Name="InstallUpdate" Content="{Binding InstallUpdateText}" Command="{Binding InstallUpdateCommand}"
-                          IsVisible="{Binding UpdateAvailable}" />
-                </StackPanel>
-              </Grid>
-              <TextBlock x:Name="UpdateMessage" Classes="result" Classes.ok="{Binding UpdateOk}" TextWrapping="Wrap" Text="{Binding UpdateMessage}"
-                         IsVisible="{Binding UpdateMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              <TextBlock x:Name="UpdateNotes" Classes="note" MaxLines="8" TextTrimming="CharacterEllipsis"
-                         Text="{Binding UpdateNotes}" IsVisible="{Binding UpdateAvailable}" />
             </StackPanel>
           </Border>
 

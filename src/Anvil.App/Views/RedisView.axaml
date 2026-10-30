@@ -8,7 +8,7 @@
     <DataTemplate DataType="vm:RedisStep">
       <StackPanel Spacing="6">
         <DockPanel>
-          <Ellipse Width="4" Height="4" Fill="{StaticResource TextDimBrush}" Margin="2,7,10,0" VerticalAlignment="Top" DockPanel.Dock="Left" />
+          <Ellipse Width="4" Height="4" Fill="{DynamicResource TextDimBrush}" Margin="2,7,10,0" VerticalAlignment="Top" DockPanel.Dock="Left" />
           <TextBlock Classes="para" Text="{Binding Text}" TextWrapping="Wrap" />
         </DockPanel>
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="16,0,0,0" IsVisible="{Binding HasCommand}">

@@ -30,120 +30,12 @@ public sealed class SettingsViewModelTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private readonly FakeAppUpdate _update = new();
-
-    private static readonly Release Next = new("4.1.0", new Uri("https://github.com/ArbibSoufiane/Anvil/releases/download/v4.1.0/Anvil-4.1.0-win64.zip"),
-        new Uri("https://github.com/ArbibSoufiane/Anvil/releases/download/v4.1.0/SHA256SUMS"), "Faster starts.");
-
-    private async Task<SettingsViewModel> LoadedAsync(IAppUpdate? update = null)
+    private async Task<SettingsViewModel> LoadedAsync()
     {
         var vm = new SettingsViewModel(_api, _elevator, _runKey, _ca, _picker, Paths, () => _lan, _clipboard, _changed.Add, () => _sitesChanged++,
-            update, _editor, ui: a => a());
+            _editor, ui: a => a());
         await vm.LoadAsync(Ct);
         return vm;
-    }
-
-    [Fact]
-    public async Task Check_for_updates_says_when_this_is_the_latest()
-    {
-        var vm = await LoadedAsync(update: _update);
-
-        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
-
-        Assert.True(vm.CanUpdate);
-        Assert.Equal($"Anvil {BuildInfo.Version} is the latest version.", vm.UpdateMessage);
-        Assert.False(vm.UpdateAvailable);
-    }
-
-    [Fact]
-    public async Task Check_for_updates_offers_a_newer_release()
-    {
-        _update.Available = Next;
-        var vm = await LoadedAsync(update: _update);
-
-        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
-
-        Assert.True(vm.UpdateAvailable);
-        Assert.Equal("Install 4.1.0", vm.InstallUpdateText);
-        Assert.Equal("Anvil 4.1.0 is available. Installing it restarts Anvil: sites stop for a moment and start again.", vm.UpdateMessage);
-        Assert.Equal("Faster starts.", vm.UpdateNotes);
-    }
-
-    [Fact]
-    public async Task The_offer_warns_when_sites_will_stay_stopped()
-    {
-        _api.Settings = _api.Settings with { StartServicesOnLaunch = false };
-        _update.Available = Next;
-        var vm = await LoadedAsync(update: _update);
-
-        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
-
-        Assert.Equal("Anvil 4.1.0 is available. Installing it restarts Anvil: sites stop and stay stopped until you start them, "
-            + "because \"Start services when Anvil opens\" is off.", vm.UpdateMessage);
-    }
-
-    [Fact]
-    public async Task A_failed_check_says_why()
-    {
-        _update.CheckFails = new HttpRequestException("No such host is known. (api.github.com:443)");
-        var vm = await LoadedAsync(update: _update);
-
-        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
-
-        Assert.Equal("Anvil could not check for updates: No such host is known. (api.github.com:443)", vm.UpdateMessage);
-        Assert.False(vm.UpdateOk);
-        Assert.False(vm.UpdateAvailable);
-    }
-
-    [Fact]
-    public async Task Install_hands_over_to_the_new_version()
-    {
-        _update.Available = Next;
-        var vm = await LoadedAsync(update: _update);
-        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
-
-        await vm.InstallUpdateCommand.ExecuteAsync(null);
-
-        Assert.Equal(["check", "install 4.1.0"], _update.Calls);
-        Assert.Equal("Installing Anvil 4.1.0. It opens again in a moment.", vm.UpdateMessage);
-        Assert.True(vm.UpdateOk);
-    }
-
-    [Fact]
-    public async Task A_failed_install_says_why_and_keeps_the_offer()
-    {
-        _update.Available = Next;
-        _update.InstallProblem = "Anvil 4.1.0 was not installed: The release's SHA256SUMS does not list Anvil-4.1.0-win64.zip, so the download cannot be checked.";
-        var vm = await LoadedAsync(update: _update);
-        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
-
-        await vm.InstallUpdateCommand.ExecuteAsync(null);
-
-        Assert.Equal(_update.InstallProblem, vm.UpdateMessage);
-        Assert.False(vm.UpdateOk);
-        Assert.True(vm.UpdateAvailable);
-    }
-
-    [Fact]
-    public async Task A_development_build_explains_instead_of_checking()
-    {
-        _update.CannotUpdate = "This copy of Anvil was built from source, so it does not update itself. Build the new version instead.";
-        var vm = await LoadedAsync(update: _update);
-
-        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
-
-        Assert.Empty(_update.Calls);
-        Assert.Equal(_update.CannotUpdate, vm.UpdateMessage);
-    }
-
-    [Fact]
-    public async Task Without_an_updater_there_is_nothing_to_check()
-    {
-        var vm = await LoadedAsync();
-
-        Assert.False(vm.CanUpdate);
-        await vm.CheckForUpdatesCommand.ExecuteAsync(null);
-        Assert.Null(vm.UpdateMessage);
     }
 
     [Fact]
@@ -163,6 +55,43 @@ public sealed class SettingsViewModelTests
 
         Assert.Null(_runKey.Command);
         Assert.False(_api.Saved?.StartWithWindows);
+    }
+
+    [Fact]
+    public async Task Run_apache_when_windows_starts_turns_on_both_switches()
+    {
+        _api.Settings = _api.Settings with { StartServicesOnLaunch = false, StartWithWindows = false };
+        var vm = await LoadedAsync();
+        Assert.False(vm.RunApacheAtLogin);
+
+        vm.RunApacheAtLogin = true;
+        await vm.ApplyRunApacheAtLoginCommand.ExecuteAsync(null);
+
+        Assert.True(vm.StartWithWindows);
+        Assert.True(vm.StartServicesOnLaunch);
+        Assert.Equal("\"D:\\Anvil\\Anvil.exe\" --minimized", _runKey.Command);
+        Assert.True(_api.Saved?.StartWithWindows);
+        Assert.True(_api.Saved?.StartServicesOnLaunch);
+
+        vm.RunApacheAtLogin = false;
+        await vm.ApplyRunApacheAtLoginCommand.ExecuteAsync(null);
+
+        Assert.False(vm.StartWithWindows);
+        Assert.True(vm.StartServicesOnLaunch);
+        Assert.Null(_runKey.Command);
+    }
+
+    [Fact]
+    public async Task Run_apache_when_windows_starts_follows_the_other_switches()
+    {
+        _api.Settings = _api.Settings with { StartServicesOnLaunch = true, StartWithWindows = true };
+        var vm = await LoadedAsync();
+        Assert.True(vm.RunApacheAtLogin);
+
+        vm.StartServicesOnLaunch = false;
+        await vm.ApplyGeneralCommand.ExecuteAsync(null);
+
+        Assert.False(vm.RunApacheAtLogin);
     }
 
     [Fact]

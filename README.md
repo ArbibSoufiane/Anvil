@@ -122,7 +122,8 @@ for Private and Domain networks and your local subnet only.
 
 ## Updating
 
-**Anvil:** Settings → Check for updates. Nothing is checked until you ask. Installing downloads the
+**Anvil:** Check for updates, at the bottom of the sidebar. Nothing is checked until you ask. When a
+newer version exists the button reads Download update; clicking it downloads the
 release, checks it against its `SHA256SUMS`, stops your sites, swaps Anvil's own program files and
 opens the new version. `runtime\`, `data\`, `htdocs\` and files you keep next to `Anvil.exe` are
 never touched; the replaced files wait in `.update\previous-<version>\` and are put back if the swap
