@@ -1,6 +1,41 @@
 # Changelog
 
-## 1.0.0 — unreleased
+## 2.0.0 — 2026-10-30
+
+Anvil no longer downloads a database: install MariaDB or MySQL yourself and link it on the Database
+page. A database set up by Anvil 1.0.0 is no longer started; link the server you installed instead.
+
+### Added
+- php.ini settings on the PHP page for each version: `memory_limit`, `max_execution_time`,
+  `max_input_time`, `max_input_vars`, `post_max_size`, `upload_max_filesize`, `max_file_uploads`,
+  `realpath_cache_size` and `realpath_cache_ttl`. Saving restarts that version's pool.
+- Xdebug and OPcache switches for each PHP version, including a PHP from pvm, which uses the Xdebug
+  in its own `ext` folder.
+- Close a Dashboard warning with ×; it shows again if the problem goes away and comes back.
+- Refresh on each linked server, and Refresh all: checks that the server still runs and lets Anvil
+  log in.
+- A short guide on the Database page: where to download MariaDB and MySQL, and how to link them.
+- Clear on the Logs page empties the log shown, or every log under All.
+
+### Changed
+- A PHP added from a folder, such as pvm's, starts from that folder's own `php.ini`, so the
+  extensions it loads stay on. A version added before takes them over once.
+- A new `php.ini` starts with 256 MB uploads, 5000 input variables, 50 files per upload and a 16 MB
+  realpath cache kept 600 s, next to 1 GB memory and 300 s requests.
+
+### Fixed
+- The PHP page's Listens on shows the pool's address as soon as Apache starts it, not only after a
+  site is added.
+- Extensions a PHP from pvm loads, such as mcrypt, show as on, including ones loaded by full path.
+
+### Removed
+- Downloading, setting up and running Anvil's own MariaDB or MySQL, with its settings table, root
+  password, backups and updates. The Dashboard's database card and the database port in Settings
+  are gone too.
+
+## 1.0.0 — 2026-10-30
+
+Built on this PC only; not published on GitHub.
 
 Anvil is the new name of ArbiPache 4: a rewrite of ArbiPache 3 for development on your own PC.
 Settings → Import from ArbiPache 3 brings your sites over.
