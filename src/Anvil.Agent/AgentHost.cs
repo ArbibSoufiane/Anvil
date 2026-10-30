@@ -52,8 +52,8 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
         var installer = new ComponentInstaller(paths, new Downloader(downloadHttp),
             k => k == ComponentKind.Apache ? orchestrator?.Settings.ActiveApache : null);
         orchestrator = new Orchestrator(paths, store, tester, new ApacheControl(supervisor, paths, tester, probeHttp, ports), preflight.Run,
-            new ComponentCatalog([new PhpCatalogProvider(probeHttp), new MariaDbCatalogProvider(probeHttp)], new ShippedCatalogProvider(paths)), installer,
-            pools, port => ports.HolderOf(port) is null, db: new DatabaseServer(paths, supervisor, TimeProvider.System),
+            new ComponentCatalog([new PhpCatalogProvider(probeHttp)], new ShippedCatalogProvider(paths)), installer,
+            pools, port => ports.HolderOf(port) is null,
             linkedDbs: new LinkedDbHost(paths, supervisor, TimeProvider.System),
             names: names, lanAddresses: LanAddresses.Find, publicAdapters: NetworkCategory.PublicAdapterIds, firewallRules: WindowsFirewallReader.Read,
             phpProbe: (port, ct) => FastCgiProbe.ProbeAsync(port, Path.Combine(paths.Run, FastCgiProbe.ScriptName), PhpProbeTimeout, ct));
@@ -94,8 +94,6 @@ public sealed class AgentHost(AgentOptions options, AppPaths paths)
 
         // Without a graceful stop, the job still ends every child when it closes below.
         if (stopServices) await orchestrator.StopAllAsync(CancellationToken.None);
-        // The rest ends with the Agent's job; a killed database would need crash recovery on its next start.
-        else await orchestrator.StopAsync(ServiceId.Database, CancellationToken.None);
         Log.Information("Agent stopped");
         return ExitOk;
     }

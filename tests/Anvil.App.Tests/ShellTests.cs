@@ -21,7 +21,7 @@ public sealed class ShellTests
 
         Assert.Equal(AppPage.Database, vm.Current);
         Assert.Equal("Database", vm.Title);
-        Assert.Equal("MariaDB or MySQL, with every setting next to its default", vm.Subtitle);
+        Assert.Equal("The MariaDB and MySQL servers you installed, linked to Anvil", vm.Subtitle);
         Assert.True(vm.NavItems.Single(n => n.Page == AppPage.Database).IsSelected);
         Assert.False(vm.NavItems.Single(n => n.Page == AppPage.Dashboard).IsSelected);
     }

@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Anvil.Core.Database;
 using Anvil.Core.IO;
 using Anvil.Core.Paths;
 using Anvil.Core.Php;
@@ -27,8 +26,9 @@ public sealed partial class ComponentInstaller(AppPaths paths, Downloader dl, Fu
     {
         ComponentKind.Apache => paths.ApacheRuntime(version),
         ComponentKind.Php => paths.PhpRuntime(version),
-        ComponentKind.MariaDb => paths.DbRuntime(DbEngine.MariaDb, version),
-        ComponentKind.MySql => paths.DbRuntime(DbEngine.MySql, version),
+        // Earlier builds downloaded these; installed.json may still list them, and Remove clears their folders.
+        ComponentKind.MariaDb => Path.Combine(paths.Runtime, "mariadb", version),
+        ComponentKind.MySql => Path.Combine(paths.Runtime, "mysql", version),
         ComponentKind.Xdebug => Path.Combine(paths.Runtime, "xdebug", appliesTo is null ? version : $"{version}-php{appliesTo}"),
         ComponentKind.CaBundle => Path.Combine(paths.Runtime, "cabundle", version),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),

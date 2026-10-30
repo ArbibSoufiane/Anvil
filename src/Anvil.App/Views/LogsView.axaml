@@ -10,6 +10,8 @@
         <CheckBox Content="Errors only" IsChecked="{Binding ErrorsOnly}" />
         <Button Classes="ghost" Content="Open file" Command="{Binding OpenFileCommand}" />
         <Button Classes="ghost" Content="Logs folder" Command="{Binding OpenFolderCommand}" />
+        <Button Classes="ghost" x:Name="ClearLogs" Content="Clear" Command="{Binding ClearCommand}"
+                ToolTip.Tip="Empties the log shown, or every log while All is selected" />
       </StackPanel>
       <ItemsControl x:Name="Sources" ItemsSource="{Binding Sources}" VerticalAlignment="Center">
         <ItemsControl.ItemsPanel>
@@ -26,6 +28,9 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
     </DockPanel>
+
+    <TextBlock DockPanel.Dock="Top" Classes="result" Margin="0,0,0,12" Text="{Binding ClearMessage}" TextWrapping="Wrap"
+               IsVisible="{Binding ClearMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
     <Border Classes="logPanel">
       <Grid>

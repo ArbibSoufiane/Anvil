@@ -35,7 +35,6 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(443, s.HttpsPort);
         Assert.True(s.CloseToTray);
         Assert.True(s.StartServicesOnLaunch);
-        Assert.Equal(3306, s.DbPort);
     }
 
     [Fact]
@@ -47,8 +46,6 @@ public sealed class SettingsStoreTests : IDisposable
             HttpPort = 8080,
             ActiveApache = "2.4.65",
             DefaultPhp = "8.5.5",
-            DbEngine = DbEngine.MariaDb,
-            DbVersion = "11.4.8",
             Apache = new ApacheTuning(256, 1000, 3),
             OptionalModules = ["deflate"],
             PhpPools = new Dictionary<string, PhpPoolSettings> { ["8.5.5"] = new(8, 500) },

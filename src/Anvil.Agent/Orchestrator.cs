@@ -37,7 +37,7 @@ namespace Anvil.Agent;
 public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IConfigTester tester, IApacheControl apache,
     Func<AppSettings, IReadOnlyList<PreflightFinding>> preflight, ComponentCatalog catalog, ComponentInstaller installer,
     IPhpPools php, Func<int, bool> portFree, Func<string>? hostsText = null,
-    string? legacyHome = null, TimeProvider? time = null, IDatabaseServer? db = null,
+    string? legacyHome = null, TimeProvider? time = null,
     INameService? names = null, Func<IReadOnlyList<LanAddress>>? lanAddresses = null, Func<IReadOnlySet<string>>? publicAdapters = null,
     Func<IReadOnlyList<ExistingFirewallRule>>? firewallRules = null, Func<int, CancellationToken, Task<bool>>? phpProbe = null,
     string? userProfile = null, Func<string, string?>? phpVersionOf = null, ILinkedDbHost? linkedDbs = null)
@@ -83,7 +83,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             RaiseStatus();
             if (status.State == ProcessState.Failed) _ = FollowApacheFailureAsync();
         };
-        if (db is not null) db.StatusChanged += (_, _) => RaiseStatus();
+
         await Locked(async () =>
         {
             paths.EnsureCreated();
@@ -120,18 +120,13 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
                 var started = await StartApacheCoreAsync(version, ct);
                 if (!started.Ok) Log.Warning("Apache did not start on launch: {Error}", started.Error);
             }
-            if (ActiveDb is not null && _settings.StartServicesOnLaunch)
-            {
-                var started = await StartDbCoreAsync(ct);
-                if (!started.Ok) Log.Warning("The database did not start on launch: {Error}", started.Error);
-            }
             return ApplyResult.Success();
         }, ct);
     }
 
     /// <summary>
     /// After the folder was moved or copied: saved paths inside the old folder (site roots, the htdocs folder,
-    /// my.ini) name the same place inside this one, so a copy never serves or writes into the original.
+    /// name the same place inside this one, so a copy never serves or writes into the original.
     /// </summary>
     private void RebaseSavedPaths(string oldRoot)
     {
@@ -147,8 +142,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         {
             if (paths.Rebase(site.Root, oldRoot) is { } root && root != site.Root) sites.Save(site with { Root = root });
         }
-
-        foreach (var engine in Enum.GetValues<DbEngine>()) MyIni.Rebase(engine, oldRoot);
     }
 
     public AgentStatus Status()
@@ -159,23 +152,13 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             new(ServiceId.Apache, a?.State ?? ProcessState.Stopped, _settings.ActiveApache,
                 a?.State == ProcessState.Failed ? a.LastError : null),
             PhpStatus(),
-            DbStatus(),
         ];
         return new AgentStatus(services, [.. _findings, .. _networkFindings], BuildInfo.Version,
             names?.Listening.Select(a => a.ToString()).ToList() ?? []);
     }
 
-    /// <summary>
-    /// Apache and PHP start and stop together: either id means the web server. Null means the web server and the
-    /// database, when one is installed.
-    /// </summary>
-    public Task<ApplyResult> StartAsync(ServiceId? id, CancellationToken ct) => Locked(async () =>
-    {
-        if (id is ServiceId.Database) return await StartDbCoreAsync(ct);
-        var database = id is null && ActiveDb is not null ? await StartDbCoreAsync(ct) : ApplyResult.Success();
-        var web = await StartWebCoreAsync(ct);
-        return web.Ok ? database : web;
-    }, ct);
+    /// <summary>Apache and PHP start and stop together: any id, or null, means the web server.</summary>
+    public Task<ApplyResult> StartAsync(ServiceId? id, CancellationToken ct) => Locked(() => StartWebCoreAsync(ct), ct);
 
     private async Task<ApplyResult> StartWebCoreAsync(CancellationToken ct)
     {
@@ -190,10 +173,8 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
 
     public Task<ApplyResult> StopAsync(ServiceId? id, CancellationToken ct) => Locked(async () =>
     {
-        if (id is ServiceId.Database) return await StopDbCoreAsync(ct);
         await apache.StopAsync(ct);
         await php.ApplyAsync([], ct);
-        if (id is null && ActiveDb is not null) return await StopDbCoreAsync(ct);
         return ApplyResult.Success();
     }, ct);
 
@@ -203,11 +184,6 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
     /// </summary>
     public Task<ApplyResult> RestartAsync(ServiceId? id, CancellationToken ct) => Locked(async () =>
     {
-        if (id is ServiceId.Database)
-        {
-            var stopped = await StopDbCoreAsync(ct);
-            return stopped.Ok ? await StartDbCoreAsync(ct) : stopped;
-        }
         if (InstalledApache(_settings.ActiveApache) is not { } version) return ApplyResult.Failure(NotInstalled);
         if (!ApacheRunning) return await StartApacheCoreAsync(version, ct);
         if (id is null or ServiceId.Php)
@@ -253,20 +229,11 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
             NetworkDomain = NetworkNames.NormalizeDomain(s.NetworkDomain),
         };
         if (Validate(s) is { } invalid) return ApplyResult.Failure(invalid);
-        // Anvil's own running database holds the old port only; a program on the new one would stop it starting.
-        var dbMoves = s.DbPort != previous.DbPort;
-        if (dbMoves && !portFree(s.DbPort))
-            return ApplyResult.Failure($"Port {s.DbPort} is already in use by another program. Choose another database port. The settings were not saved.");
         // A port another program holds would take the sites down: refuse it while they still run.
         int[] fresh = [.. new[] { s.HttpPort, s.HttpsPort }.Except([previous.HttpPort, previous.HttpsPort])];
         if (fresh.Length > 0
             && preflight(s).FirstOrDefault(f => f.Severity == Severity.Blocking && fresh.Any(p => f.Id == $"port-{p}" || f.Id == $"http-sys-{p}")) is { } busy)
             return ApplyResult.Failure($"{(busy.Fix is null ? busy.Message : $"{busy.Message} {busy.Fix}")} The settings were not saved.");
-        if (dbMoves && ActiveDb is not null)
-        {
-            var moved = await SaveDbSettingsCoreAsync(new Dictionary<string, string?> { ["port"] = s.DbPort.ToString(CultureInfo.InvariantCulture) }, ct);
-            if (!moved.Ok) return ApplyResult.Failure($"{moved.Error} The settings were not saved.");
-        }
 
         if (InstalledApache(s.ActiveApache) is not { } version)
         {
@@ -676,6 +643,53 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
         return ApplyResult.Success([Path.Combine(paths.PhpConfigDir(version), "php.ini")]);
     }, ct);
 
+    /// <summary>
+    /// Prepares php.ini first, which takes over a linked folder's extensions the first time; a running pool restarts when
+    /// that changed the file.
+    /// </summary>
+    public Task<PhpIniValues> GetPhpIniAsync(string version, CancellationToken ct) => Locked(async () =>
+    {
+        if (InstalledPhp(version) is null) return new PhpIniValues(new Dictionary<string, string>(), false, false);
+        var file = Path.Combine(paths.PhpConfigDir(version), "php.ini");
+        var before = File.Exists(file) ? await File.ReadAllTextAsync(file, ct) : null;
+        try
+        {
+            PhpIni().EnsureIni(version);
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            Log.Warning(e, "php.ini of PHP {Version} could not be prepared", version);
+        }
+        if (before is not null && File.Exists(file) && await File.ReadAllTextAsync(file, ct) != before
+            && php.Running.FirstOrDefault(p => SameVersion(p.Version, version)) is { } pool)
+            await php.RestartAsync(pool.Key, ct);
+        return new PhpIniSettings(paths, PhpFiles).Read(version);
+    }, ct);
+
+    /// <summary>Writes the page's php.ini values, then restarts that version's pool only.</summary>
+    public Task<ApplyResult> SavePhpIniAsync(string version, IReadOnlyDictionary<string, string> values, CancellationToken ct) =>
+        EditPhpIniAsync(version, () => new PhpIniSettings(paths, PhpFiles).Write(version, values), ct);
+
+    /// <summary>Turns OPcache on or off in php.ini, then restarts that version's pool only.</summary>
+    public Task<ApplyResult> SetOpcacheAsync(string version, bool enabled, CancellationToken ct) =>
+        EditPhpIniAsync(version, () => new PhpIniSettings(paths, PhpFiles).SetOpcache(version, enabled), ct);
+
+    private Task<ApplyResult> EditPhpIniAsync(string version, Action edit, CancellationToken ct) => Locked(async () =>
+    {
+        if (InstalledPhp(version) is null) return ApplyResult.Failure($"PHP {version} is not installed.");
+        try
+        {
+            PhpIni().EnsureIni(version);
+            edit();
+        }
+        catch (Exception e) when (e is InvalidOperationException or ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return ApplyResult.Failure(e.Message);
+        }
+        if (php.Running.FirstOrDefault(p => SameVersion(p.Version, version)) is { } pool) await php.RestartAsync(pool.Key, ct);
+        return ApplyResult.Success([Path.Combine(paths.PhpConfigDir(version), "php.ini")]);
+    }, ct);
+
     /// <summary>Stops every service gracefully; used when the Agent shuts down.</summary>
     public Task StopAllAsync(CancellationToken ct) => StopAsync(null, ct);
 
@@ -962,7 +976,7 @@ public sealed partial class Orchestrator(AppPaths paths, SettingsStore store, IC
 
     private static string? Validate(AppSettings s)
     {
-        foreach (var (port, label) in new[] { (s.HttpPort, "HTTP"), (s.HttpsPort, "HTTPS"), (s.DbPort, "Database") })
+        foreach (var (port, label) in new[] { (s.HttpPort, "HTTP"), (s.HttpsPort, "HTTPS") })
             if (port is < 1 or > 65535) return $"The {label} port must be between 1 and 65535.";
         if (s.Apache.ThreadsPerChild is < 1 or > 1920) return "Threads per child must be between 1 and 1920.";
         return s.NetworkDomain is { } domain ? NetworkNames.DomainError(domain) : null;

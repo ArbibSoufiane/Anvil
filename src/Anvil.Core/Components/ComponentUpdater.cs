@@ -1,4 +1,3 @@
-using Anvil.Core.Database;
 using Anvil.Core.Paths;
 using Anvil.Core.Settings;
 
@@ -8,7 +7,7 @@ namespace Anvil.Core.Components;
 public sealed record UpdateOffer(ComponentKind Kind, string Installed, string Available, ComponentRelease? Release);
 
 /// <summary>
-/// Updates stay on a branch: Apache 2.4.x, each PHP 8.x in use, the active database series. A newer branch is a new
+/// Updates stay on a branch: Apache 2.4.x and each PHP 8.x in use. A newer branch is a new
 /// install the user picks on purpose, never an update.
 /// </summary>
 public static class ComponentUpdater
@@ -39,7 +38,6 @@ public static class ComponentUpdater
         var linked = installed.Where(i => i.Kind == ComponentKind.Php && i.Linked).Select(i => i.Version).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var branch in phpInUse.Where(v => !linked.Contains(v)).GroupBy(Branch, StringComparer.OrdinalIgnoreCase).OrderBy(g => g.Key, Comparer<string>.Create(SemVer.Compare)))
             Offer(ComponentKind.Php, branch.Order(Newest).First());
-        if (s.DbEngine is { } engine) Offer(engine == DbEngine.MariaDb ? ComponentKind.MariaDb : ComponentKind.MySql, s.DbVersion);
         return offers;
     }
 

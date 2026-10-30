@@ -147,8 +147,6 @@ public sealed class PhpViewModelTests
         Assert.Equal(4, vm.Workers);
         Assert.Equal(1000, vm.MaxRequests);
         Assert.Equal("127.0.0.1:9100", vm.PortText);
-        Assert.Equal("300", vm.MaxExecutionTime);
-        Assert.Equal("In a new php.ini. Edit php.ini to change it.", vm.MaxExecutionTimeHint);
 
         vm.Workers = 6;
         vm.MaxRequests = 500;
@@ -174,17 +172,44 @@ public sealed class PhpViewModelTests
     }
 
     [Fact]
-    public async Task Xdebug_chip_toggles_like_any_extension()
+    public async Task Xdebug_and_opcache_have_their_own_switches()
     {
-        _api.Installed.Add(new InstalledComponent(ComponentKind.Xdebug, "3.5.3", @"D:\Anvil\runtime\xdebug\3.5.3-php8.5", new string('b', 64),
-            DateTimeOffset.Now, AppliesTo: "8.5"));
+        _api.Extensions["8.5.12"].AddRange([new("xdebug", false, true, true), new("opcache", true, true, true)]);
+        _api.PhpIni["8.5.12"] = new PhpIniValues(new Dictionary<string, string>(), Opcache: true, OpcacheAvailable: true);
         var vm = Make();
 
         await vm.LoadAsync(TestContext.Current.CancellationToken);
 
-        var xdebug = vm.Extensions.Single(e => e.Name == "xdebug");
-        Assert.True(xdebug.ToggleCommand.CanExecute(null));
-        Assert.Equal("Xdebug starts on a trigger: add XDEBUG_TRIGGER to a request, or use a browser extension.", xdebug.Hint);
+        Assert.Equal(["curl", "intl", "soap"], vm.Extensions.Select(e => e.Name));
+        Assert.Equal("Xdebug starts on a trigger: add XDEBUG_TRIGGER to a request, or use a browser extension.", vm.XdebugChip?.Hint);
+        Assert.False(vm.XdebugChip!.IsOn);
+        Assert.True(vm.OpcacheChip!.IsOn);
+        Assert.False(vm.CanGetXdebug);
+
+        await vm.XdebugChip.ToggleCommand.ExecuteAsync(null);
+        await vm.OpcacheChip.ToggleCommand.ExecuteAsync(null);
+
+        Assert.Contains("extension 8.5.12 xdebug on", _api.Calls);
+        Assert.Contains("opcache 8.5.12 off", _api.Calls);
+        Assert.True(vm.XdebugChip.IsOn);
+        Assert.False(vm.OpcacheChip.IsOn);
+    }
+
+    [Fact]
+    public async Task A_thread_safe_php_from_pvm_uses_the_xdebug_in_its_own_folder()
+    {
+        _api.Php.Add(new PhpVersionInfo("8.3.14", "vs16", 4, 1000, 0, [], ProcessState.Stopped, false, false, PvmFolder, Linked: true, ThreadSafe: true));
+        _api.Extensions["8.3.14"] = [new("mcrypt", true, true, false), new("xdebug", true, true, true)];
+        _api.Available.Add(Xdebug("8.3"));
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        vm.Versions.Single(v => v.Version == "8.3.14").SelectCommand.Execute(null);
+        await vm.XdebugChip!.ToggleCommand.ExecuteAsync(null);
+
+        Assert.Equal(["mcrypt"], vm.Extensions.Select(e => e.Name));
+        Assert.Contains("extension 8.3.14 xdebug off", _api.Calls);
+        Assert.False(vm.XdebugChip.IsOn);
         Assert.False(vm.CanGetXdebug);
     }
 
@@ -196,14 +221,70 @@ public sealed class PhpViewModelTests
         var vm = Make();
         await vm.LoadAsync(TestContext.Current.CancellationToken);
         Assert.True(vm.CanGetXdebug);
-        Assert.DoesNotContain(vm.Extensions, e => e.Name == "xdebug");
+        Assert.Null(vm.XdebugChip);
 
         await vm.GetXdebugCommand.ExecuteAsync(null);
 
         Assert.Equal("8.5", _api.Installed.Single(c => c.Kind == ComponentKind.Xdebug).AppliesTo);
-        Assert.Contains(vm.Extensions, e => e.Name == "xdebug");
+        Assert.True(vm.XdebugChip?.IsOn);
         Assert.False(vm.CanGetXdebug);
     }
+
+    [Fact]
+    public async Task Php_ini_values_save_only_what_changed()
+    {
+        _api.PhpIni["8.5.12"] = new PhpIniValues(new Dictionary<string, string> { ["memory_limit"] = "1G", ["post_max_size"] = "256M" }, false, true);
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(PhpIniSettings.Editable.Select(s => s.Key), vm.IniFields.Select(f => f.Key));
+        Assert.Equal("1G", vm.IniFields[0].Value);
+        Assert.Equal("", Field(vm, "max_input_vars").Value);
+        Assert.Equal("PHP's default: 1000", Field(vm, "max_input_vars").Hint);
+
+        Field(vm, "max_input_vars").Value = "5000";
+        Field(vm, "post_max_size").Value = "";
+        await vm.SaveIniCommand.ExecuteAsync(null);
+
+        Assert.Contains("save ini 8.5.12 max_input_vars=5000 post_max_size=", _api.Calls);
+        Assert.True(vm.IniOk);
+        Assert.Equal("Saved. The pool restarted its workers with the new values.", vm.IniMessage);
+        Assert.Equal("5000", Field(vm, "max_input_vars").Value);
+        Assert.False(Field(vm, "max_input_vars").IsEdited);
+    }
+
+    [Fact]
+    public async Task A_php_ini_value_php_would_not_read_is_refused_before_saving()
+    {
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        Field(vm, "upload_max_filesize").Value = "lots";
+        await vm.SaveIniCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain(_api.Calls, c => c.StartsWith("save ini", StringComparison.Ordinal));
+        Assert.False(vm.IniOk);
+        Assert.Equal("upload_max_filesize must be a size such as 256M or 1G.", vm.IniMessage);
+    }
+
+    [Fact]
+    public async Task Listens_on_follows_the_pool_once_apache_starts_it()
+    {
+        _api.Php[0] = _api.Php[0] with { Port = 0, State = ProcessState.Stopped };
+        var vm = Make();
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("Not running · starts with Apache", vm.PortText);
+        vm.Workers = 6;
+
+        _api.Php[0] = _api.Php[0] with { Port = 9100, State = ProcessState.Running };
+        _api.Raise(_api.Status);
+
+        Assert.Equal("127.0.0.1:9100", vm.PortText);
+        Assert.Equal("Running", vm.Versions[0].StatusText);
+        Assert.Equal(6, vm.Workers);
+    }
+
+    private static PhpIniField Field(PhpViewModel vm, string key) => vm.IniFields.Single(f => f.Key == key);
 
     [Fact]
     public async Task Toggling_an_extension_calls_agent_for_that_version()

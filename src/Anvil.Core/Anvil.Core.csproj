@@ -20,7 +20,6 @@
     <AdditionalFiles Include="Update\NativeMethods.txt" />
     <AdditionalFiles Include="Database\NativeMethods.txt" />
     <EmbeddedResource Include="Apache\Templates\*.sbn" LogicalName="Anvil.Templates.%(Filename)%(Extension)" />
-    <EmbeddedResource Include="Database\Resources\db-settings.json" LogicalName="Anvil.Database.db-settings.json" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Anvil.Core.Tests" />

@@ -66,6 +66,70 @@ public sealed class PhpIniBootstrapTests : IDisposable
         Assert.False(File.Exists(Path.Combine(linked, "php.ini")));
     }
 
+    private string LinkedWithOwnIni(string version, string ownIni, params string[] extDlls)
+    {
+        InstallPhp(version);
+        var linked = Path.Combine(_root, "pvm", $"php-{version}");
+        Directory.CreateDirectory(Path.GetDirectoryName(linked)!);
+        Directory.Move(_paths.PhpRuntime(version), linked);
+        foreach (var dll in extDlls) File.WriteAllText(Path.Combine(linked, "ext", dll), "");
+        File.WriteAllText(Path.Combine(linked, "php.ini"), ownIni);
+        return linked;
+    }
+
+    [Fact]
+    public void A_linked_php_starts_from_its_own_php_ini_and_keeps_its_extensions()
+    {
+        var linked = LinkedWithOwnIni("8.3.14", "[PHP]\r\nextension_dir = \"ext\"\r\nextension=mcrypt\r\nextension=curl\r\nmemory_limit = 2G\r\n",
+            "php_mcrypt.dll", "php_curl.dll");
+
+        new PhpIniBootstrap(_paths, _ => linked).EnsureIni("8.3.14");
+
+        var ini = Ini("8.3.14");
+        Assert.Equal(["mcrypt", "curl"], ini.GetAll("PHP", "extension"));
+        Assert.Equal(AppPaths.ForApache(Path.Combine(linked, "ext")), ini.Get("PHP", "extension_dir"));
+        Assert.Equal("1G", ini.Get("PHP", "memory_limit"));
+        Assert.StartsWith(PhpIniBootstrap.MirrorMark, File.ReadAllText(Path.Combine(_paths.PhpConfigDir("8.3.14"), "php.ini")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_php_ini_made_before_takes_the_folders_extensions_once()
+    {
+        var linked = LinkedWithOwnIni("8.3.14", "[PHP]\r\nextension=mcrypt\r\nextension=missing\r\nzend_extension=xdebug\r\n",
+            "php_mcrypt.dll", "php_xdebug.dll");
+        File.Delete(Path.Combine(linked, "php.ini"));
+        var bootstrap = new PhpIniBootstrap(_paths, _ => linked);
+        bootstrap.EnsureIni("8.3.14");
+        Assert.DoesNotContain("xdebug", Ini("8.3.14").GetAll("PHP", "zend_extension"));
+        File.WriteAllText(Path.Combine(linked, "php.ini"), "[PHP]\r\nextension=mcrypt\r\nextension=missing\r\nzend_extension=xdebug\r\n");
+
+        bootstrap.EnsureIni("8.3.14");
+
+        Assert.Contains("mcrypt", Ini("8.3.14").GetAll("PHP", "extension"));
+        Assert.DoesNotContain("missing", Ini("8.3.14").GetAll("PHP", "extension"));
+        Assert.Contains("xdebug", Ini("8.3.14").GetAll("PHP", "zend_extension"));
+
+        // Turned off in Anvil afterwards, it stays off.
+        new PhpExtensionManager(_paths, phpFolder: _ => linked).Set("8.3.14", "mcrypt", enabled: false);
+        bootstrap.EnsureIni("8.3.14");
+        Assert.DoesNotContain("mcrypt", Ini("8.3.14").GetAll("PHP", "extension"));
+    }
+
+    [Fact]
+    public void An_extension_from_the_folders_own_extension_dir_loads_by_its_full_path()
+    {
+        var elsewhere = Path.Combine(_root, "more-ext");
+        Directory.CreateDirectory(elsewhere);
+        File.WriteAllText(Path.Combine(elsewhere, "php_mcrypt.dll"), "");
+        var linked = LinkedWithOwnIni("8.3.14", $"[PHP]\r\nextension_dir = \"{elsewhere}\"\r\nextension=mcrypt\r\n");
+
+        new PhpIniBootstrap(_paths, _ => linked).EnsureIni("8.3.14");
+
+        Assert.Equal([AppPaths.ForApache(Path.Combine(elsewhere, "php_mcrypt.dll"))], Ini("8.3.14").GetAll("PHP", "extension"));
+        var mcrypt = new PhpExtensionManager(_paths, phpFolder: _ => linked).List("8.3.14").Single(e => e.Name == "mcrypt");
+        Assert.True(mcrypt.Enabled);
+    }
+
     [Fact]
     public void EnsureIni_enables_default_extensions()
     {
@@ -139,7 +203,9 @@ public sealed class PhpIniBootstrapTests : IDisposable
         Assert.Equal("1G", ini.Get("PHP", "memory_limit"));
         Assert.Equal("On", ini.Get("PHP", "display_errors"));
         Assert.Equal("300", ini.Get("PHP", "max_execution_time"));
-        Assert.Equal("512M", ini.Get("PHP", "upload_max_filesize"));
+        Assert.Equal("256M", ini.Get("PHP", "upload_max_filesize"));
+        Assert.Equal("5000", ini.Get("PHP", "max_input_vars"));
+        Assert.Equal("16M", ini.Get("PHP", "realpath_cache_size"));
     }
 
     [Fact]

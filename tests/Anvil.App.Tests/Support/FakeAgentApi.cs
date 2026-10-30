@@ -37,8 +37,11 @@ public sealed class FakeAgentApi : IAgentApi
     public Detected? Detected { get; set; }
     public ImportReport Import { get; set; } = new([], [], []);
     public Dictionary<string, SiteCertificate> Certificates { get; } = [];
-    public List<DbSettingRow> DbRows { get; } = [];
-    public IReadOnlyDictionary<string, string?>? DbSaved { get; private set; }
+    /// <summary>php.ini values by PHP version; a version without an entry has none set.</summary>
+    public Dictionary<string, PhpIniValues> PhpIni { get; } = [];
+    public IReadOnlyDictionary<string, string>? IniSaved { get; private set; }
+    /// <summary>Answers CheckLinkedDatabaseAsync by server id; without one, the check succeeds.</summary>
+    public Dictionary<string, ApplyResult> LinkedChecks { get; } = [];
     public Exception? BackupError { get; set; }
     public string BackupFile { get; set; } = @"D:\Anvil\data\backups\db\2026-10-27-120000.sql.gz";
 
@@ -78,6 +81,10 @@ public sealed class FakeAgentApi : IAgentApi
         var installed = new InstalledComponent(r.Kind, r.Version, $@"D:\Anvil\runtime\{r.Kind.ToString().ToLowerInvariant()}\{r.Version}", r.Sha256,
             DateTimeOffset.Now, r.Toolset, r.AppliesTo);
         Installed.Add(installed);
+        // Like the Agent, a new Xdebug build is turned on for every non-thread-safe PHP of its branch.
+        if (r.Kind == ComponentKind.Xdebug)
+            foreach (var php in Php.Where(p => !p.ThreadSafe && PhpSupport.Minor(p.Version) == r.AppliesTo))
+                Extensions[php.Version] = [.. Extensions.GetValueOrDefault(php.Version, []).Where(e => e.Name != "xdebug"), new("xdebug", true, true, true)];
         return Task.FromResult(installed);
     }
 
@@ -189,23 +196,6 @@ public sealed class FakeAgentApi : IAgentApi
     public Task<IReadOnlyDictionary<string, SiteCertificate>> GetCertificatesAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyDictionary<string, SiteCertificate>>(new Dictionary<string, SiteCertificate>(Certificates));
 
-    public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default)
-    {
-        if (NextResult.Ok) Settings = Settings with { DbEngine = e, DbVersion = version };
-        return Record($"install db {e} {version}");
-    }
-
-    public Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<DbSettingRow>>(DbRows.ToList());
-
-    public Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default)
-    {
-        DbSaved = changes;
-        return Record("save db " + string.Join(" ", changes.OrderBy(c => c.Key).Select(c => $"{c.Key}={c.Value ?? "(default)"}")));
-    }
-
-    public Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default) => Record("db password");
-
     public List<LinkedDbInfo> LinkedDbs { get; } = [];
 
     /// <summary>Answers for the linked-database calls, in order; each is used once. Without one, NextResult answers.</summary>
@@ -234,11 +224,31 @@ public sealed class FakeAgentApi : IAgentApi
         return BackupError is { } error ? Task.FromException<string>(error) : Task.FromResult(BackupFile);
     }
 
-    public Task<string> BackupDatabaseAsync(CancellationToken ct = default)
+    public Task<ApplyResult> CheckLinkedDatabaseAsync(string id, CancellationToken ct = default)
     {
-        Calls.Add("backup db");
-        return BackupError is { } error ? Task.FromException<string>(error) : Task.FromResult(BackupFile);
+        Calls.Add($"check db {id}");
+        return Task.FromResult(LinkedChecks.TryGetValue(id, out var result) ? result : ApplyResult.Success());
     }
+
+    public Task<PhpIniValues> GetPhpIniAsync(string version, CancellationToken ct = default) =>
+        Task.FromResult(PhpIni.TryGetValue(version, out var ini) ? ini : new PhpIniValues(new Dictionary<string, string>(), false, false));
+
+    public Task<ApplyResult> SavePhpIniAsync(string version, IReadOnlyDictionary<string, string> values, CancellationToken ct = default)
+    {
+        IniSaved = values;
+        if (NextResult.Ok && PhpIni.TryGetValue(version, out var ini))
+        {
+            var merged = new Dictionary<string, string>(ini.Values);
+            foreach (var (key, value) in values)
+                if (value.Length == 0) merged.Remove(key);
+                else merged[key] = value;
+            PhpIni[version] = ini with { Values = merged };
+        }
+        return Record($"save ini {version} " + string.Join(" ", values.OrderBy(v => v.Key).Select(v => $"{v.Key}={v.Value}")));
+    }
+
+    public Task<ApplyResult> SetOpcacheAsync(string version, bool enabled, CancellationToken ct = default) =>
+        Record($"opcache {version} {(enabled ? "on" : "off")}");
 
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)
     {

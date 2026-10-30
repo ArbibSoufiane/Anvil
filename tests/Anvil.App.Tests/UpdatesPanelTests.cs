@@ -26,15 +26,12 @@ public sealed class UpdatesPanelTests
         [
             new UpdateOffer(ComponentKind.Apache, "2.4.69", "2.4.70", Release(ComponentKind.Apache, "2.4.70")),
             new UpdateOffer(ComponentKind.Php, "8.5.5", "8.5.12", null),
-            new UpdateOffer(ComponentKind.MariaDb, "11.8.3", "11.8.5", Release(ComponentKind.MariaDb, "11.8.5")),
         ]);
         var apache = new ApacheViewModel(_api, Paths, Editor, ui: a => a());
         var php = new PhpViewModel(_api, Paths, Editor, ui: a => a());
-        var database = new DatabaseViewModel(_api, Paths, Editor, ui: a => a());
 
         await apache.LoadAsync(Ct);
         await php.LoadAsync(Ct);
-        await database.LoadAsync(Ct);
 
         var row = Assert.Single(apache.Updates.Rows);
         Assert.Equal("Apache 2.4.70 is available", row.Title);
@@ -43,7 +40,6 @@ public sealed class UpdatesPanelTests
         Assert.Equal("PHP 8.5.12 is available", Assert.Single(php.Updates.Rows).Title);
         Assert.Equal("You use 8.5.5. It is downloaded already: Anvil switches, and puts 8.5.5 back if the new version does not run.",
             Assert.Single(php.Updates.Rows).Note);
-        Assert.Equal("MariaDB 11.8.5 is available", Assert.Single(database.Updates.Rows).Title);
     }
 
     [Fact]

@@ -23,6 +23,7 @@ public sealed partial class LinkedDbRow : ObservableObject
         ApplyPortCommand = new AsyncRelayCommand(() => owner.ApplyPortAsync(this));
         BackupCommand = new AsyncRelayCommand(() => owner.BackupAsync(this));
         UnlinkCommand = new AsyncRelayCommand(() => owner.UnlinkAsync(this));
+        RefreshCommand = new AsyncRelayCommand(() => owner.CheckAsync(this));
     }
 
     public LinkedDbInfo Info { get; }
@@ -34,11 +35,22 @@ public sealed partial class LinkedDbRow : ObservableObject
     [ObservableProperty]
     public partial string PortText { get; set; }
 
+    /// <summary>What the last Refresh found: the server answers, or why not.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCheck))]
+    public partial string? CheckText { get; set; }
+
+    [ObservableProperty]
+    public partial bool CheckOk { get; set; }
+
+    public bool HasCheck => CheckText is not null;
+
     public IAsyncRelayCommand StartCommand { get; }
     public IAsyncRelayCommand StopCommand { get; }
     public IAsyncRelayCommand ApplyPortCommand { get; }
     public IAsyncRelayCommand BackupCommand { get; }
     public IAsyncRelayCommand UnlinkCommand { get; }
+    public IAsyncRelayCommand RefreshCommand { get; }
 }
 
 /// <summary>
@@ -121,6 +133,50 @@ public sealed partial class LinkedDatabasesViewModel(IAgentApi api, IElevator el
     {
         IsLinking = false;
         LinkPassword = "";
+    }
+
+    /// <summary>Checks every linked server: each must still run and let Anvil log in.</summary>
+    [RelayCommand]
+    private async Task RefreshAllAsync()
+    {
+        Message = null;
+        var checks = new Dictionary<string, ApplyResult>();
+        try
+        {
+            foreach (var row in Servers.ToList()) checks[row.Info.Id] = await api.CheckLinkedDatabaseAsync(row.Info.Id);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Warning(e, "Checking the linked databases failed");
+            Show(false, $"The Anvil Agent did not answer: {e.Message}");
+            return;
+        }
+        await LoadAsync();
+        foreach (var row in Servers)
+            if (checks.TryGetValue(row.Info.Id, out var check)) ShowCheck(row, check);
+    }
+
+    internal async Task CheckAsync(LinkedDbRow row)
+    {
+        ApplyResult check;
+        try
+        {
+            check = await api.CheckLinkedDatabaseAsync(row.Info.Id);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Warning(e, "Checking linked database {Id} failed", row.Info.Id);
+            Show(false, $"The Anvil Agent did not answer: {e.Message}");
+            return;
+        }
+        await LoadAsync();
+        if (Servers.FirstOrDefault(r => r.Info.Id == row.Info.Id) is { } fresh) ShowCheck(fresh, check);
+    }
+
+    private static void ShowCheck(LinkedDbRow row, ApplyResult check)
+    {
+        row.CheckOk = check.Ok;
+        row.CheckText = check.Ok ? $"Running · Anvil logged in at {DateTime.Now:HH:mm:ss}" : check.Error;
     }
 
     internal Task StartAsync(LinkedDbRow row) => ActAsync(row, () => api.StartLinkedDatabaseAsync(row.Info.Id), $"{row.Title} is running.");

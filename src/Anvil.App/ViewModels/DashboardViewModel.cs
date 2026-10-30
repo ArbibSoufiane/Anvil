@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using Anvil.App.Services;
 using Anvil.Core.Agent;
-using Anvil.Core.Database;
 using Anvil.Core.Elevation;
 using Anvil.Core.Network;
 using Anvil.Core.Paths;
@@ -26,16 +25,24 @@ public sealed record FindingItem(string Id, string Message, string? Fix, bool Bl
     };
 
     public bool HasAction => ActionLabel is not null;
+
+    /// <summary>A blocking problem stays on the Dashboard: Apache does not start until it is dealt with.</summary>
+    public bool CanDismiss => !Blocking;
+
+    /// <summary>The same problem with other details, such as another port, is a new warning.</summary>
+    public string Key => KeyOf(Id, Message);
+
+    public static string KeyOf(string id, string message) => $"{id}\n{message}";
 }
 
-/// <summary>The Dashboard: the Apache, PHP and database cards, problems found before start, where to open the sites, and the development settings.</summary>
+/// <summary>The Dashboard: the Apache and PHP cards, problems found before start, where to open the sites, and the development settings.</summary>
 public sealed partial class DashboardViewModel : ObservableObject
 {
-    /// <summary>What a new php.ini and my.ini start with, and what Apache always runs with.</summary>
+    /// <summary>What a new php.ini starts with, and what Apache always runs with.</summary>
     public static IReadOnlyList<string> DevelopmentLines { get; } =
     [
         "PHP errors shown in the page, every notice reported",
-        "Scripts may run 300 s, 1 GB memory, 512 MB uploads",
+        "Scripts may run 300 s, 1 GB memory, 256 MB uploads",
         "OPcache re-checks files on every request",
         "Xdebug on once installed, directory listings on",
     ];
@@ -47,6 +54,8 @@ public sealed partial class DashboardViewModel : ObservableObject
     private readonly ElevationFollowUp? _followUp;
     private readonly Action<string> _openUrl;
     private AppSettings _settings = new();
+    private IReadOnlyList<PreflightFinding> _lastFindings = [];
+    private readonly HashSet<string> _dismissed = [];
 
     /// <param name="elevator">Asks Windows for the firewall rules from the firewall banner; null only has the Agent look again.</param>
     /// <param name="openUrl">Opens a URL or a Windows settings page; null starts it through the shell.</param>
@@ -103,39 +112,6 @@ public sealed partial class DashboardViewModel : ObservableObject
     public partial string PhpPools { get; set; } = "";
 
     private string? _defaultPhp;
-    private ServiceStatus? _db;
-
-    [ObservableProperty]
-    public partial string DbTitle { get; set; } = "Database";
-
-    [ObservableProperty]
-    public partial string DbStateText { get; set; } = "Not installed";
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DbStartStopLabel))]
-    public partial bool DbRunning { get; set; }
-
-    [ObservableProperty]
-    public partial bool DbFailed { get; set; }
-
-    [ObservableProperty]
-    public partial bool DbInstalled { get; set; }
-
-    [ObservableProperty]
-    public partial string DbVersion { get; set; } = "";
-
-    [ObservableProperty]
-    public partial string DbListening { get; set; } = "";
-
-    [ObservableProperty]
-    public partial string DbRootUser { get; set; } = "";
-
-    /// <summary>The last error from the database card's Start/Stop, or the server's last error after it failed.</summary>
-    [ObservableProperty]
-    public partial string? DbMessage { get; set; }
-
-    public string DbStartStopLabel => DbRunning ? "Stop" : "Start";
-
     /// <summary>The last error from a Start/Stop/Restart, or Apache's last error after it failed.</summary>
     [ObservableProperty]
     public partial string? ApacheMessage { get; set; }
@@ -179,16 +155,6 @@ public sealed partial class DashboardViewModel : ObservableObject
 
     [RelayCommand]
     private Task RestartPhpAsync() => RunAsync(() => _api.RestartAsync(ServiceId.Php), m => ApacheMessage = m);
-
-    [RelayCommand]
-    private Task StartStopDbAsync() =>
-        RunAsync(() => DbRunning ? _api.StopAsync(ServiceId.Database) : _api.StartAsync(ServiceId.Database), m => DbMessage = m);
-
-    [RelayCommand]
-    private void OpenMyIni()
-    {
-        if (_settings.DbEngine is { } engine) _editor.Open(new MyIni(_paths).PathFor(engine));
-    }
 
     [RelayCommand]
     private void OpenHttpdConf() => _editor.Open(_paths.HttpdConf);
@@ -285,23 +251,6 @@ public sealed partial class DashboardViewModel : ObservableObject
         LocalNote = $"htdocs · {s.HtdocsPath ?? _paths.Htdocs}";
         NetworkUrl = s.Network.HtdocsOnNetwork && LanAddresses.Find().FirstOrDefault() is { } lan ? $"http://{lan.Address}{port}/" : null;
         NetworkNote = "Your network · Private networks only";
-        ApplyDb();
-    }
-
-    private void ApplyDb()
-    {
-        var engine = _settings.DbEngine;
-        var state = _db?.State ?? ProcessState.Stopped;
-        DbInstalled = engine is not null;
-        DbTitle = engine switch { DbEngine.MariaDb => "MariaDB", DbEngine.MySql => "MySQL", _ => "Database" };
-        DbRunning = state is ProcessState.Starting or ProcessState.Running or ProcessState.Restarting;
-        DbFailed = state == ProcessState.Failed;
-        DbStateText = DbInstalled ? state.ToString() : "Not installed";
-        DbVersion = DbInstalled ? _settings.DbVersion ?? "" : "Set up MariaDB or MySQL on the Database page";
-        DbListening = DbInstalled ? $"127.0.0.1:{_settings.DbPort}" : "";
-        // The Agent never sets up a database without a root password.
-        DbRootUser = DbInstalled ? "Password set" : "";
-        if (DbFailed && _db?.Detail is { } detail) DbMessage = detail;
     }
 
     private void Apply(AgentStatus status)
@@ -323,11 +272,28 @@ public sealed partial class DashboardViewModel : ObservableObject
         PhpDefault = _defaultPhp is null ? "Install PHP on the PHP page" : $"PHP {_defaultPhp} NTS x64";
         PhpPools = php?.Detail ?? (_defaultPhp is null ? "" : "Start with Apache");
 
-        _db = status.Services.FirstOrDefault(s => s.Id == ServiceId.Database);
-        ApplyDb();
+        _lastFindings = status.Findings;
+        ShowFindings();
+    }
 
+    /// <summary>Hides the warning until the problem goes away and comes back, or until Anvil is opened again.</summary>
+    [RelayCommand]
+    private void DismissFinding(FindingItem finding)
+    {
+        _dismissed.Add(finding.Key);
+        ShowFindings();
+    }
+
+    private void ShowFindings()
+    {
+        // A problem that went away may be shown again the next time it is found.
+        _dismissed.IntersectWith(_lastFindings.Select(f => FindingItem.KeyOf(f.Id, f.Message)));
         Findings.Clear();
-        foreach (var f in status.Findings) Findings.Add(new FindingItem(f.Id, f.Message, f.Fix, f.Severity == Severity.Blocking));
+        foreach (var f in _lastFindings)
+        {
+            var item = new FindingItem(f.Id, f.Message, f.Fix, f.Severity == Severity.Blocking);
+            if (!_dismissed.Contains(item.Key)) Findings.Add(item);
+        }
         HasFindings = Findings.Count > 0;
     }
 }

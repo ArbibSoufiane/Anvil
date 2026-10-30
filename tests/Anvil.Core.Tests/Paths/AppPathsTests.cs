@@ -21,8 +21,6 @@ public sealed class AppPathsTests : IDisposable
         Assert.Equal(@"D:\AP\data\apache\httpd.conf", paths.HttpdConf);
         Assert.Equal(@"D:\AP\runtime\php\8.4.14", paths.PhpRuntime("8.4.14"));
         Assert.Equal(@"D:\AP\data\php\8.4.14", paths.PhpConfigDir("8.4.14"));
-        Assert.Equal(@"D:\AP\runtime\mariadb\11.4.8", paths.DbRuntime(DbEngine.MariaDb, "11.4.8"));
-        Assert.Equal(@"D:\AP\data\mysql", paths.DbData(DbEngine.MySql));
     }
 
     [Fact]

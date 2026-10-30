@@ -1,5 +1,3 @@
-using Anvil.Core.Database;
-
 namespace Anvil.Core.Settings;
 
 public sealed record ApacheTuning(int ThreadsPerChild, int MaxConnectionsPerChild, int KeepAliveTimeout);
@@ -17,9 +15,6 @@ public sealed record AppSettings
     public int HttpsPort { get; init; } = 443;
     public string? ActiveApache { get; init; }
     public string? DefaultPhp { get; init; }
-    public DbEngine? DbEngine { get; init; }
-    public string? DbVersion { get; init; }
-    public int DbPort { get; init; } = 3306;
     public ApacheTuning Apache { get; init; } = new(Suggest.Threads(Environment.ProcessorCount), 0, 5);
     public IReadOnlyList<string> OptionalModules { get; init; } = ["deflate", "expires", "http2"];
     /// <summary>Keyed by PHP version, e.g. "8.5.5".</summary>

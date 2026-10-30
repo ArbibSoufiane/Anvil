@@ -68,6 +68,10 @@ public sealed partial class LogsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool ErrorsOnly { get; set; }
 
+    /// <summary>The logs Clear could not empty, or null.</summary>
+    [ObservableProperty]
+    public partial string? ClearMessage { get; set; }
+
     /// <summary>Finds the logs again (new sites or PHP versions) and reloads the selected one.</summary>
     public void Refresh()
     {
@@ -84,6 +88,7 @@ public sealed partial class LogsViewModel : ObservableObject, IDisposable
     private void Select(SourceChip chip)
     {
         Selected = chip;
+        ClearMessage = null;
         foreach (var c in Sources) c.IsSelected = c == chip;
         Load();
     }
@@ -98,6 +103,16 @@ public sealed partial class LogsViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void OpenFolder() => EditorLauncher.OpenFolder(_paths.Logs);
+
+    /// <summary>Empties the shown log, or every log while All is selected.</summary>
+    [RelayCommand]
+    private void Clear()
+    {
+        var kept = LogSources.Clear(Active);
+        ClearMessage = kept.Count == 0 ? null
+            : $"{string.Join(", ", kept.Select(Path.GetFileName))} {(kept.Count == 1 ? "is" : "are")} held open by the program writing {(kept.Count == 1 ? "it" : "them")}, so {(kept.Count == 1 ? "it was" : "they were")} not cleared.";
+        Load();
+    }
 
     partial void OnFollowChanged(bool value)
     {

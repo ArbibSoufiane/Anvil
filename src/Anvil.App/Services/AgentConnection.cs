@@ -237,6 +237,14 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
         public async Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default) =>
             await (await Remote()).SetExtensionAsync(version, name, enabled, ct);
 
+        public async Task<PhpIniValues> GetPhpIniAsync(string version, CancellationToken ct = default) => await (await Remote()).GetPhpIniAsync(version, ct);
+
+        public async Task<ApplyResult> SavePhpIniAsync(string version, IReadOnlyDictionary<string, string> values, CancellationToken ct = default) =>
+            await (await Remote()).SavePhpIniAsync(version, values, ct);
+
+        public async Task<ApplyResult> SetOpcacheAsync(string version, bool enabled, CancellationToken ct = default) =>
+            await (await Remote()).SetOpcacheAsync(version, enabled, ct);
+
         public async Task<IReadOnlyList<SiteDefinition>> GetSitesAsync(CancellationToken ct = default) => await (await Remote()).GetSitesAsync(ct);
 
         public async Task<IReadOnlyList<HtdocsEntry>> GetHtdocsAsync(CancellationToken ct = default) => await (await Remote()).GetHtdocsAsync(ct);
@@ -270,19 +278,6 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
 
         public async Task RefreshNetworkAsync(CancellationToken ct = default) => await (await Remote()).RefreshNetworkAsync(ct);
 
-        public async Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
-            await (await Remote()).InstallDatabaseAsync(e, version, rootPassword, ct);
-
-        public async Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default) => await (await Remote()).GetDbSettingsAsync(ct);
-
-        public async Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default) =>
-            await (await Remote()).SaveDbSettingsAsync(changes, ct);
-
-        public async Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default) =>
-            await (await Remote()).SetDbRootPasswordAsync(password, ct);
-
-        public async Task<string> BackupDatabaseAsync(CancellationToken ct = default) => await (await Remote()).BackupDatabaseAsync(ct);
-
         public async Task<IReadOnlyList<LinkedDbInfo>> GetLinkedDatabasesAsync(CancellationToken ct = default) =>
             await (await Remote()).GetLinkedDatabasesAsync(ct);
 
@@ -302,6 +297,9 @@ public sealed class AgentConnection : IAsyncDisposable, IAgentLink
 
         public async Task<string> BackupLinkedDatabaseAsync(string id, CancellationToken ct = default) =>
             await (await Remote()).BackupLinkedDatabaseAsync(id, ct);
+
+        public async Task<ApplyResult> CheckLinkedDatabaseAsync(string id, CancellationToken ct = default) =>
+            await (await Remote()).CheckLinkedDatabaseAsync(id, ct);
 
         public async Task ShutdownAsync(bool stopServices, CancellationToken ct = default) => await (await Remote()).ShutdownAsync(stopServices, ct);
     }

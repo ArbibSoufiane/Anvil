@@ -22,14 +22,14 @@ public sealed class ComponentUpdaterTests : IDisposable
 
     private static ComponentRelease Release(ComponentKind k, string v) => new(k, v, new Uri($"https://example.com/{k}-{v}.zip"), new string('b', 64), null);
 
-    private static readonly AppSettings Active = new() { ActiveApache = "2.4.69", DefaultPhp = "8.5.5", DbEngine = DbEngine.MariaDb, DbVersion = "11.8.3" };
+    private static readonly AppSettings Active = new() { ActiveApache = "2.4.69", DefaultPhp = "8.5.5" };
 
     [Fact]
     public void A_linked_php_gets_no_update()
     {
         InstalledComponent[] installed = [Installed(K.Php, "8.4.10") with { Linked = true }, Installed(K.Php, "8.5.5")];
 
-        var offers = ComponentUpdater.Offers(Active with { ActiveApache = null, DbEngine = null, DbVersion = null }, ["8.4.10", "8.5.5"], installed,
+        var offers = ComponentUpdater.Offers(Active with { ActiveApache = null }, ["8.4.10", "8.5.5"], installed,
             [Release(K.Php, "8.4.27"), Release(K.Php, "8.5.12")]);
 
         Assert.Equal([new UpdateOffer(K.Php, "8.5.5", "8.5.12", Release(K.Php, "8.5.12"))], offers);
@@ -38,12 +38,11 @@ public sealed class ComponentUpdaterTests : IDisposable
     [Fact]
     public void Offers_only_newer_versions()
     {
-        InstalledComponent[] installed = [Installed(K.Apache, "2.4.69"), Installed(K.Php, "8.4.10"), Installed(K.Php, "8.5.5"), Installed(K.MariaDb, "11.8.3")];
+        InstalledComponent[] installed = [Installed(K.Apache, "2.4.69"), Installed(K.Php, "8.4.10"), Installed(K.Php, "8.5.5")];
         ComponentRelease[] available =
         [
             Release(K.Apache, "2.4.68"), Release(K.Apache, "2.4.69"), Release(K.Apache, "2.4.70"), Release(K.Apache, "2.5.0"),
             Release(K.Php, "8.4.10"), Release(K.Php, "8.5.3"), Release(K.Php, "8.5.12"), Release(K.Php, "8.6.0"),
-            Release(K.MariaDb, "11.4.9"), Release(K.MariaDb, "11.8.5"), Release(K.MariaDb, "12.0.1"), Release(K.MySql, "8.4.13"),
         ];
 
         var offers = ComponentUpdater.Offers(Active, ["8.4.10", "8.5.5"], installed, available);
@@ -52,7 +51,6 @@ public sealed class ComponentUpdaterTests : IDisposable
         [
             new UpdateOffer(K.Apache, "2.4.69", "2.4.70", available[2]),
             new UpdateOffer(K.Php, "8.5.5", "8.5.12", available[6]),
-            new UpdateOffer(K.MariaDb, "11.8.3", "11.8.5", available[9]),
         ], offers);
     }
 
@@ -61,7 +59,7 @@ public sealed class ComponentUpdaterTests : IDisposable
     {
         InstalledComponent[] installed = [Installed(K.Apache, "2.4.69"), Installed(K.Apache, "2.4.70"), Installed(K.Php, "8.5.5"), Installed(K.Php, "8.5.12")];
 
-        var offers = ComponentUpdater.Offers(Active with { DbEngine = null, DbVersion = null }, ["8.5.5"], installed, [Release(K.Php, "8.5.12")]);
+        var offers = ComponentUpdater.Offers(Active, ["8.5.5"], installed, [Release(K.Php, "8.5.12")]);
 
         Assert.Equal([new UpdateOffer(K.Apache, "2.4.69", "2.4.70", null), new UpdateOffer(K.Php, "8.5.5", "8.5.12", null)], offers);
     }

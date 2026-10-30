@@ -1,7 +1,6 @@
 using Anvil.Core.Agent;
 using Anvil.Core.Apache;
 using Anvil.Core.Components;
-using Anvil.Core.Database;
 using Anvil.Core.Php;
 using Anvil.Core.Settings;
 using Anvil.Core.Sites;
@@ -12,12 +11,11 @@ namespace Anvil.Agent;
 /// <summary>Switching to another installed version: updates within a branch, put back when the new version does not run.</summary>
 public sealed partial class Orchestrator
 {
-    /// <summary>Newer patch releases of the active Apache, each PHP branch in use and the active database series.</summary>
+    /// <summary>Newer patch releases of the active Apache and each PHP branch in use.</summary>
     public async Task<IReadOnlyList<UpdateOffer>> CheckUpdatesAsync(CancellationToken ct)
     {
         var s = _settings;
         List<ComponentKind> kinds = [ComponentKind.Apache, ComponentKind.Php];
-        if (s.DbEngine is { } engine) kinds.Add(DbKind(engine));
         var available = new List<ComponentRelease>();
         foreach (var kind in kinds) available.AddRange(await catalog.GetAsync(kind, ct));
         return ComponentUpdater.Offers(s, PhpInUse(s, new SiteStore(paths).All()), kinds.SelectMany(installer.Installed).ToList(), available);
@@ -26,13 +24,11 @@ public sealed partial class Orchestrator
     /// <summary>
     /// Apache: the new version must pass the config test and answer once started, else the previous one runs again.
     /// PHP: the default, the sites and their pool settings move from older patches of the branch to this one.
-    /// Database: a newer release of the active series replaces the running one, which starts again if it fails.
     /// </summary>
     public Task<ApplyResult> ActivateAsync(ComponentKind k, string version, CancellationToken ct) => Locked(() => k switch
     {
         ComponentKind.Apache => ActivateApacheAsync(version, ct),
         ComponentKind.Php => UpdatePhpAsync(version, ct),
-        ComponentKind.MariaDb or ComponentKind.MySql => UpdateDbAsync(k == ComponentKind.MariaDb ? DbEngine.MariaDb : DbEngine.MySql, version, ct),
         _ => Task.FromResult(ApplyResult.Failure($"Switching {k} is not available.")),
     }, ct);
 
@@ -179,47 +175,6 @@ public sealed partial class Orchestrator
             return $"PHP {version} started but did not answer a request";
         }
         return null;
-    }
-
-    private async Task<ApplyResult> UpdateDbAsync(DbEngine engine, string version, CancellationToken ct)
-    {
-        if (db is null) return ApplyResult.Failure("The database is not available in this Agent.");
-        if (ActiveDb is not { } active || active.Engine != engine) return ApplyResult.Failure($"{DbName(engine)} is not the active database.");
-        if (!installer.Installed(DbKind(engine)).Any(i => SameVersion(i.Version, version)))
-            return ApplyResult.Failure($"Install {DbName(engine)} {version} first.");
-        if (SameVersion(active.Version, version)) return ApplyResult.Success();
-        if (!ComponentUpdater.SameBranch(active.Version, version))
-            return ApplyResult.Failure($"{DbName(engine)} {version} is a new series, not an update of {active.Version}. " +
-                "Back up your databases first: a new series upgrades the data files and cannot be undone.");
-        if (SemVer.Compare(version, active.Version) < 0)
-            return ApplyResult.Failure($"{DbName(engine)} {version} is older than {active.Version}. Anvil only moves a database forward.");
-
-        var next = _settings with { DbVersion = version };
-        if (!DbRunning)
-        {
-            Save(next);
-            return ApplyResult.Success();
-        }
-        try
-        {
-            await db.StopAsync(engine, active.Version, ct);
-            await db.StartAsync(engine, version, ct);
-            Save(next);
-            return ApplyResult.Success();
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            var failed = $"{DbName(engine)} {version} did not start: {e.Message}";
-            try
-            {
-                await db.StartAsync(engine, active.Version, ct);
-                return ApplyResult.Failure($"{failed} {DbName(engine)} {active.Version} is running again.");
-            }
-            catch (Exception again) when (again is not OperationCanceledException)
-            {
-                return ApplyResult.Failure($"{failed} {DbName(engine)} {active.Version} did not start either: {again.Message}");
-            }
-        }
     }
 
     // Every PHP version a setting or site names, switched on or not: an update moves them all.

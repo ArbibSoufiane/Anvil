@@ -62,6 +62,15 @@ public partial interface IAgentApi
     /// <summary>Restarts that version's pool only.</summary>
     Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default);
 
+    /// <summary>The php.ini values the PHP page edits, and whether OPcache is on.</summary>
+    Task<PhpIniValues> GetPhpIniAsync(string version, CancellationToken ct = default);
+
+    /// <summary>Writes the values into that version's php.ini and restarts its pool; a value PHP would not read is refused.</summary>
+    Task<ApplyResult> SavePhpIniAsync(string version, IReadOnlyDictionary<string, string> values, CancellationToken ct = default);
+
+    /// <summary>Loads OPcache and turns it on, or off, in that version's php.ini; restarts its pool.</summary>
+    Task<ApplyResult> SetOpcacheAsync(string version, bool enabled, CancellationToken ct = default);
+
     Task<IReadOnlyList<SiteDefinition>> GetSitesAsync(CancellationToken ct = default);
 
     /// <summary>What localhost/&lt;folder&gt; serves: htdocs folders and htdocs entries kept elsewhere.</summary>
@@ -97,22 +106,6 @@ public partial interface IAgentApi
     /// <summary>Reads this PC's addresses, its networks and the firewall again, and moves the name service to match.</summary>
     Task RefreshNetworkAsync(CancellationToken ct = default);
 
-    /// <summary>
-    /// Makes an installed MariaDB or MySQL version the active database: initializes an empty datadir with the root
-    /// password (an existing one must accept it), stops the other engine and starts this one.
-    /// </summary>
-    Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default);
-
-    Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default);
-
-    /// <summary>Writes my.ini (a null value removes the key) and restarts the server; put back when it will not start.</summary>
-    Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default);
-
-    Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default);
-
-    /// <summary>Dumps every database to data\backups\db; returns the file.</summary>
-    Task<string> BackupDatabaseAsync(CancellationToken ct = default);
-
     /// <summary>The MariaDB and MySQL servers the user linked, with their state.</summary>
     Task<IReadOnlyList<LinkedDbInfo>> GetLinkedDatabasesAsync(CancellationToken ct = default);
 
@@ -133,6 +126,9 @@ public partial interface IAgentApi
 
     /// <summary>Dumps every database of a running linked server to data\backups\db\&lt;id&gt;; returns the file.</summary>
     Task<string> BackupLinkedDatabaseAsync(string id, CancellationToken ct = default);
+
+    /// <summary>Whether a linked server still runs and lets Anvil log in; a failed result says what is wrong.</summary>
+    Task<ApplyResult> CheckLinkedDatabaseAsync(string id, CancellationToken ct = default);
 
     /// <summary>Ends the Agent. With stopServices false, its processes still end with it (they live in its job).</summary>
     Task ShutdownAsync(bool stopServices, CancellationToken ct = default);

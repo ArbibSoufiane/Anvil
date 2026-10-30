@@ -143,43 +143,38 @@ public sealed class DashboardViewModelTests
     }
 
     [Fact]
-    public async Task Database_card_shows_engine_version_and_where_it_listens()
+    public void A_closed_warning_stays_closed_until_it_comes_back()
     {
-        _api.Settings = _api.Settings with { DbEngine = DbEngine.MariaDb, DbVersion = "11.8.9", DbPort = 3307 };
-        _api.Status = _api.Status with { Services = [new ServiceStatus(ServiceId.Database, ProcessState.Running, "MariaDB 11.8.9", null)] };
         var vm = Make();
-        await vm.LoadAsync(TestContext.Current.CancellationToken);
+        var publicNetwork = new PreflightFinding("network-public", Severity.Warning, "Windows treats Wi-Fi as Public.", "f");
+        var firewall = new PreflightFinding("firewall-missing", Severity.Warning, "m", "f");
+        _api.Raise(StatusWith(publicNetwork, firewall));
 
-        Assert.Equal("MariaDB", vm.DbTitle);
-        Assert.Equal("Running", vm.DbStateText);
-        Assert.True(vm.DbRunning);
-        Assert.True(vm.DbInstalled);
-        Assert.Equal("11.8.9", vm.DbVersion);
-        Assert.Equal("127.0.0.1:3307", vm.DbListening);
-        Assert.Equal("Password set", vm.DbRootUser);
-        Assert.Equal("Stop", vm.DbStartStopLabel);
+        var item = vm.Findings.First();
+        Assert.True(item.CanDismiss);
+        vm.DismissFindingCommand.Execute(item);
 
-        await vm.StartStopDbCommand.ExecuteAsync(null);
-        Assert.Contains("stop Database", _api.Calls);
+        Assert.Equal(["firewall-missing"], vm.Findings.Select(f => f.Id));
+        _api.Raise(StatusWith(publicNetwork, firewall));
+        Assert.Equal(["firewall-missing"], vm.Findings.Select(f => f.Id));
 
-        _api.Raise(_api.Status with { Services = [new ServiceStatus(ServiceId.Database, ProcessState.Failed, "MariaDB 11.8.9", "MariaDB did not start.")] });
-        Assert.True(vm.DbFailed);
-        Assert.False(vm.DbRunning);
-        Assert.Equal("Failed", vm.DbStateText);
-        Assert.Equal("Start", vm.DbStartStopLabel);
-        Assert.Equal("MariaDB did not start.", vm.DbMessage);
+        // Once the problem is gone, finding it again shows the warning again.
+        _api.Raise(StatusWith(firewall));
+        _api.Raise(StatusWith(publicNetwork, firewall));
+        Assert.Equal(["network-public", "firewall-missing"], vm.Findings.Select(f => f.Id));
     }
 
     [Fact]
-    public async Task Database_card_without_a_database_points_to_the_page()
+    public void Closing_the_last_warning_hides_the_banners_and_blocking_problems_cannot_be_closed()
     {
         var vm = Make();
-        await vm.LoadAsync(TestContext.Current.CancellationToken);
+        _api.Raise(StatusWith(new PreflightFinding("firewall-missing", Severity.Warning, "m", "f")));
 
-        Assert.Equal("Database", vm.DbTitle);
-        Assert.Equal("Not installed", vm.DbStateText);
-        Assert.False(vm.DbInstalled);
-        Assert.Equal("Set up MariaDB or MySQL on the Database page", vm.DbVersion);
+        vm.DismissFindingCommand.Execute(vm.Findings.Single());
+
+        Assert.False(vm.HasFindings);
+        _api.Raise(StatusWith(new PreflightFinding("port-80", Severity.Blocking, "Port 80 is used by Skype (PID 7).", "Close Skype.")));
+        Assert.False(vm.Findings.Single().CanDismiss);
     }
 
     [Fact]

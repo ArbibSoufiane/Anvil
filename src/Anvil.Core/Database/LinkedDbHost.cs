@@ -116,7 +116,7 @@ public sealed class LinkedDbHost(AppPaths paths, ProcessSupervisor supervisor, T
     }
 
     public Task<string> BackupAsync(LinkedDatabase server, string password, CancellationToken ct) =>
-        new DbBackup(paths, new DbSecrets(paths), time).BackupLinkedAsync(server, password, ct);
+        new DbBackup(paths, time).BackupLinkedAsync(server, password, ct);
 
     private static string ProcessName(LinkedDatabase server) => $"linked-{server.Id}";
 

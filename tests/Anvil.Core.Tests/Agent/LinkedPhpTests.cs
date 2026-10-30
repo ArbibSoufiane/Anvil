@@ -106,6 +106,47 @@ public sealed class LinkedPhpTests : IDisposable
     }
 
     [Fact]
+    public async Task A_pvm_php_keeps_the_extensions_its_own_php_ini_loads()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var folder = PvmPhp("php-8.3.14-Win32-vs16-x64", "8.3.14", threadSafe: true);
+        File.WriteAllText(Path.Combine(folder, "ext", "php_mcrypt.dll"), "");
+        File.WriteAllText(Path.Combine(folder, "ext", "php_xdebug.dll"), "");
+        File.WriteAllText(Path.Combine(folder, "php.ini"), "[PHP]\r\nextension=mcrypt\r\nextension=curl\r\n");
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+
+        await orchestrator.LinkPhpAsync(folder, ct);
+
+        var extensions = orchestrator.GetExtensions("8.3.14");
+        Assert.True(extensions.Single(e => e.Name == "mcrypt").Enabled);
+        Assert.False(extensions.Single(e => e.Name == "xdebug").Enabled);
+        var xdebug = await orchestrator.SetExtensionAsync("8.3.14", "xdebug", true, ct);
+        Assert.True(xdebug.Ok, xdebug.Error);
+        Assert.True(orchestrator.GetExtensions("8.3.14").Single(e => e.Name == "xdebug").Enabled);
+    }
+
+    [Fact]
+    public async Task Php_ini_values_are_saved_and_the_running_pool_restarts()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var folder = PvmPhp("php-8.4.23-Win32-vs17-x64", "8.4.23");
+        var orchestrator = Make();
+        await orchestrator.InitializeAsync(ct);
+        await orchestrator.LinkPhpAsync(folder, ct);
+        await orchestrator.StartAsync(null, ct);
+
+        var saved = await orchestrator.SavePhpIniAsync("8.4.23", new Dictionary<string, string> { ["max_input_vars"] = "8000" }, ct);
+        var refused = await orchestrator.SavePhpIniAsync("8.4.23", new Dictionary<string, string> { ["memory_limit"] = "a lot" }, ct);
+
+        Assert.True(saved.Ok, saved.Error);
+        Assert.Equal("8000", (await orchestrator.GetPhpIniAsync("8.4.23", ct)).Values["max_input_vars"]);
+        Assert.Single(_pools.Restarted);
+        Assert.Equal("memory_limit must be a size such as 256M or 1G, or -1 for no limit.", refused.Error);
+        Assert.Equal("1G", (await orchestrator.GetPhpIniAsync("8.4.23", ct)).Values["memory_limit"]);
+    }
+
+    [Fact]
     public async Task A_linked_php_runs_from_its_own_folder()
     {
         var ct = TestContext.Current.CancellationToken;

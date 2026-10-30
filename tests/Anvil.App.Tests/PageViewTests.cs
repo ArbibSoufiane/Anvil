@@ -10,6 +10,7 @@ using Anvil.Core.Components;
 using Anvil.Core.Database;
 using Anvil.Core.Network;
 using Anvil.Core.Paths;
+using Anvil.Core.Php;
 using Anvil.Core.Preflight;
 using Anvil.Core.Processes;
 using Anvil.Core.Settings;
@@ -35,7 +36,7 @@ public sealed class PageViewTests
         var apache = new ApacheViewModel(_api, Paths, editor, ui: a => a());
         var php = new PhpViewModel(_api, Paths, editor, ui: a => a());
         var linked = new LinkedDatabasesViewModel(_api, new FakeElevator(), new FakeFolderPicker());
-        var database = new DatabaseViewModel(_api, Paths, editor, linked, ui: a => a());
+        var database = new DatabaseViewModel(linked);
         dashboard.LoadAsync().GetAwaiter().GetResult();
         apache.LoadAsync().GetAwaiter().GetResult();
         php.LoadAsync().GetAwaiter().GetResult();
@@ -87,51 +88,22 @@ public sealed class PageViewTests
         Assert.Equal("8.5 ×4", Named<TextBlock>(window, "PhpPools").Text);
     }
 
-    private void WithMariaDb()
-    {
-        _api.Settings = _api.Settings with { DbEngine = DbEngine.MariaDb, DbVersion = "11.8.9" };
-        _api.Status = _api.Status with { Services = [new ServiceStatus(ServiceId.Database, ProcessState.Running, "MariaDB 11.8.9", null)] };
-        _api.DbRows.AddRange(
-        [
-            new("innodb_buffer_pool_size", "1G", "134217728", "Memory for table and index data", true, false, false),
-            new("max_connections", null, "151", "Most clients connected at once", false, false, false),
-            new("lower_case_table_names", "1", "0", "How table names are stored", true, false, true),
-        ]);
-    }
-
     [AvaloniaFact]
-    public void Dashboard_view_shows_database_card()
+    public void Dashboard_view_has_no_database_card_and_closes_warnings()
     {
-        WithMariaDb();
+        _api.Status = _api.Status with { Findings = [new PreflightFinding("firewall-missing", Severity.Warning, "The firewall keeps other devices out.", null)] };
 
         var (window, _) = Show();
 
-        Assert.Equal("MariaDB", Named<TextBlock>(window, "DbTitle").Text);
-        Assert.Equal("Running", Named<TextBlock>(window, "DbState").Text);
-        Assert.Equal("127.0.0.1:3306", Named<TextBlock>(window, "DbListening").Text);
-    }
+        Assert.Null(window.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.Name == "DbCard"));
+        var close = Named<ItemsControl>(window, "Findings").GetVisualDescendants().OfType<Button>()
+            .Single(b => ToolTip.GetTip(b) as string == "Close this warning");
+        Assert.True(close.IsEffectivelyVisible);
 
-    [AvaloniaFact]
-    public void Database_view_shows_settings_next_to_defaults()
-    {
-        WithMariaDb();
-        var (window, shell) = Show();
-
-        shell.NavigateCommand.Execute(AppPage.Database);
+        close.Command!.Execute(close.CommandParameter);
         window.UpdateLayout();
 
-        Assert.IsType<DatabaseView>(window.FindControl<ContentControl>("PageHost")!.Presenter!.Child);
-        Assert.Equal("MariaDB 11.8.9 · Running on 127.0.0.1:3306", Named<TextBlock>(window, "DbStatus").Text);
-        Assert.False(Named<Border>(window, "DbSetup").IsVisible);
-        var table = Named<ItemsControl>(window, "DbSettings");
-        var boxes = table.GetVisualDescendants().OfType<TextBox>().ToList();
-        Assert.Equal(["1G", "", "1"], boxes.Select(b => b.Text));
-        Assert.Equal([false, false, true], boxes.Select(b => b.IsReadOnly));
-        Assert.Contains(table.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "134217728");
-        Assert.Contains(table.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Fixed when the database is created.");
-        var resets = table.GetVisualDescendants().OfType<Button>().Where(b => (string?)b.Content == "Reset").ToList();
-        Assert.Single(resets, b => b.IsEffectivelyVisible);
-        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Save and restart MariaDB");
+        Assert.False(Named<ItemsControl>(window, "Findings").IsVisible);
     }
 
     [AvaloniaFact]
@@ -149,22 +121,24 @@ public sealed class PageViewTests
         Assert.Contains("MariaDB 13.0.2", texts);
         Assert.Contains("Windows service MariaDB · port 3307", texts);
         var buttons = servers.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).Select(b => b.Content as string).ToList();
-        Assert.Equal(["Stop", "Apply port", "Back up", "Unlink"], buttons);
+        Assert.Equal(["Refresh", "Stop", "Apply port", "Back up", "Unlink"], buttons);
         Assert.Equal("3307", servers.GetVisualDescendants().OfType<TextBox>().Single().Text);
         Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Link a server…" && b.IsEffectivelyVisible);
     }
 
     [AvaloniaFact]
-    public void Database_view_without_database_offers_setup()
+    public void Database_view_without_servers_shows_the_guide()
     {
         var (window, shell) = Show();
 
         shell.NavigateCommand.Execute(AppPage.Database);
         window.UpdateLayout();
 
-        Assert.True(Named<Border>(window, "DbSetup").IsVisible);
-        Assert.False(Named<ItemsControl>(window, "DbSettings").IsEffectivelyVisible);
-        Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Set up MariaDB");
+        Assert.True(Named<TextBlock>(window, "NoServers").IsEffectivelyVisible);
+        Assert.True(Named<Border>(window, "DbGuide").IsEffectivelyVisible);
+        var downloads = Named<ItemsControl>(window, "DbDownloads").GetVisualDescendants().OfType<Button>().ToList();
+        Assert.Equal(["Open download page", "Open download page"], downloads.Select(b => b.Content as string));
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Refresh all" && b.IsEffectivelyVisible);
     }
 
     [AvaloniaFact]
@@ -172,9 +146,8 @@ public sealed class PageViewTests
     {
         _api.Php.Add(new PhpVersionInfo("8.5.12", "vs17", 4, 1000, 9100, ["htdocs"], ProcessState.Running, IsDefault: true, EndOfLife: false));
         _api.Php.Add(new PhpVersionInfo("7.4.33", "vc15", 2, 1000, 0, [], ProcessState.Stopped, IsDefault: false, EndOfLife: true));
-        _api.Extensions["8.5.12"] = [new("intl", true, true, false)];
-        _api.Installed.Add(new InstalledComponent(ComponentKind.Xdebug, "3.5.3", @"D:\Anvil\runtime\xdebug\3.5.3-php8.5", new string('b', 64),
-            DateTimeOffset.Now, AppliesTo: "8.5"));
+        _api.Extensions["8.5.12"] = [new("intl", true, true, false), new("xdebug", false, true, true)];
+        _api.PhpIni["8.5.12"] = new PhpIniValues(new Dictionary<string, string> { ["memory_limit"] = "1G" }, Opcache: true, OpcacheAvailable: true);
         var (window, shell) = Show();
 
         shell.NavigateCommand.Execute(AppPage.Php);
@@ -186,9 +159,15 @@ public sealed class PageViewTests
         Assert.Contains("Default", texts);
         Assert.Contains("End of life", texts);
         var chips = Named<ItemsControl>(window, "Extensions").GetVisualDescendants().OfType<Button>().ToList();
-        Assert.True(chips.Single(b => (string?)b.Content == "xdebug").IsEffectivelyEnabled);
-        Assert.True(chips.Single(b => (string?)b.Content == "intl").IsEffectivelyEnabled);
+        Assert.Equal(["intl"], chips.Select(b => b.Content as string));
+        Assert.True(Named<Button>(window, "XdebugSwitch").IsEffectivelyVisible);
+        Assert.DoesNotContain("on", Named<Button>(window, "XdebugSwitch").Classes);
+        Assert.Contains("on", Named<Button>(window, "OpcacheSwitch").Classes);
         Assert.Equal("4", Named<TextBox>(window, "Workers").Text);
+        Assert.Equal("127.0.0.1:9100", Named<TextBox>(window, "ListensOn").Text);
+        var ini = Named<ItemsControl>(window, "IniFields").GetVisualDescendants().OfType<TextBox>().ToList();
+        Assert.Equal(PhpIniSettings.Editable.Count, ini.Count);
+        Assert.Equal("1G", ini[0].Text);
     }
 
     [AvaloniaFact]

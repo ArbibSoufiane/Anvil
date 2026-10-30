@@ -28,7 +28,7 @@ public sealed class UpdateRow
 }
 
 /// <summary>
-/// "Update available" on the Apache, PHP and Database pages. An update downloads the release when needed, then switches
+/// "Update available" on the Apache and PHP pages. An update downloads the release when needed, then switches
 /// to it; the Agent puts the previous version back when the new one does not run.
 /// </summary>
 /// <param name="shows">The component kinds this page shows.</param>

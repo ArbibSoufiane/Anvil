@@ -8,25 +8,16 @@ using Anvil.Core.Paths;
 namespace Anvil.Core.Database;
 
 /// <summary>
-/// Dumps every database of the running server to data\backups\db\&lt;yyyy-MM-dd-HHmmss&gt;.sql.gz and keeps the newest 14.
+/// Dumps every database of a running linked server to data\backups\db\&lt;id&gt;\&lt;yyyy-MM-dd-HHmmss&gt;.sql.gz and keeps the newest 14.
 /// The folder is limited to this account and Administrators: a dump holds every row and the password hashes.
 /// </summary>
-public sealed partial class DbBackup(AppPaths paths, DbSecrets secrets, TimeProvider time)
+public sealed partial class DbBackup(AppPaths paths, TimeProvider time)
 {
     public const int Keep = 14;
 
     private string Dir => Path.Combine(paths.Backups, "db");
 
-    public Task<string> BackupAllAsync(DbEngine e, string version, CancellationToken ct)
-    {
-        var password = secrets.LoadRootPassword()
-            ?? throw new InvalidOperationException("The database root password is not stored. Install the database first.");
-        var port = new MyIni(paths).Read(e).GetValueOrDefault("port", "3306");
-        var exe = Path.Combine(paths.DbRuntime(e, version), "bin", e == DbEngine.MariaDb ? "mariadb-dump.exe" : "mysqldump.exe");
-        return DumpAsync(Dir, exe, "root", password, int.Parse(port, CultureInfo.InvariantCulture), ct);
-    }
-
-    /// <summary>A linked server's backups go to data\backups\db\&lt;id&gt;, dumped with the tool in its own bin folder.</summary>
+    /// <summary>Dumped with the tool in the server's own bin folder.</summary>
     public Task<string> BackupLinkedAsync(LinkedDatabase server, string password, CancellationToken ct)
     {
         var dump = new[] { "mariadb-dump.exe", "mysqldump.exe" }.Select(n => Path.Combine(server.BinDir, n)).FirstOrDefault(File.Exists)

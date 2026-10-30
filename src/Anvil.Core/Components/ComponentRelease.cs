@@ -1,5 +1,6 @@
 namespace Anvil.Core.Components;
 
+/// <summary>MariaDb and MySql are no longer downloaded; they stay so an installed.json from an earlier build still reads.</summary>
 public enum ComponentKind { Apache, Php, MariaDb, MySql, Xdebug, CaBundle }
 
 /// <summary>One downloadable build, pinned by SHA-256.</summary>

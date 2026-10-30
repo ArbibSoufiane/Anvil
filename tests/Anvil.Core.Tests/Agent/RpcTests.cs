@@ -166,7 +166,7 @@ public sealed class RpcTests
     }
 
     [Fact]
-    public async Task Database_calls_round_trip_with_null_resets_and_messages()
+    public async Task Php_ini_and_linked_server_checks_round_trip()
     {
         var ct = TestContext.Current.CancellationToken;
         var fake = new FakeApi();
@@ -175,16 +175,18 @@ public sealed class RpcTests
         server.Start();
         await using var client = await AgentRpc.ConnectAsync(name, Wait, ct);
 
-        var rows = await client.Api.GetDbSettingsAsync(ct);
-        var saved = await client.Api.SaveDbSettingsAsync(new Dictionary<string, string?> { ["max_connections"] = null, ["wait_timeout"] = "600" }, ct);
-        var error = await Assert.ThrowsAnyAsync<Exception>(() => client.Api.BackupDatabaseAsync(ct));
+        var ini = await client.Api.GetPhpIniAsync("8.5.12", ct);
+        var saved = await client.Api.SavePhpIniAsync("8.5.12", new Dictionary<string, string> { ["memory_limit"] = "1G", ["max_input_vars"] = "" }, ct);
+        var opcache = await client.Api.SetOpcacheAsync("8.5.12", false, ct);
+        var check = await client.Api.CheckLinkedDatabaseAsync("mariadb", ct);
 
-        Assert.Equal(new DbSettingRow("max_connections", "300", "151", "Clients at once", true, false, false), Assert.Single(rows));
+        Assert.Equal("256M", ini.Values["post_max_size"]);
+        Assert.True(ini.Opcache);
         Assert.True(saved.Ok);
-        Assert.True(fake.DbChanges!.ContainsKey("max_connections"));
-        Assert.Null(fake.DbChanges["max_connections"]);
-        Assert.Equal("600", fake.DbChanges["wait_timeout"]);
-        Assert.Contains("Start the database first.", error.Message, StringComparison.Ordinal);
+        Assert.Equal("1G", fake.IniChanges!["memory_limit"]);
+        Assert.Equal("", fake.IniChanges["max_input_vars"]);
+        Assert.Equal("PHP 8.5.12 has no php_opcache.dll in its ext folder.", opcache.Error);
+        Assert.Equal("MariaDB 13.0.2 is not running.", check.Error);
     }
 
     [Fact]
@@ -375,6 +377,20 @@ public sealed class RpcTests
         public Task<ApplyResult> SetDefaultPhpAsync(string version, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<PhpExtension>> GetExtensionsAsync(string version, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<PhpExtension>>([Intl]);
         public Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();
+
+        public IReadOnlyDictionary<string, string>? IniChanges { get; private set; }
+
+        public Task<PhpIniValues> GetPhpIniAsync(string version, CancellationToken ct = default) =>
+            Task.FromResult(new PhpIniValues(new Dictionary<string, string> { ["post_max_size"] = "256M" }, Opcache: true, OpcacheAvailable: true));
+
+        public Task<ApplyResult> SavePhpIniAsync(string version, IReadOnlyDictionary<string, string> values, CancellationToken ct = default)
+        {
+            IniChanges = values;
+            return Task.FromResult(ApplyResult.Success());
+        }
+
+        public Task<ApplyResult> SetOpcacheAsync(string version, bool enabled, CancellationToken ct = default) =>
+            Task.FromResult(ApplyResult.Failure($"PHP {version} has no php_opcache.dll in its ext folder."));
         public static readonly SiteDefinition Shop = new()
         {
             Id = "shop.test", Kind = SiteKind.Domain, Type = SiteType.Php, Name = "shop.test", Root = "D:/Sites/shop/public",
@@ -409,25 +425,6 @@ public sealed class RpcTests
         public static readonly SiteCertificate Cert = new(CertSource.LocalDev, ["shop.test"], new DateTimeOffset(2027, 1, 25, 0, 0, 0, TimeSpan.Zero),
             "D:/Anvil/data/certs/shop.test/cert.pem", "D:/Anvil/data/certs/shop.test/key.pem", null);
 
-        public IReadOnlyDictionary<string, string?>? DbChanges { get; private set; }
-
-        public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
-            Task.FromResult(ApplyResult.Success());
-
-        public Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<DbSettingRow>>([new DbSettingRow("max_connections", "300", "151", "Clients at once", true, false, false)]);
-
-        public Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default)
-        {
-            DbChanges = changes;
-            return Task.FromResult(ApplyResult.Success());
-        }
-
-        public Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default) => Task.FromResult(ApplyResult.Success());
-
-        public Task<string> BackupDatabaseAsync(CancellationToken ct = default) =>
-            Task.FromException<string>(new InvalidOperationException("Start the database first."));
-
         public static readonly LinkedDbInfo MariaDb = new("mariadb", DbEngine.MariaDb, "13.0.2", @"C:\Program Files\MariaDB 13.0\bin", "MariaDB", 3307, "root",
             ProcessState.Running, CanControl: false);
 
@@ -444,6 +441,9 @@ public sealed class RpcTests
             Task.FromResult(ApplyResult.Failure("Windows must allow Anvil to change my.ini.") with { Elevation = new DbPortRequest("MariaDB", port) });
 
         public Task<string> BackupLinkedDatabaseAsync(string id, CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<ApplyResult> CheckLinkedDatabaseAsync(string id, CancellationToken ct = default) =>
+            Task.FromResult(ApplyResult.Failure("MariaDB 13.0.2 is not running."));
 
         public static readonly FirewallSetRequest Firewall = new("2.4.69", [80, 443], NameService: true);
 

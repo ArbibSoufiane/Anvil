@@ -2,7 +2,8 @@
 
 [![license: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
-Apache, PHP and MariaDB/MySQL for Windows, in one portable folder, driven by a desktop app. Anvil is
+Apache and PHP for Windows, in one portable folder, driven by a desktop app, next to the MariaDB or
+MySQL you installed. Anvil is
 for development on your own PC, and for showing your work to the people on your network. It is not a
 production server.
 
@@ -12,10 +13,12 @@ production server.
 - **Several PHP versions at once**, each in its own pool of workers that uses every CPU core.
 - **Share with your network.** Open a site to My network and others reach it at
   `http://<your IP>/<folder>` or `<app>.<your domain>`; Anvil answers those names itself.
-- **MariaDB or MySQL**, with a settings page that shows each setting's current value, default and
-  meaning. Bring phpMyAdmin yourself and add it as a site.
-- **Install, update and roll back** Apache, PHP and the database from the app.
-- **Buttons that open** `httpd.conf`, `php.ini`, `my.ini` and every generated file in your editor.
+- **php.ini limits, Xdebug and OPcache** for each PHP version, on the PHP page.
+- **Your MariaDB or MySQL**, linked by its `bin` folder: start, stop, back it up and change its port
+  from Anvil. Anvil does not download a database; the Database page says where to get one. Bring
+  phpMyAdmin yourself and add it as a site.
+- **Install, update and roll back** Apache and PHP from the app.
+- **Buttons that open** `httpd.conf`, `php.ini` and every generated file in your editor.
   Those files stay yours: Anvil writes only its own marked blocks and generated files.
 
 Anvil is the new name of ArbiPache 4, a rewrite of
@@ -40,8 +43,8 @@ and everything comes with it.
 1. **Apache page:** install a version.
 2. **PHP page:** install one or more PHP versions and pick the default. Xdebug is an extension you
    switch on there.
-3. **Database page** (optional): install MariaDB or MySQL and choose its root password. Anvil keeps
-   the password encrypted with Windows DPAPI.
+3. **Database page** (optional): install MariaDB or MySQL yourself, then Link a server… and choose
+   its `bin` folder. Anvil keeps the password it logs in with encrypted with Windows DPAPI.
 4. **Start.** Folders in `htdocs\` answer at `http://localhost/<folder>`.
 5. **Sites → Add** for a domain site or a proxy to a dev server such as Vite. Anvil recognises
    Laravel, Symfony, WordPress, Composer and Vite projects and suggests the right folder.
@@ -121,7 +124,7 @@ opens the new version. `runtime\`, `data\`, `htdocs\` and files you keep next to
 never touched; the replaced files wait in `.update\previous-<version>\` and are put back if the swap
 fails.
 
-**Apache, PHP, the database:** their own pages offer patch releases of the versions you use. A new
+**Apache and PHP:** their own pages offer patch releases of the versions you use. A new
 Apache that does not answer within 15 seconds is switched back automatically, and so is a new PHP
 that cannot answer a request. A new PHP keeps your `php.ini`.
 
@@ -159,14 +162,14 @@ exclusion. I mean that.
 Anvil\
   Anvil.exe  Anvil.Agent.exe  Anvil.Elevator.exe  *.dll  release-files.txt
   catalog\        download catalog: URLs and SHA-256 hashes
-  runtime\        installed Apache, PHP, MariaDB/MySQL versions
+  runtime\        installed Apache and PHP versions
   htdocs\         your folders
-  data\           settings, sites\*.json, httpd.conf, php.ini, my.ini, certificates, logs, backups
+  data\           settings, sites\*.json, httpd.conf, php.ini, certificates, logs, backups
 ```
 
-`Anvil.exe` is the window. `Anvil.Agent.exe` runs Apache, PHP, the database and the name service as
-the window's child process. `Anvil.Elevator.exe` does the two things that need administrator rights:
-the hosts file and firewall rules.
+`Anvil.exe` is the window. `Anvil.Agent.exe` runs Apache, PHP, linked servers that have no Windows
+service, and the name service as the window's child process. `Anvil.Elevator.exe` does the two things
+that need administrator rights: the hosts file and firewall rules.
 
 ## Building from source
 

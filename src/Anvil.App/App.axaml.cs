@@ -52,7 +52,7 @@ public partial class App : Application
             MainWindow? window = null;
             var picker = new AvaloniaFolderPicker(() => window);
             var php = new PhpViewModel(_agent.Api, paths, editor, picker);
-            var database = new DatabaseViewModel(_agent.Api, paths, editor, new LinkedDatabasesViewModel(_agent.Api, elevator, picker));
+            var database = new DatabaseViewModel(new LinkedDatabasesViewModel(_agent.Api, elevator, picker));
             var logs = new LogsViewModel(paths, editor);
             var ca = new LocalCaTrust(paths);
             var clipboard = new AvaloniaTextClipboard(() => window);

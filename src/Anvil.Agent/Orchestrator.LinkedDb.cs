@@ -17,6 +17,8 @@ public sealed partial class Orchestrator
 
     private LinkedDatabaseStore Linked => new(paths);
 
+    private static string DbName(DbEngine e) => e == DbEngine.MariaDb ? "MariaDB" : "MySQL";
+
     private static string Title(LinkedDatabase d) => $"{DbName(d.Engine)} {d.Version}";
 
     private static string Title(DbFolderInfo d) => $"{DbName(d.Engine)} {d.Version}";
@@ -118,6 +120,28 @@ public sealed partial class Orchestrator
         var password = Linked.Password(id) ?? throw new InvalidOperationException($"The password for {Title(server)} is not stored. Link it again.");
         return await linkedDbs.BackupAsync(server, password, ct);
     }, ct);
+
+    /// <summary>A running server must let Anvil log in with the account it was linked with.</summary>
+    public async Task<ApplyResult> CheckLinkedDatabaseAsync(string id, CancellationToken ct)
+    {
+        if (linkedDbs is null) return ApplyResult.Failure(NoLinkedHost);
+        if (Find(id) is not { } server) return NotLinked(id);
+        var state = linkedDbs.State(server);
+        if (state != ProcessState.Running)
+            return ApplyResult.Failure(state == ProcessState.Starting ? $"{Title(server)} is still starting." : $"{Title(server)} is not running.");
+        if (Linked.Password(id) is not { } password)
+            return ApplyResult.Failure($"{Title(server)} is running, but its password is not stored, so Anvil cannot log in. Link it again.");
+        try
+        {
+            return await linkedDbs.CanLogInAsync(server, password, ct)
+                ? ApplyResult.Success()
+                : ApplyResult.Failure($"{Title(server)} is running, but {server.User} could not log in with the password Anvil keeps. Link it again.");
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return ApplyResult.Failure($"{Title(server)} does not answer on port {server.Port}. {e.Message}");
+        }
+    }
 
     private async Task<ApplyResult> ControlAsync(string id, bool start, CancellationToken ct)
     {

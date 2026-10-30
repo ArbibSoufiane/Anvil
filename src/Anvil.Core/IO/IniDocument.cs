@@ -45,6 +45,13 @@ public sealed partial class IniDocument
     public IReadOnlyList<string> GetAll(string section, string key) =>
         Active(section, key).Select(l => Unquote(Pair().Match(l.Text).Groups["value"].Value)).ToList();
 
+    /// <summary>The values of the key's lines commented out with ";".</summary>
+    public IReadOnlyList<string> GetAllCommented(string section, string key) =>
+        Commented(section, key, null).Select(l => Unquote(CommentedPair().Match(l.Text).Groups["value"].Value)).ToList();
+
+    /// <summary>The key has a line in the section, active or commented out.</summary>
+    public bool Mentions(string section, string key) => Active(section, key).Any() || Commented(section, key, null).Any();
+
     /// <summary>Replaces the active line, else uncomments ";key = ...", else appends to the section.</summary>
     public void Set(string section, string key, string value)
     {

@@ -83,14 +83,9 @@
                 <TextBlock Classes="fieldLabel" Text="Recycle after (requests)" />
                 <TextBox Classes="field" Text="{Binding MaxRequests}" />
               </StackPanel>
-              <StackPanel Spacing="4" Grid.Row="1">
+              <StackPanel Spacing="4" Grid.Row="1" Grid.ColumnSpan="2">
                 <TextBlock Classes="fieldLabel" Text="Listens on" />
-                <TextBox Classes="field" Text="{Binding PortText}" IsReadOnly="True" />
-              </StackPanel>
-              <StackPanel Spacing="4" Grid.Row="1" Grid.Column="1">
-                <TextBlock Classes="fieldLabel" Text="Max execution time (s)" />
-                <TextBox Classes="field" Text="{Binding MaxExecutionTime}" IsReadOnly="True" />
-                <TextBlock Classes="note" Text="{Binding MaxExecutionTimeHint}" />
+                <TextBox Classes="field" x:Name="ListensOn" Text="{Binding PortText}" IsReadOnly="True" />
               </StackPanel>
             </Grid>
             <StackPanel Orientation="Horizontal" Spacing="12">
@@ -107,6 +102,21 @@
         <Border Classes="card" Grid.Column="1">
           <StackPanel Spacing="12">
             <TextBlock Classes="h2" Text="{Binding ExtensionsTitle}" />
+            <StackPanel Spacing="8" IsVisible="{Binding HasSelection}">
+              <TextBlock Classes="fieldLabel" Text="Debugging and cache" />
+              <WrapPanel ItemSpacing="8" LineSpacing="8">
+                <Button Classes="chip" x:Name="XdebugSwitch" Classes.on="{Binding XdebugChip.IsOn, FallbackValue=False}" Content="Xdebug"
+                        Command="{Binding XdebugChip.ToggleCommand, FallbackValue={x:Null}}" IsVisible="{Binding HasXdebug}"
+                        ToolTip.Tip="{Binding XdebugChip.Hint, FallbackValue={x:Null}}" />
+                <Button Classes="chip" x:Name="OpcacheSwitch" Classes.on="{Binding OpcacheChip.IsOn, FallbackValue=False}" Content="OPcache"
+                        Command="{Binding OpcacheChip.ToggleCommand, FallbackValue={x:Null}}" IsVisible="{Binding HasOpcache}"
+                        ToolTip.Tip="{Binding OpcacheChip.Hint, FallbackValue={x:Null}}" />
+                <Button Classes="ghost" Content="Get Xdebug" Command="{Binding GetXdebugCommand}" IsVisible="{Binding CanGetXdebug}" />
+              </WrapPanel>
+              <TextBlock Classes="note" TextWrapping="Wrap"
+                         Text="Highlighted means on. Xdebug starts on a trigger: XDEBUG_TRIGGER in a request, or a browser extension. A PHP from pvm uses the Xdebug in its own ext folder." />
+            </StackPanel>
+            <TextBlock Classes="fieldLabel" Text="Extensions" IsVisible="{Binding HasSelection}" />
             <ItemsControl x:Name="Extensions" ItemsSource="{Binding Extensions}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -122,7 +132,6 @@
             </ItemsControl>
             <TextBlock Classes="note"
                        Text="A change edits php.ini and restarts this version's workers one at a time." />
-            <Button Classes="ghost" Content="Get Xdebug" Command="{Binding GetXdebugCommand}" IsVisible="{Binding CanGetXdebug}" />
             <TextBlock Classes="result" Text="{Binding ExtensionsMessage}"
                        IsVisible="{Binding ExtensionsMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
@@ -162,6 +171,40 @@
           </StackPanel>
         </Border>
       </Grid>
+
+      <!-- The limits most projects change in php.ini -->
+      <Border Classes="card" x:Name="PhpIni" IsVisible="{Binding HasSelection}">
+        <StackPanel Spacing="14">
+          <DockPanel>
+            <Button Classes="ghost" DockPanel.Dock="Right" Content="Open php.ini" VerticalAlignment="Center"
+                    Command="{Binding OpenIniCommand}" CommandParameter="{Binding Selected}" />
+            <TextBlock Classes="h2" Text="{Binding IniTitle}" VerticalAlignment="Center" />
+          </DockPanel>
+          <ItemsControl x:Name="IniFields" ItemsSource="{Binding IniFields}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformGrid Columns="3" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:PhpIniField">
+                <StackPanel Spacing="4" Margin="0,0,16,12">
+                  <TextBlock Classes="fieldLabel" Text="{Binding Label}" />
+                  <TextBox Classes="field mono" Text="{Binding Value}" PlaceholderText="{Binding Setting.PhpDefault}" ToolTip.Tip="{Binding Key}" />
+                  <TextBlock Classes="note" Text="{Binding Key}" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Classes="primary" Content="Save and restart pool" Command="{Binding SaveIniCommand}" />
+            <TextBlock Classes="note" VerticalAlignment="Center" TextWrapping="Wrap"
+                       Text="Sizes take K, M or G, such as 256M. An empty box leaves the setting to PHP's default, shown greyed." />
+          </StackPanel>
+          <TextBlock Classes="result" Classes.ok="{Binding IniOk}" Text="{Binding IniMessage}" TextWrapping="Wrap"
+                     IsVisible="{Binding IniMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+      </Border>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

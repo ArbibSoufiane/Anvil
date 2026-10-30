@@ -1,5 +1,3 @@
-using Anvil.Core.Database;
-
 namespace Anvil.Core.Paths;
 
 /// <summary>Every folder of the portable layout, resolved against one root.</summary>
@@ -39,8 +37,6 @@ public sealed class AppPaths(string root)
     public string ApacheRuntime(string version) => Path.Combine(Runtime, "apache", version);
     public string PhpRuntime(string version) => Path.Combine(Runtime, "php", version);
     public string PhpConfigDir(string version) => Path.Combine(PhpConfRoot, version);
-    public string DbRuntime(DbEngine engine, string version) => Path.Combine(Runtime, DbFolder(engine), version);
-    public string DbData(DbEngine engine) => Path.Combine(Data, DbFolder(engine));
 
     public static string ForApache(string path) => path.Replace('\\', '/');
 
@@ -83,11 +79,4 @@ public sealed class AppPaths(string root)
                      PhpConfRoot, Certs, Logs, Backups, Run, Tmp, Secrets })
             Directory.CreateDirectory(dir);
     }
-
-    private static string DbFolder(DbEngine engine) => engine switch
-    {
-        DbEngine.MariaDb => "mariadb",
-        DbEngine.MySql => "mysql",
-        _ => throw new ArgumentOutOfRangeException(nameof(engine), engine, null),
-    };
 }

@@ -16,7 +16,21 @@ namespace Anvil.App.ViewModels;
 /// <summary>One installed PHP version in the versions table.</summary>
 public sealed partial class PhpVersionRow : ObservableObject
 {
-    public required PhpVersionInfo Info { get; init; }
+    private PhpVersionInfo _info = null!;
+
+    /// <summary>Replaced when the Agent reports the pool's state again, such as its port once it starts.</summary>
+    public required PhpVersionInfo Info
+    {
+        get => _info;
+        set
+        {
+            _info = value;
+            foreach (var name in new[] { nameof(Info), nameof(Version), nameof(Title), nameof(Build), nameof(PoolText), nameof(UsedBy), nameof(StatusText),
+                         nameof(IsRunning), nameof(Tags), nameof(ListensOn) })
+                OnPropertyChanged(name);
+        }
+    }
+
     public required string IniPath { get; init; }
     public required string ExtPath { get; init; }
     public required IAsyncRelayCommand SelectCommand { get; init; }
@@ -28,6 +42,9 @@ public sealed partial class PhpVersionRow : ObservableObject
     public string UsedBy => Info.UsedBy.Count == 0 ? "none" : string.Join(" + ", Info.UsedBy);
     public string StatusText => Info.State.ToString();
     public bool IsRunning => Info.State == ProcessState.Running;
+
+    /// <summary>The pool's address while it runs; a stopped pool gets its port when Apache starts it.</summary>
+    public string ListensOn => Info.Port == 0 ? "Not running · starts with Apache" : $"127.0.0.1:{Info.Port}";
 
     public IReadOnlyList<string> Tags =>
         new[] { Info.IsDefault ? "Default" : null, Info.Linked ? "Linked" : null, Info.EndOfLife ? "End of life" : null }.OfType<string>().ToList();
@@ -70,20 +87,48 @@ public sealed partial class ExtensionChip : ObservableObject
     public IAsyncRelayCommand ToggleCommand { get; }
 }
 
+/// <summary>One php.ini value the PHP page edits; empty leaves it to PHP's default.</summary>
+public sealed partial class PhpIniField : ObservableObject
+{
+    public PhpIniField(PhpIniSetting setting, string? value)
+    {
+        Setting = setting;
+        Saved = value ?? "";
+        Value = Saved;
+    }
+
+    public PhpIniSetting Setting { get; }
+    public string Key => Setting.Key;
+    public string Label => Setting.Label;
+    public string Hint => $"PHP's default: {Setting.PhpDefault}";
+
+    /// <summary>What php.ini held when the page read it.</summary>
+    public string Saved { get; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEdited))]
+    public partial string Value { get; set; } = "";
+
+    public bool IsEdited => !string.Equals(Value.Trim(), Saved, StringComparison.OrdinalIgnoreCase);
+}
+
 /// <summary>A PHP branch that is not installed yet, offered at its newest patch.</summary>
 public sealed record InstallChoice(string Label, ComponentRelease Release);
 
-/// <summary>The PHP page: installed versions, the selected version's pool and extensions, Xdebug and new versions.</summary>
+/// <summary>
+/// The PHP page: installed versions, the selected version's pool, php.ini limits, Xdebug, OPcache and extensions, and new
+/// versions.
+/// </summary>
 public sealed partial class PhpViewModel : ObservableObject
 {
     public const string XdebugHint = "Xdebug starts on a trigger: add XDEBUG_TRIGGER to a request, or use a browser extension.";
+    public const string OpcacheHint = "OPcache keeps compiled scripts in memory; Anvil has it check files for changes on every request.";
 
     private readonly IAgentApi _api;
     private readonly AppPaths _paths;
     private readonly EditorLauncher _editor;
     private readonly IFolderPicker? _picker;
     private readonly Action<Action> _ui;
-    private IReadOnlyList<InstalledComponent> _xdebug = [];
     private IReadOnlyList<ComponentRelease> _xdebugAvailable = [];
 
     public PhpViewModel(IAgentApi api, AppPaths paths, EditorLauncher editor, IFolderPicker? picker = null, Action<Action>? ui = null)
@@ -96,19 +141,20 @@ public sealed partial class PhpViewModel : ObservableObject
         Updates = new UpdatesPanel(api, k => k == ComponentKind.Php, LoadAsync);
         var cores = Environment.ProcessorCount;
         WorkersHint = $"Suggested: half your cores ({Suggest.PhpWorkers(cores)} of {cores})";
-        MaxExecutionTime = DevelopmentDefaults.Php["max_execution_time"];
-        MaxExecutionTimeHint = "In a new php.ini. Edit php.ini to change it.";
+        // A pool that starts or stops changes its port and state in the table.
+        api.StatusChanged += (_, _) => _ui(() => _ = RefreshStatusAsync());
     }
 
     public ObservableCollection<PhpVersionRow> Versions { get; } = [];
     public ObservableCollection<ExtensionChip> Extensions { get; } = [];
     public ObservableCollection<InstallChoice> InstallChoices { get; } = [];
     public ObservableCollection<PvmChoice> PvmChoices { get; } = [];
+    public ObservableCollection<PhpIniField> IniFields { get; } = [];
     public string WorkersHint { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasSelection), nameof(PoolTitle), nameof(ExtensionsTitle), nameof(CanUnlink))]
-    [NotifyCanExecuteChangedFor(nameof(MakeDefaultCommand), nameof(ApplyPoolCommand), nameof(UnlinkCommand))]
+    [NotifyPropertyChangedFor(nameof(HasSelection), nameof(PoolTitle), nameof(ExtensionsTitle), nameof(IniTitle), nameof(CanUnlink))]
+    [NotifyCanExecuteChangedFor(nameof(MakeDefaultCommand), nameof(ApplyPoolCommand), nameof(UnlinkCommand), nameof(SaveIniCommand))]
     public partial PhpVersionRow? Selected { get; set; }
 
     public bool HasSelection => Selected is not null;
@@ -117,6 +163,7 @@ public sealed partial class PhpViewModel : ObservableObject
     public bool CanUnlink => Selected is { Info.Linked: true };
     public string PoolTitle => Selected is { } s ? $"PHP {s.Version} worker pool" : "Worker pool";
     public string ExtensionsTitle => Selected is { } s ? $"Extensions · PHP {s.Version}" : "Extensions";
+    public string IniTitle => Selected is { } s ? $"php.ini · PHP {s.Version}" : "php.ini";
 
     [ObservableProperty]
     public partial int Workers { get; set; }
@@ -128,10 +175,24 @@ public sealed partial class PhpViewModel : ObservableObject
     public partial string PortText { get; set; } = "";
 
     [ObservableProperty]
-    public partial string MaxExecutionTime { get; set; } = "";
+    public partial string? IniMessage { get; set; }
 
     [ObservableProperty]
-    public partial string MaxExecutionTimeHint { get; set; } = "";
+    public partial bool IniOk { get; set; }
+
+    /// <summary>Xdebug's on/off chip; null while this version has no Xdebug to load.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasXdebug))]
+    public partial ExtensionChip? XdebugChip { get; set; }
+
+    public bool HasXdebug => XdebugChip is not null;
+
+    /// <summary>OPcache's on/off chip; null while this version has no OPcache.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOpcache))]
+    public partial ExtensionChip? OpcacheChip { get; set; }
+
+    public bool HasOpcache => OpcacheChip is not null;
 
     [ObservableProperty]
     public partial string? ResultText { get; set; }
@@ -301,6 +362,70 @@ public sealed partial class PhpViewModel : ObservableObject
         ResultText = result.Ok ? $"PHP {row.Version} is no longer in Anvil. Its folder {row.Info.Folder} is unchanged." : result.Error;
     }
 
+    [RelayCommand(CanExecute = nameof(HasSelection))]
+    private async Task SaveIniAsync()
+    {
+        var row = Selected!;
+        var changes = IniFields.Where(f => f.IsEdited).ToDictionary(f => f.Key, f => f.Value.Trim());
+        if (changes.Count == 0)
+        {
+            IniOk = true;
+            IniMessage = "Nothing changed.";
+            return;
+        }
+        if (changes.Select(c => PhpIniSettings.Problem(c.Key, c.Value)).OfType<string>().FirstOrDefault() is { } problem)
+        {
+            IniOk = false;
+            IniMessage = problem;
+            return;
+        }
+        ApplyResult result;
+        try
+        {
+            result = await _api.SavePhpIniAsync(row.Version, changes);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Warning(e, "Saving php.ini failed");
+            IniOk = false;
+            IniMessage = $"The Anvil Agent did not answer: {e.Message}";
+            return;
+        }
+        if (!ReferenceEquals(Selected, row)) return;
+        if (!result.Ok)
+        {
+            IniOk = false;
+            IniMessage = result.Error;
+            return;
+        }
+        await RefreshIniAsync(row, default);
+        IniOk = true;
+        IniMessage = row.IsRunning ? "Saved. The pool restarted its workers with the new values." : "Saved. The pool uses them the next time it starts.";
+    }
+
+    /// <summary>Re-reads the pools' ports and states, keeping what is typed on the page.</summary>
+    public async Task RefreshStatusAsync(CancellationToken ct = default)
+    {
+        IReadOnlyList<PhpVersionInfo> php;
+        try
+        {
+            php = await _api.GetPhpAsync(ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // The page says so when the Agent does not answer a change.
+            Log.Debug(e, "The PHP pools' state was not read");
+            return;
+        }
+        if (php.Count != Versions.Count || php.Any(p => Versions.All(v => v.Version != p.Version)))
+        {
+            await RefreshVersionsAsync(Selected?.Version, ct);
+            return;
+        }
+        foreach (var row in Versions) row.Info = php.First(p => p.Version == row.Version);
+        if (Selected is { } selected) PortText = selected.ListensOn;
+    }
+
     [RelayCommand]
     private void OpenIni(PhpVersionRow row) => _editor.Open(row.IniPath);
 
@@ -313,15 +438,36 @@ public sealed partial class PhpViewModel : ObservableObject
         Selected = row;
         Workers = row.Info.Workers;
         MaxRequests = row.Info.MaxRequests;
-        PortText = row.Info.Port == 0 ? "Starts with Apache" : $"127.0.0.1:{row.Info.Port}";
+        PortText = row.ListensOn;
         ExtensionsMessage = null;
+        IniMessage = null;
+        // php.ini first: preparing it takes over a linked folder's extensions, which the list then shows.
+        await RefreshIniAsync(row, ct);
         await RefreshExtensionsAsync(row, ct);
+    }
+
+    private async Task RefreshIniAsync(PhpVersionRow row, CancellationToken ct)
+    {
+        PhpIniValues ini;
+        try
+        {
+            ini = await _api.GetPhpIniAsync(row.Version, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            IniOk = false;
+            IniMessage = $"The Anvil Agent did not answer: {e.Message}";
+            return;
+        }
+        if (!ReferenceEquals(Selected, row)) return;
+        IniFields.Clear();
+        foreach (var setting in PhpIniSettings.Editable) IniFields.Add(new PhpIniField(setting, ini.Values.GetValueOrDefault(setting.Key)));
+        OpcacheChip = ini.OpcacheAvailable ? new ExtensionChip("OPcache", ini.Opcache, OpcacheHint, ToggleOpcacheAsync) : null;
     }
 
     private async Task RefreshVersionsAsync(string? keep, CancellationToken ct)
     {
         var php = await _api.GetPhpAsync(ct);
-        _xdebug = await _api.GetInstalledAsync(ComponentKind.Xdebug, ct);
         Versions.Clear();
         foreach (var info in php)
         {
@@ -341,6 +487,9 @@ public sealed partial class PhpViewModel : ObservableObject
         {
             Selected = null;
             Extensions.Clear();
+            IniFields.Clear();
+            XdebugChip = null;
+            OpcacheChip = null;
             CanGetXdebug = false;
             return;
         }
@@ -353,7 +502,6 @@ public sealed partial class PhpViewModel : ObservableObject
         try
         {
             list = await _api.GetExtensionsAsync(row.Version, ct);
-            _xdebug = await _api.GetInstalledAsync(ComponentKind.Xdebug, ct);
             _xdebugAvailable = await _api.GetAvailableAsync(ComponentKind.Xdebug, ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -363,21 +511,36 @@ public sealed partial class PhpViewModel : ObservableObject
         }
         if (!ReferenceEquals(Selected, row)) return;
 
+        // Xdebug and OPcache have their own switches. Xdebug is the catalog's build, or one in the PHP's own ext folder.
         var minor = PhpSupport.Minor(row.Version);
-        var hasXdebug = _xdebug.Any(x => x.AppliesTo == minor);
+        var xdebug = list.FirstOrDefault(e => e.Name == "xdebug");
         Extensions.Clear();
-        foreach (var e in list.Where(e => e.Name != "xdebug"))
+        foreach (var e in list.Where(e => e.Name is not ("xdebug" or "opcache")))
             Extensions.Add(new ExtensionChip(e.Name, e.Enabled, hint: null, ToggleAsync));
-        if (hasXdebug)
-            Extensions.Add(new ExtensionChip("xdebug", list.Any(e => e.Name == "xdebug" && e.Enabled), XdebugHint, ToggleAsync));
-        CanGetXdebug = !hasXdebug && _xdebugAvailable.Any(r => r.AppliesTo == minor);
+        XdebugChip = xdebug is null ? null : new ExtensionChip("Xdebug", xdebug.Enabled, XdebugHint, ToggleXdebugAsync);
+        // Anvil's Xdebug builds are non-thread-safe; a thread-safe PHP needs one in its own ext folder.
+        CanGetXdebug = xdebug is null && !row.Info.ThreadSafe && _xdebugAvailable.Any(r => r.AppliesTo == minor);
     }
 
-    private async Task ToggleAsync(ExtensionChip chip)
+    private Task ToggleXdebugAsync(ExtensionChip chip) => ToggleAsync(chip, "xdebug");
+
+    private async Task ToggleOpcacheAsync(ExtensionChip chip)
     {
         if (Selected is not { } row) return;
         ExtensionsMessage = null;
-        var result = await CallAsync(() => _api.SetExtensionAsync(row.Version, chip.Name, !chip.IsOn));
+        var result = await CallAsync(() => _api.SetOpcacheAsync(row.Version, !chip.IsOn));
+        if (result is null) return;
+        if (result.Ok) chip.IsOn = !chip.IsOn;
+        else ExtensionsMessage = result.Error;
+    }
+
+    private Task ToggleAsync(ExtensionChip chip) => ToggleAsync(chip, chip.Name);
+
+    private async Task ToggleAsync(ExtensionChip chip, string extension)
+    {
+        if (Selected is not { } row) return;
+        ExtensionsMessage = null;
+        var result = await CallAsync(() => _api.SetExtensionAsync(row.Version, extension, !chip.IsOn));
         if (result is null) return;
         if (result.Ok) chip.IsOn = !chip.IsOn;
         else ExtensionsMessage = result.Error;

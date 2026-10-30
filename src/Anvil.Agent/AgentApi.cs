@@ -65,6 +65,14 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
     public Task<ApplyResult> SetExtensionAsync(string version, string name, bool enabled, CancellationToken ct = default) =>
         orchestrator.SetExtensionAsync(version, name, enabled, ct);
 
+    public Task<PhpIniValues> GetPhpIniAsync(string version, CancellationToken ct = default) => orchestrator.GetPhpIniAsync(version, ct);
+
+    public Task<ApplyResult> SavePhpIniAsync(string version, IReadOnlyDictionary<string, string> values, CancellationToken ct = default) =>
+        orchestrator.SavePhpIniAsync(version, values, ct);
+
+    public Task<ApplyResult> SetOpcacheAsync(string version, bool enabled, CancellationToken ct = default) =>
+        orchestrator.SetOpcacheAsync(version, enabled, ct);
+
     public Task<IReadOnlyList<SiteDefinition>> GetSitesAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.GetSites());
 
     public Task<IReadOnlyList<HtdocsEntry>> GetHtdocsAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.GetHtdocs());
@@ -95,18 +103,6 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
 
     public Task RefreshNetworkAsync(CancellationToken ct = default) => orchestrator.RefreshNetworkAsync(ct);
 
-    public Task<ApplyResult> InstallDatabaseAsync(DbEngine e, string version, string rootPassword, CancellationToken ct = default) =>
-        orchestrator.InstallDatabaseAsync(e, version, rootPassword, ct);
-
-    public Task<IReadOnlyList<DbSettingRow>> GetDbSettingsAsync(CancellationToken ct = default) => orchestrator.GetDbSettingsAsync(ct);
-
-    public Task<ApplyResult> SaveDbSettingsAsync(IReadOnlyDictionary<string, string?> changes, CancellationToken ct = default) =>
-        orchestrator.SaveDbSettingsAsync(changes, ct);
-
-    public Task<ApplyResult> SetDbRootPasswordAsync(string password, CancellationToken ct = default) => orchestrator.SetDbRootPasswordAsync(password, ct);
-
-    public Task<string> BackupDatabaseAsync(CancellationToken ct = default) => orchestrator.BackupDatabaseAsync(ct);
-
     public Task<IReadOnlyList<LinkedDbInfo>> GetLinkedDatabasesAsync(CancellationToken ct = default) => Task.FromResult(orchestrator.GetLinkedDatabases());
 
     public Task<ApplyResult> LinkDatabaseAsync(string binDir, string user, string password, CancellationToken ct = default) =>
@@ -122,6 +118,8 @@ public sealed class AgentApi(Orchestrator orchestrator, Action<bool> requestShut
         orchestrator.SetLinkedDatabasePortAsync(id, port, ct);
 
     public Task<string> BackupLinkedDatabaseAsync(string id, CancellationToken ct = default) => orchestrator.BackupLinkedDatabaseAsync(id, ct);
+
+    public Task<ApplyResult> CheckLinkedDatabaseAsync(string id, CancellationToken ct = default) => orchestrator.CheckLinkedDatabaseAsync(id, ct);
 
     /// <summary>Returns at once so the reply reaches the caller before the pipe closes.</summary>
     public Task ShutdownAsync(bool stopServices, CancellationToken ct = default)

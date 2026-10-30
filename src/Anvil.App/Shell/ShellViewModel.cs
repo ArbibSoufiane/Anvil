@@ -14,8 +14,8 @@ public sealed partial class ShellViewModel : ObservableObject
         [AppPage.Dashboard] = ("Dashboard", "Everything Anvil runs, at a glance"),
         [AppPage.Sites] = ("Sites", "Domain sites with HTTPS, and plain folders in htdocs"),
         [AppPage.Apache] = ("Apache", "Version, performance, modules and config files"),
-        [AppPage.Php] = ("PHP", "Installed versions, worker pools and extensions"),
-        [AppPage.Database] = ("Database", "MariaDB or MySQL, with every setting next to its default"),
+        [AppPage.Php] = ("PHP", "Installed versions, worker pools, php.ini settings and extensions"),
+        [AppPage.Database] = ("Database", "The MariaDB and MySQL servers you installed, linked to Anvil"),
         [AppPage.Logs] = ("Logs", "Apache, PHP, database and per-site logs in one place"),
         [AppPage.Settings] = ("Settings", "Startup, network access, folders and certificates"),
     };
@@ -71,10 +71,13 @@ public sealed partial class ShellViewModel : ObservableObject
         _ => Current,
     };
 
-    // Each visit finds new logs (a site or PHP version added since) and shows the latest lines.
+    // Each visit finds new logs (a site or PHP version added since) and shows the latest lines; the PHP and Database
+    // pages show their pools' and servers' state as it is now.
     partial void OnCurrentChanged(AppPage value)
     {
         if (value == AppPage.Logs) _logs?.Refresh();
+        if (value == AppPage.Php) _ = _php?.RefreshStatusAsync();
+        if (value == AppPage.Database) _ = _database?.LoadAsync();
     }
 
     public bool CloseToTray { get; set; }

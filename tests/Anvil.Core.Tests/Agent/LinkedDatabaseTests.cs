@@ -66,6 +66,23 @@ public sealed class LinkedDatabaseTests : IDisposable
     }
 
     [Fact]
+    public async Task Refresh_checks_that_the_server_runs_and_lets_Anvil_log_in()
+    {
+        var orchestrator = await LinkedAsync();
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.True((await orchestrator.CheckLinkedDatabaseAsync("mariadb", ct)).Ok);
+
+        _host.Password = "changed";
+        Assert.Equal("MariaDB 13.0.2 is running, but root could not log in with the password Anvil keeps. Link it again.",
+            (await orchestrator.CheckLinkedDatabaseAsync("mariadb", ct)).Error);
+
+        _host.Running.Remove("mariadb");
+        Assert.Equal("MariaDB 13.0.2 is not running.", (await orchestrator.CheckLinkedDatabaseAsync("mariadb", ct)).Error);
+        Assert.Equal("No linked server is called nope.", (await orchestrator.CheckLinkedDatabaseAsync("nope", ct)).Error);
+    }
+
+    [Fact]
     public async Task A_password_the_running_server_refuses_is_not_kept()
     {
         _host.Password = "secret";

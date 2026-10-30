@@ -138,6 +138,45 @@ public sealed class PhpExtensionManagerTests : IDisposable
     }
 
     [Fact]
+    public void A_thread_safe_php_turns_on_the_xdebug_in_its_own_ext_folder()
+    {
+        var linked = Path.Combine(_root, "pvm", "php-ts");
+        Directory.CreateDirectory(Path.Combine(linked, "ext"));
+        File.WriteAllText(Path.Combine(linked, "ext", "php_xdebug-3.4.5-8.4-ts-vs17-x86_64.dll"), "");
+        var manager = new PhpExtensionManager(_paths, phpFolder: _ => linked);
+
+        Assert.Equal(["xdebug"], manager.List(Version).Select(e => e.Name));
+        manager.Set(Version, "xdebug", enabled: true);
+
+        var ini = IniDocument.Parse(File.ReadAllText(IniFile));
+        Assert.Contains("php_xdebug-3.4.5-8.4-ts-vs17-x86_64.dll", ini.GetAll("PHP", "zend_extension"));
+        Assert.Equal("debug,develop", ini.Get("xdebug", "xdebug.mode"));
+        Assert.True(manager.List(Version).Single().Enabled);
+
+        manager.Set(Version, "xdebug", enabled: false);
+
+        Assert.False(manager.List(Version).Single().Enabled);
+        Assert.Null(IniDocument.Parse(File.ReadAllText(IniFile)).Get("xdebug", "xdebug.mode"));
+    }
+
+    [Fact]
+    public void An_extension_php_ini_loads_by_full_path_is_listed_and_can_be_turned_back_on()
+    {
+        var dll = Path.Combine(_root, "pecl", "php_mcrypt.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(dll)!);
+        File.WriteAllText(dll, "");
+        WriteIni($"[PHP]\r\nextension=curl\r\nextension=\"{AppPaths.ForApache(dll)}\"\r\n");
+        var manager = new PhpExtensionManager(_paths);
+
+        Assert.True(manager.List(Version).Single(e => e.Name == "mcrypt").Enabled);
+        manager.Set(Version, "mcrypt", enabled: false);
+        Assert.False(manager.List(Version).Single(e => e.Name == "mcrypt").Enabled);
+        manager.Set(Version, "mcrypt", enabled: true);
+
+        Assert.True(manager.List(Version).Single(e => e.Name == "mcrypt").Enabled);
+    }
+
+    [Fact]
     public void Enabling_a_missing_dll_is_refused()
     {
         var e = Assert.Throws<ArgumentException>(() => new PhpExtensionManager(_paths).Set(Version, "imagick", enabled: true));

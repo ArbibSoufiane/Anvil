@@ -37,7 +37,7 @@ public sealed class DbBackupTests : IDisposable
     {
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 27, 23, 4, 5, TimeSpan.Zero));
         time.SetLocalTimeZone(TimeZoneInfo.CreateCustomTimeZone("AST", TimeSpan.FromHours(4), "AST", "AST"));
-        var backup = new DbBackup(_paths, new DbSecrets(_paths), time);
+        var backup = new DbBackup(_paths, time);
 
         var first = backup.NextFile();
         Directory.CreateDirectory(Path.GetDirectoryName(first)!);

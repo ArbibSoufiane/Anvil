@@ -42,6 +42,30 @@ public static class LogSources
         return sources;
     }
 
+    /// <summary>
+    /// Empties each log file in place, so Apache, PHP and the servers keep writing to it. Returns the files another program
+    /// holds without letting them be changed, which stay as they are.
+    /// </summary>
+    public static IReadOnlyList<string> Clear(IEnumerable<LogSource> sources)
+    {
+        var kept = new List<string>();
+        foreach (var path in sources.Select(s => s.Path).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var file = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+                file.SetLength(0);
+            }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                kept.Add(path);
+            }
+        }
+        return kept;
+    }
+
     // The newest "<name>.<date>.log" rotatelogs writes, unless an older single "<name>.log" was written more recently.
     private static string? Current(string dir, string name)
     {
